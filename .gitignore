@@ -2,11 +2,83 @@
 .vscode/
 settings/
 imgui.ini
-*.swp
-*.swo
-*.exe
 *.dSYM
 mac_prog
 3dco
 build.bat
 
+# Build directories (CMake out-of-source builds)
+build/
+cmake-build-*/
+out/
+bin/
+lib/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeUserPresets.json
+*.cmake
+!CMakeLists.txt
+!*.cmake.in
+
+# Compiled object files
+*.o
+*.obj
+*.ko
+*.dylib
+*.dll
+*.so
+*.a
+*.lib
+*.exe
+*.exp
+*.pdb
+*.ilk
+*.manifest
+
+# Debug/release output
+Debug/
+Release/
+MinSizeRel/
+RelWithDebInfo/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.user
+*.userosscache
+*.sln.docstates
+
+# Compiled Python (if using scripts)
+*.pyc
+
+# Local CMake settings (user-specific)
+CMakeSettings.json
+
+# Conan (package manager) – optional
+conaninfo.txt
+conanbuildinfo.*
+conan.lock
+conanbuild.*
+conanenv.*
+conanimports/
+
+# vcpkg (optional)
+vcpkg_installed/
+vcpkg-manifest-install.log
+
+# Doxygen (optional)
+docs/html/
+docs/latex/
+
+# Compiled test outputs
+Testing/
+*.gcda
+*.gcno
+*.gcov

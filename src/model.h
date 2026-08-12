@@ -1,6 +1,8 @@
 #ifndef MODEL_H
 #define MODEL_H
 
+#include <SDL2/SDL.h>
+
 #include <glad/glad.h>
 
 #include <glm/glm.hpp>
@@ -8,106 +10,135 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <string>
-#include <sstream>
 #include <vector>
-#include <iostream>
 
-#include "shader.h"
+// Existing structs
+typedef struct pos_struct {
+  GLfloat x = 0;
+  GLfloat y = 0;
+  GLfloat z = 0;
+} vertex_position;
 
-typedef struct pos_struct{
-    GLfloat x = 0;
-    GLfloat y = 0;
-    GLfloat z = 0;
-}vertex_position;
+typedef struct norm_struct {
+  GLfloat x = 0;
+  GLfloat y = 0;
+  GLfloat z = 0;
+} vertex_normal;
 
-typedef struct norm_struct{
-    GLfloat x = 0;
-    GLfloat y = 0;
-    GLfloat z = 0;
-}vertex_normal;
+typedef struct texcoord_struct {
+  GLfloat x = 0;
+  GLfloat y = 0;
+} vertex_texcoord;
 
-typedef struct texcoord_struct{
-    GLfloat x = 0;
-    GLfloat y = 0;
-}vertex_texcoord;
-
-typedef struct vertex_struct{
-    int position = 0;
-    int normal = 0;
-    int texcoord = 0;
-}Vertex;
+typedef struct vertex_struct {
+  int position = 0;
+  int normal = 0;
+  int texcoord = 0;
+} Vertex;
 
 typedef struct material_struct {
-    float ambient = 0.2f;
-    float diffuse = 1.0f;
-    float specular = 0.1f;
-    float shininess = 32.0f;
-    float color[3] = {0.3f, 0.3f, 0.3f};
-    float highlight[3] = {0.0f, 1.0f, 0.0f};
-}Material; 
+  float ambient = 0.2f;
+  float diffuse = 1.0f;
+  float specular = 0.1f;
+  float shininess = 32.0f;
+  float color[3] = {0.3f, 0.3f, 0.3f};
+  float highlight[3] = {0.0f, 1.0f, 0.0f};
+} Material;
 
-typedef struct face_struct{
-    std::vector<int> indices;
-}Face;
+typedef struct face_struct {
+  std::vector<int> indices;
+} Face;
 
-typedef struct texture_struct{
-    GLuint id = 0;
-    std::string name = "";
-    std::string path;
-    int type = 0;
-    int wrapX = 0;
-    int wrapY = 0;
-    float offsetX = 0;
-    float offsetY = 0;
-    float scaleX = 1.0f;
-    float scaleY = 1.0f;
-    float rotation = 0.0f;
-    float border[4] = {0.8f, 0.8f, 0.8f, 1.0f};
-}Texture;
+typedef struct texture_struct {
+  GLuint id = 0;
+  std::string name = "";
+  std::string path;
+  int type = 0;
+  int wrapX = 0;
+  int wrapY = 0;
+  float offsetX = 0;
+  float offsetY = 0;
+  float scaleX = 1.0f;
+  float scaleY = 1.0f;
+  float rotation = 0.0f;
+  float border[4] = {0.8f, 0.8f, 0.8f, 1.0f};
+} Texture;
 
 typedef struct mesh_struct {
-    float position[3] = {0.0f, 0.0f, 0.0f};
-    float travel[3] = {0.0f, 0.0f, 0.0f};
-    float popup_offset[3] = {0.0f, 0.0f, 0.0f};
-    float popup_rotation[3] = {0.0f, 0.0f, 0.0f};
-    float trigger_max = 0.0f;
-    float stick_max = 0.0f;
-    float touch_width = 0.0f;
-    float touch_height = 0.0f;
-    
-    float stick_X = 0.0f;
-    float stick_Y = 0.0f;
-    Uint8 touch_state = 0;
-    float touch_X = 0.0f;
-    float touch_Y = 0.0f;
-    float pull = 0.0f;
-    float press = 0.0f;
-    
-    float highlight_value = 0.0f;
-    int ring_highlight_deadzone = 10;
-    bool popup = false;
-    bool visible = true;
+  GLuint vao = 0;
+  GLuint vbo = 0;
+  GLuint ebo = 0;
+  unsigned int elements = 0;
 
-    GLuint vao;
-    GLuint vbo;
-    GLuint ebo;
-    
-    GLuint elements = 0;
+  Material material;
+  std::vector<Texture> textures;
 
-    Material material;
-    
-    std::vector<Texture> textures;
-}Mesh;
+  // Position / motion data
+  float position[3] = {0.0f, 0.0f, 0.0f};
+  float travel[3] = {0.0f, 0.0f, 0.0f};
+  float popup_offset[3] = {0.0f, 0.0f, 0.0f};
+  float popup_rotation[3] = {0.0f, 0.0f, 0.0f};
+  float trigger_max = 0.0f;
+  float stick_max = 0.0f;
+  float touch_width = 0.0f;
+  float touch_height = 0.0f;
+
+  glm::mat4 base_transform = glm::mat4(1.0f);
+
+  float stick_X = 0;
+  float stick_Y = 0;
+  float pull = 0;
+  float press = 0.0f;
+  bool visible = true;
+  bool popup = false;
+  float highlight_value = 0.0f;
+  int ring_highlight_deadzone = 15;
+
+  Uint8 touch_state = 0;
+  float touch_X = 0.0f;
+  float touch_Y = 0.0f;
+} Mesh;
+
+// ----- NEW: Imported mesh data for custom model mapping -----
+typedef struct imported_mesh_struct {
+  std::string name;       // mesh name from the file
+  int assigned_part = -1; // index into the 32 controller parts (0..31)
+
+  // Raw vertex data (will be converted to GL buffers when applied)
+  std::vector<glm::vec3> positions;
+  std::vector<glm::vec3> normals;
+  std::vector<glm::vec2> texcoords;
+  std::vector<unsigned int> indices;
+} ImportedMesh;
 
 typedef struct model_struct {
-    std::string path;
-    std::vector<Mesh> meshes;
-    glm::mat4 motion_matrix = glm::mat4(1.0f);
-    bool popup_bumpers = false;
-    bool popup_triggers = false;
-    bool popup_paddles = false;
-}Model;
+  std::string path;
+  std::vector<Mesh> meshes;
+  glm::mat4 motion_matrix = glm::mat4(1.0f);
+  bool popup_bumpers = false;
+  bool popup_triggers = false;
+  bool popup_paddles = false;
 
+  // ----- NEW: imported mesh data -----
+  std::vector<ImportedMesh> imported_meshes;
+  bool has_imported_meshes = false;
+} Model;
+
+// model.h
+struct ImportAssignment {
+  std::string mesh_name;
+  int assigned_part = -1; // -1 = unassigned, 0-31 = part index
+};
+
+struct ImportPreviewData {
+  Model imported_model;
+  std::vector<ImportAssignment> assignments;
+  int selected_mesh_index = -1;
+  bool is_open = false;
+  std::string save_name = "NewModel";
+};
+
+// ----- Existing function declarations -----
 bool isFloat(std::string myString);
 
 void loadModel(Model &m, std::string path);
@@ -122,9 +153,12 @@ void loadTexture(GLuint &id, std::string path);
 
 void deleteTexture(GLuint &id);
 
-void drawModel(Model m, GLuint shader);
+void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1);
 
 void drawMesh(Mesh m, glm::mat4 motion, GLuint shader);
 
-#endif
+// ----- NEW: functions for custom mesh import and mapping -----
+void importModelFile(Model &m, const std::string &filepath);
+void applyMeshMapping(Model &m);
 
+#endif
