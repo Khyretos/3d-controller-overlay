@@ -8,21 +8,15 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 #include <SDL2/SDL.h>
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+
 #include "imfilebrowser.h"
 // clang-format on
 // --------------------------------------------------------------------------
 
-#include <filesystem>
-#include <iostream>
-#include <stdio.h>
 #include <sys/stat.h>
 #include <vector>
 
 #include "controller_window.h"
-#include "settings.h"
 
 // ----------------------------------------------------------------------------
 // Forward declarations & typedefs

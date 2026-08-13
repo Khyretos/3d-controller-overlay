@@ -8,11 +8,18 @@
 #else // some other operating system
 #endif
 
-#include "settings_window.h"
 #include <cstring>
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <map>
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+#include <filesystem>
+#include <iostream>
+#include <stdio.h>
+#include "settings.h"
+#include "settings_window.h"
+#include <fstream>
 
 extern std::vector<controller_window> windows;
 

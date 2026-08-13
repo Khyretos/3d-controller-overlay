@@ -7,16 +7,15 @@
 
 #include "stb_image.h"
 
-#include <iostream>
 #include <math.h>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "model.h"
-#include "settings_window.h"
-#include "shader.h"
-
+#include <GLFW/glfw3.h>
+#include <glad/glad.h>
+#include <SDL2/SDL.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 

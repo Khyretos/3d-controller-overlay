@@ -1,4 +1,6 @@
 #include "shader.h"
+#include <fstream>
+#include <filesystem>
 
 GLuint CompileShader(GLuint type, const char *shaderSource) {
   GLuint shaderObject;

@@ -1,4 +1,5 @@
 #include "controller_window.h"
+#include "shader.h"
 #include "cube_info.h"
 #include "settings_window.h"
 #include "shaders.h"
@@ -973,17 +974,17 @@ void lightingSpecification(controller_window &w) {
   glGenBuffers(1, &w.lighting_texture_data);
   glBindVertexArray(w.lighting_vao);
   glBindBuffer(GL_ARRAY_BUFFER, w.lighting_vertex_data);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices) * sizeof(GLfloat),
+  glBufferData(GL_ARRAY_BUFFER, CUBE_VERTICES_SIZE * sizeof(GLfloat),
                cube_vertices, GL_STATIC_DRAW);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
   glEnableVertexAttribArray(0);
   glBindBuffer(GL_ARRAY_BUFFER, w.lighting_normal_data);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(cube_normals) * sizeof(GLfloat),
+  glBufferData(GL_ARRAY_BUFFER, CUBE_NORMALS_SIZE * sizeof(GLfloat),
                cube_normals, GL_STATIC_DRAW);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
   glEnableVertexAttribArray(1);
   glBindBuffer(GL_ARRAY_BUFFER, w.lighting_texture_data);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(cube_tex_coords) * sizeof(GLfloat),
+  glBufferData(GL_ARRAY_BUFFER, CUBE_TEX_COORDS_SIZE * sizeof(GLfloat),
                cube_tex_coords, GL_STATIC_DRAW);
   glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
   glEnableVertexAttribArray(2);
