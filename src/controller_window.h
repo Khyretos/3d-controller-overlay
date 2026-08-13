@@ -73,6 +73,7 @@ typedef struct controller_window_struct {
   };
   bool is_gamecontroller = false; // true if opened as gamecontroller
   int joystick_index = -1;        // device index
+  std::string mapping[27];
 
   // Sensors
   SDL_Sensor *gyro_sensor = nullptr;
@@ -120,6 +121,12 @@ typedef struct controller_window_struct {
   double lastTime = 0.0f;
   double lastFrame = 0.0f;
 
+  bool mouse_first_click = true;
+  double prev_mouse_x = 0.0;
+  double prev_mouse_y = 0.0;
+
+  int last_highlight_index = -1;
+
   float camera_distance = 3.5f;
   float camera_yaw = 0.0f;
   float camera_pitch = 89.999f;
@@ -166,6 +173,9 @@ typedef struct controller_window_struct {
 
   ImportPreviewData import_preview;
   bool is_import_preview = false;
+
+  float last_axis_values[32] = {0.0f};
+  Uint8 last_hat_values[16] = {SDL_HAT_CENTERED};
 
 } controller_window;
 

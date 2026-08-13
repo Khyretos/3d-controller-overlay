@@ -12,6 +12,47 @@
 #include <cstring>
 #include <filesystem>
 #include <spdlog/spdlog.h>
+#include <map>
+
+extern std::vector<controller_window> windows;
+
+bool g_log_buttons = false;
+std::string g_loaded_mapping_name = "";
+static int last_logged_device_index = -1;
+
+std::string getBindingDescription(const std::string &binding) {
+  if (binding.empty())
+    return "unbound";
+  if (binding[0] == 'b') {
+    int num = std::stoi(binding.substr(1));
+    return "Button " + std::to_string(num);
+  }
+  if (binding[0] == 'h') {
+    size_t dot = binding.find('.');
+    if (dot != std::string::npos) {
+      int hatIdx = std::stoi(binding.substr(1, dot - 1));
+      int dir = std::stoi(binding.substr(dot + 1));
+      const char *dirNames[8] = {"Up",   "Right-Up",  "Right", "Right-Down",
+                                 "Down", "Left-Down", "Left",  "Left-Up"};
+      return "Hat " + std::to_string(hatIdx) + " " +
+             (dir >= 0 && dir < 8 ? dirNames[dir] : "?");
+    }
+    return binding;
+  }
+  if (binding[0] == 'a') {
+    if (binding.back() == '+') {
+      int num = std::stoi(binding.substr(1, binding.size() - 2));
+      return "Axis " + std::to_string(num) + " Positive";
+    } else if (binding.back() == '-') {
+      int num = std::stoi(binding.substr(1, binding.size() - 2));
+      return "Axis " + std::to_string(num) + " Negative";
+    } else {
+      int num = std::stoi(binding.substr(1));
+      return "Axis " + std::to_string(num);
+    }
+  }
+  return binding;
+}
 
 // Display names for mesh parts (used in UI)
 std::string mesh_names[32] = {
@@ -95,11 +136,6 @@ std::string binding_names[48] = {
     "h1.8",    "h1.9", "a0",   "a1",   "a2",   "a3",   "a4",   "a5",
 };
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-// #define STB_IMAGE_WRITE_IMPLEMENTATION
-// #include "stb_image_write.h"
-
 unsigned int tabs_made = 0;
 unsigned selected_tab = 0;
 unsigned selected_mesh = 0;
@@ -124,20 +160,17 @@ void createSettingsWindow() {
   glfwInit();
 
 #if defined(IMGUI_IMPL_OPENGL_ES2)
-  // GL ES 2.0 + GLSL 100
   const char *glsl_version = "#version 100";
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #elif defined(__APPLE__)
-  // GL 3.3 Core + GLSL 150
   const char *glsl_version = "#version 150";
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #else
-  // GL 3.3 + GLSL 130
   const char *glsl_version = "#version 130";
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -177,12 +210,30 @@ void createSettingsWindow() {
   ImGui::CreateContext();
   io = &ImGui::GetIO();
   (void)io;
-  // io->ConfigFlags |= ImGuiConfigFlags_DpiEnableScaleViewports;
-  // io->ConfigFlags |= ImGuiConfigFlags_DpiEnableScaleFonts;
-  // io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-  // io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
   ImGui::StyleColorsDark();
+  ImGui::StyleColorsDark();
+  ImGui::StyleColorsDark();
+  ImGuiStyle &style = ImGui::GetStyle();
+  ImVec4 purple = ImVec4(0.45f, 0.18f, 0.59f, 1.0f); // royal purple
+  ImVec4 purple_light = ImVec4(0.6f, 0.3f, 0.75f, 1.0f);
+  ImVec4 purple_dark = ImVec4(0.3f, 0.1f, 0.4f, 1.0f);
+  style.Colors[ImGuiCol_Button] = purple;
+  style.Colors[ImGuiCol_ButtonHovered] = purple_light;
+  style.Colors[ImGuiCol_ButtonActive] = purple_dark;
+  style.Colors[ImGuiCol_Header] = purple;
+  style.Colors[ImGuiCol_HeaderHovered] = purple_light;
+  style.Colors[ImGuiCol_HeaderActive] = purple_dark;
+  style.Colors[ImGuiCol_CheckMark] = purple_light;
+  style.Colors[ImGuiCol_SliderGrab] = purple;
+  style.Colors[ImGuiCol_SliderGrabActive] = purple_light;
+  style.Colors[ImGuiCol_FrameBgHovered] = purple_dark;
+  style.Colors[ImGuiCol_Tab] = purple_dark;
+  style.Colors[ImGuiCol_TabHovered] = purple_light;
+  style.Colors[ImGuiCol_TabActive] = purple;
+  style.Colors[ImGuiCol_ResizeGrip] = purple;
+  style.Colors[ImGuiCol_ResizeGripHovered] = purple_light;
+  style.Colors[ImGuiCol_ResizeGripActive] = purple_dark;
 
   ImGui_ImplGlfw_InitForOpenGL(glfw_settings_window, true);
   if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
@@ -198,12 +249,6 @@ void createSettingsWindow() {
   model_dialog.SetTypeFilters(
       {".obj", ".fbx", ".gltf", ".glb", ".blend", ".dae", ".stl"});
 
-  import_model_dialog.SetWindowSize(400, 300);
-  import_model_dialog.SetTitle("Import 3D Model");
-  import_model_dialog.SetTypeFilters(
-      {".obj", ".fbx", ".gltf", ".glb", ".blend", ".dae", ".stl"});
-
-  ImGui::FileBrowser import_model_dialog;
   import_model_dialog.SetWindowSize(400, 300);
   import_model_dialog.SetTitle("Import 3D Model");
   import_model_dialog.SetTypeFilters(
@@ -238,7 +283,6 @@ void removeSettingsWindow() {
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
-
   glfwDestroyWindow(glfw_settings_window);
 }
 
@@ -266,6 +310,7 @@ bool check_tab_title_exists(std::string title) {
   return exists;
 }
 
+// Forward declarations of helper functions (defined later)
 void DrawImportPreviewControls(controller_window &w);
 void SaveImportedModel(controller_window &w);
 void writeOBJ(const std::string &path, const ImportedMesh &mesh);
@@ -314,10 +359,8 @@ void drawSettingsWindow() {
                                         ImGuiTabItemFlags_NoTooltip)) {
       window_tab new_tab;
       tabs_made++;
-      // new_tab_title.append(std::to_string(tabs_made));
       new_tab.title = new_tab_title;
       tabs.push_back(new_tab);
-
       new_controller_window = true;
     }
     for (unsigned i = 0; i < tabs.size(); ++i) {
@@ -338,6 +381,23 @@ void drawSettingsWindow() {
   if (tabs.size() > 0 && new_controller_window == false) {
     controller_window *current_window =
         getControllerWindow(tabs[selected_tab].ID);
+
+    if (current_window->is_import_preview) {
+      // Preview windows only show import controls (drawn outside this block)
+      // Skip all normal sections.
+      ImGui::End();
+      ImGui::PopStyleVar();
+      return;
+    }
+    if (!current_window) {
+      ImGui::End();
+      ImGui::PopStyleVar();
+      return;
+    }
+
+    // ============================================================
+    // WINDOW
+    // ============================================================
     if (ImGui::CollapsingHeader("Window")) {
       char title[20] = {};
       if (ImGui::InputTextWithHint("Title", tabs[selected_tab].title.c_str(),
@@ -347,38 +407,41 @@ void drawSettingsWindow() {
         tabs[selected_tab].title = std::string(title);
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Set title of window.");
+        ImGui::SetTooltip("Set the window title.");
       ImGui::NewLine();
-      // std::cout << "*****************" << std::endl;
+
       if (ImGui::Checkbox("Always on Top", &current_window->always_on_top)) {
         glfwSetWindowAttrib(current_window->glfw_window, GLFW_FLOATING,
                             current_window->always_on_top);
       }
-      // std::cout << ">>>>>>>>>>>>>>>>>" << std::endl;
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Toggle if the window should be always on top of all "
-                          "other windows.");
+        ImGui::SetTooltip("Keep window above all others.");
+
       if (ImGui::Checkbox("Borderless", &current_window->borderless)) {
         glfwSetWindowAttrib(current_window->glfw_window, GLFW_DECORATED,
                             !current_window->borderless);
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Toggle window title bar and borders.");
+        ImGui::SetTooltip("Hide title bar and borders.");
+
       ImGui::Checkbox("Drag to Move", &current_window->drag_to_move);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Left-click and drag inside window to move.");
+        ImGui::SetTooltip("Left‑click drag to move window.");
+
       ImGui::Checkbox("Scroll to Resize", &current_window->scroll_to_resize);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Scroll mouse wheel inside window to resize.");
+        ImGui::SetTooltip("Scroll mouse wheel to resize window.");
+
       ImGui::Checkbox("Show Grid", &current_window->grid);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Show the horizontal grid.");
+        ImGui::SetTooltip("Show/hide reference grid.");
+
       ImGui::Checkbox("Wireframe Mode", &current_window->wireframe);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Toggle wireframe mode.");
+        ImGui::SetTooltip("Toggle wireframe rendering.");
+
       ImGui::NewLine();
-      int w = 0;
-      int h = 0;
+      int w = 0, h = 0;
       glfwGetWindowSize(current_window->glfw_window, &w, &h);
       if (ImGui::InputInt("Width", &w, 10, 100,
                           ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -389,7 +452,8 @@ void drawSettingsWindow() {
         glfwSetWindowSize(current_window->glfw_window, w, h);
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Set width of window in pexels.");
+        ImGui::SetTooltip("Window width in pixels.");
+
       if (ImGui::InputInt("Height", &h, 10, 100,
                           ImGuiInputTextFlags_EnterReturnsTrue)) {
         if (h < 10)
@@ -399,67 +463,55 @@ void drawSettingsWindow() {
         glfwSetWindowSize(current_window->glfw_window, w, h);
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Set height of window in pexels.");
+        ImGui::SetTooltip("Window height in pixels.");
+
       ImGui::NewLine();
       ImGui::SliderInt("Swap Interval", &current_window->swap_interval, 0, 2);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(
-            "Set the swap interval (v-sync) for the controller window.");
-      /*
-      int fps_cap = current_window->frame_cap;
-      if (ImGui::InputInt("Frame Cap", &fps_cap, 1, 100,
-ImGuiInputTextFlags_EnterReturnsTrue)){ if (fps_cap > 300) fps_cap = 300; if
-(fps_cap < 10) fps_cap = 10; current_window->frame_cap = fps_cap;
-      }
-      if (ImGui::IsItemHovered())
-ImGui::SetTooltip("Set the maximum frame rate of controller window.");
-//*/
+        ImGui::SetTooltip("V‑sync: 0 = off, 1 = on, 2 = adaptive.");
+
       ImGui::NewLine();
       ImGui::ColorEdit4("Background Color", current_window->bg_color);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Adjust red, green, blue and alpha (opacity) values "
-                          "for window background color.");
+        ImGui::SetTooltip("Background colour and opacity.");
     }
+
+    // ============================================================
+    // CAMERA
+    // ============================================================
     if (ImGui::CollapsingHeader("Camera")) {
-      ImGui::Checkbox("Freelook", &current_window->freelook);
-      if (current_window->freelook) {
-        ImGui::TextUnformatted("Note: Controller window must be in focus.");
-        ImGui::TextUnformatted("W,A,S,D = move");
-        ImGui::TextUnformatted("Space / Ctrl = up / down");
-        ImGui::TextUnformatted("Arrow Keys = look");
-        ImGui::TextUnformatted("Right-Click + drag = look");
-        ImGui::SliderInt("Move Speed", &current_window->move_speed, 0, 10);
-        ImGui::SliderInt("Turn Speed", &current_window->turn_speed, 0, 10);
-        if (ImGui::Button("Reset")) {
-          current_window->move_speed = 5.0f;
-          current_window->turn_speed = 5.0f;
-          current_window->freelook_yaw = 180.0f;
-          current_window->freelook_pitch = 0.0f;
-          current_window->freelook_position = glm::vec3(0.0f, 0.5f, 3.0f);
-          current_window->freelook_direction = glm::vec3(0.0f, 0.0f, -1.0f);
-        }
-      } else {
-        ImGui::SliderFloat("Distance", &current_window->camera_distance, 1, 10);
-        ImGui::SliderFloat("Yaw", &current_window->camera_yaw, -180, 180);
-        ImGui::SliderFloat("Pitch", &current_window->camera_pitch, -89.999,
-                           89.999);
-        ImGui::SliderFloat("Roll", &current_window->camera_roll, -180, 180);
-        if (ImGui::Button("Reset")) {
-          current_window->camera_distance = 3.3f;
-          current_window->camera_yaw = 0.0f;
-          current_window->camera_pitch = 89.999f;
-          current_window->camera_roll = 0.0f;
-        }
+      ImGui::SliderFloat("Distance", &current_window->camera_distance, 1, 10);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Camera distance from the model.");
+      ImGui::SliderFloat("Yaw", &current_window->camera_yaw, -180, 180);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Horizontal camera orbit.");
+      ImGui::SliderFloat("Pitch", &current_window->camera_pitch, -89.999,
+                         89.999);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Vertical camera orbit.");
+      ImGui::SliderFloat("Roll", &current_window->camera_roll, -180, 180);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Camera roll (tilt).");
+      if (ImGui::Button("Reset")) {
+        current_window->camera_distance = 3.3f;
+        current_window->camera_yaw = 0.0f;
+        current_window->camera_pitch = 89.999f;
+        current_window->camera_roll = 0.0f;
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Reset camera to default view.");
     }
+
+    // ============================================================
+    // CONTROLLER
+    // ============================================================
     if (ImGui::CollapsingHeader("Controller")) {
-      // ----- NEW: list ALL joysticks (gamepads + generic) -----
       std::vector<int> all_devices;
       for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         all_devices.push_back(i);
       }
 
-      // Build the current device name for display
       std::string device_name = "None";
       if (current_window->is_gamecontroller && current_window->sdl_controller) {
         device_name = SDL_GameControllerName(current_window->sdl_controller);
@@ -472,52 +524,49 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           const char *name = SDL_JoystickNameForIndex(idx);
           bool is_game = SDL_IsGameController(idx);
           std::string label = std::string(name ? name : "Unknown") +
-                              (is_game ? " (gamepad)" : " (joystick)");
+                              (is_game ? " (gamepad)" : " (joystick)") + " [" +
+                              std::to_string(idx) + "]";
           if (ImGui::Selectable(label.c_str())) {
-            // Close current device (if any)
-            if (current_window->is_gamecontroller &&
-                current_window->sdl_controller) {
+            // ---- Close any currently open device ----
+            if (current_window->sdl_controller) {
               SDL_GameControllerClose(current_window->sdl_controller);
               current_window->sdl_controller = nullptr;
-            } else if (current_window->sdl_joystick) {
+            }
+            if (current_window->sdl_joystick) {
               SDL_JoystickClose(current_window->sdl_joystick);
               current_window->sdl_joystick = nullptr;
             }
+            current_window->is_gamecontroller = false;
 
-            // Open new device
+            // ---- Open the new device ----
             if (is_game) {
               current_window->sdl_controller = SDL_GameControllerOpen(idx);
-              current_window->is_gamecontroller = true;
               if (current_window->sdl_controller) {
+                current_window->is_gamecontroller = true;
                 spdlog::info(
                     "Switched to gamecontroller: {}",
                     SDL_GameControllerName(current_window->sdl_controller));
-                if (SDL_GameControllerHasSensor(current_window->sdl_controller,
-                                                SDL_SENSOR_GYRO)) {
-                  SDL_GameControllerSetSensorEnabled(
-                      current_window->sdl_controller, SDL_SENSOR_GYRO,
-                      SDL_TRUE);
-                  current_window->gyro_enabled = true;
-                } else {
-                  current_window->gyro_enabled = false;
-                  current_window->gyro_debug_logging =
-                      false; // disable debug logging if no gyro
-                }
               } else {
-                spdlog::error("Failed to open gamecontroller {}", idx);
+                spdlog::error("Failed to open gamecontroller {}: {}", idx,
+                              SDL_GetError());
               }
             } else {
-              current_window->sdl_joystick = SDL_JoystickOpen(idx);
-              current_window->is_gamecontroller = false;
-              if (current_window->sdl_joystick) {
-                spdlog::info("Switched to generic joystick: {}",
-                             SDL_JoystickName(current_window->sdl_joystick));
-                // For generic joysticks, we can't easily detect gyro support,
-                // so we assume none
-                current_window->gyro_enabled = false;
-                current_window->gyro_debug_logging = false;
+              int numJoy = SDL_NumJoysticks();
+              if (idx < 0 || idx >= numJoy) {
+                spdlog::error(
+                    "Joystick index {} out of range ({} joysticks present)",
+                    idx, numJoy);
               } else {
-                spdlog::error("Failed to open generic joystick {}", idx);
+                current_window->sdl_joystick = SDL_JoystickOpen(idx);
+                if (current_window->sdl_joystick) {
+                  current_window->is_gamecontroller = false;
+                  spdlog::info("Switched to generic joystick: {}",
+                               SDL_JoystickName(current_window->sdl_joystick));
+                } else {
+                  spdlog::error("Failed to open generic joystick {}: {}", idx,
+                                SDL_GetError() ? SDL_GetError()
+                                               : "(no error details)");
+                }
               }
             }
             current_window->joystick_index = idx;
@@ -525,21 +574,37 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
         }
         ImGui::EndCombo();
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Select a gamepad or joystick.");
+
       if (ImGui::TreeNode("Settings")) {
         ImGui::Checkbox("Popup Bumpers", &current_window->model.popup_bumpers);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Animate bumpers when pressed.");
         ImGui::SameLine();
         ImGui::Checkbox("Popup Triggers",
                         &current_window->model.popup_triggers);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Animate triggers when pressed.");
         ImGui::SameLine();
         ImGui::Checkbox("Popup Paddles", &current_window->model.popup_paddles);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Animate paddles when pressed.");
         ImGui::NewLine();
         ImGui::SliderInt(
             "L-Stick Highlight Deadzone",
             &current_window->model.meshes[7].ring_highlight_deadzone, 0, 100);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Deadzone for left stick highlight ring.");
         ImGui::SliderInt(
             "R-Stick Highlight Deadzone",
             &current_window->model.meshes[8].ring_highlight_deadzone, 0, 100);
-        ImGui::ColorEdit3("Hightlight Color", current_window->highlight_color);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Deadzone for right stick highlight ring.");
+        ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip(
+              "Colour used for highlights on buttons and sticks.");
         for (int i = 3; i < 32; i++) {
           if (i != 5 && i != 6) {
             current_window->model.meshes[i].material.highlight[0] =
@@ -552,6 +617,7 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
         }
         ImGui::TreePop();
       }
+
       if (ImGui::TreeNode("Materials")) {
         static std::string mesh_name = mesh_names[selected_mesh].c_str();
         if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
@@ -563,34 +629,41 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           }
           ImGui::EndCombo();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a mesh to edit its material.");
         ImGui::NewLine();
         ImGui::SliderFloat(
             "Ambient",
             &current_window->model.meshes[material_mesh].material.ambient, 0,
             1);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Ambient light reflection.");
         ImGui::SliderFloat(
             "Diffuse",
             &current_window->model.meshes[material_mesh].material.diffuse, 0,
             1);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Diffuse light reflection.");
         ImGui::SliderFloat(
             "Specular",
             &current_window->model.meshes[material_mesh].material.specular, 0,
             1);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Specular (shininess) intensity.");
         ImGui::SliderFloat(
             "Shininess",
             &current_window->model.meshes[material_mesh].material.shininess, 1,
             256);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Specular exponent (higher = sharper highlights).");
         ImGui::ColorEdit3(
             "Color",
             current_window->model.meshes[material_mesh].material.color);
-        /*
-        if(material_mesh > 2 && material_mesh != 5 && material_mesh
-        != 6){ ImGui::ColorEdit3("Highlight",
-        current_window->model.meshes[material_mesh].material.highlight);
-        }
-        //*/
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Base colour of the mesh.");
         ImGui::TreePop();
       }
+
       if (ImGui::TreeNode("Textures")) {
         static std::string mesh_name = mesh_names[selected_mesh].c_str();
         if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
@@ -602,6 +675,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           }
           ImGui::EndCombo();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a mesh to manage its textures.");
         ImGui::NewLine();
         static size_t current_texture = 0;
         if (ImGui::BeginListBox("Textures")) {
@@ -624,6 +699,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             current_texture =
                 current_window->model.meshes[texture_mesh].textures.size();
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Add a new texture to the selected mesh.");
         }
         if (current_window->model.meshes[texture_mesh].textures.size() > 0) {
           if (current_window->model.meshes[texture_mesh].textures.size() < 16) {
@@ -647,9 +724,10 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
               t->name = std::to_string(i + 1) + ": " + t->path;
             }
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Remove the selected texture.");
           ImGui::SameLine();
           if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
-            std::cout << "move texture up" << std::endl;
             if (current_texture > 0) {
               Texture temp = current_window->model.meshes[texture_mesh]
                                  .textures[current_texture - 1];
@@ -669,9 +747,10 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
               t->name = std::to_string(i + 1) + ": " + t->path;
             }
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move selected texture up.");
           ImGui::SameLine();
           if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
-            std::cout << "move texture down" << std::endl;
             if (current_texture <
                 current_window->model.meshes[texture_mesh].textures.size() -
                     1) {
@@ -693,6 +772,9 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
               t->name = std::to_string(i + 1) + ": " + t->path;
             }
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move selected texture down.");
+
           Texture *t = &current_window->model.meshes[texture_mesh]
                             .textures[current_texture];
           ImGui::NewLine();
@@ -703,6 +785,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                                       ? type_names[t->type]
                                       : "Unknown";
           ImGui::SliderInt("Type", &t->type, 0, type_count - 1, type_name);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Texture type: diffuse, specular, or emissive.");
           enum Wrap {
             repeat,
             mirror_repeat,
@@ -745,6 +829,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             }
             glfwMakeContextCurrent(glfw_settings_window);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Horizontal texture wrapping mode.");
           const char *wrap_name_y = (t->wrapY >= 0 && t->wrapY < wrap_count)
                                         ? wrap_names[t->wrapY]
                                         : "Unknown";
@@ -778,6 +864,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             }
             glfwMakeContextCurrent(glfw_settings_window);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Vertical texture wrapping mode.");
           if (ImGui::ColorEdit3("Border Color",
                                 current_window->model.meshes[texture_mesh]
                                     .textures[current_texture]
@@ -793,42 +881,57 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                                  .border);
             glfwMakeContextCurrent(glfw_settings_window);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Border color used when clamp‑to‑border is selected.");
           ImGui::InputFloat("Offset X",
                             &current_window->model.meshes[texture_mesh]
                                  .textures[current_texture]
                                  .offsetX,
                             0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Horizontal texture offset.");
           ImGui::InputFloat("Offset Y",
                             &current_window->model.meshes[texture_mesh]
                                  .textures[current_texture]
                                  .offsetY,
                             0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Vertical texture offset.");
           ImGui::InputFloat("Scale X",
                             &current_window->model.meshes[texture_mesh]
                                  .textures[current_texture]
                                  .scaleX,
                             0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Horizontal texture scale.");
           ImGui::InputFloat("Scale Y",
                             &current_window->model.meshes[texture_mesh]
                                  .textures[current_texture]
                                  .scaleY,
                             0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Vertical texture scale.");
           ImGui::SliderAngle("Rotation",
                              &current_window->model.meshes[texture_mesh]
                                   .textures[current_texture]
                                   .rotation,
                              -180.0f, 180.0f);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Texture rotation angle.");
         }
         ImGui::TreePop();
       }
-    }
+    } // end Controller
 
+    // ============================================================
+    // MODEL
+    // ============================================================
     if (ImGui::CollapsingHeader("Model")) {
       if (ImGui::BeginCombo("Models", current_window->model_name.c_str(), 0)) {
         std::string dir_path = SDL_GetBasePath();
         dir_path.append("models/");
 
-        // Check if directory exists before iterating
         if (std::filesystem::exists(dir_path) &&
             std::filesystem::is_directory(dir_path)) {
           struct stat sb;
@@ -853,15 +956,20 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             }
           }
         } else {
-          // Directory missing – show a message
           ImGui::TextDisabled("No models directory found. Create 'models/' in "
                               "the application folder.");
         }
         ImGui::EndCombo();
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Select a controller model.");
+
       if (ImGui::Button("New Model")) {
         ImGui::OpenPopup("new");
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Create a new empty model folder.");
+
       if (ImGui::BeginPopup("new")) {
         char name[32] = {};
         static bool name_valid = true;
@@ -869,11 +977,9 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
           bool valid = check_filename_valid(name);
           name_valid = valid;
-
           if (valid) {
             std::string new_model_path = "models/";
             new_model_path.append(name);
-
             std::filesystem::path path(SDL_GetBasePath());
             std::filesystem::path new_path(new_model_path);
             path /= new_path;
@@ -899,6 +1005,9 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
       if (ImGui::Button("Delete Model")) {
         ImGui::OpenPopup("delete");
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Delete the current model folder.");
+
       if (ImGui::BeginPopup("delete")) {
         ImGui::Text("Delete this model?");
         if (ImGui::Button("Confirm")) {
@@ -933,6 +1042,15 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
       if (ImGui::Button("Import Model as New...")) {
         import_model_dialog.Open();
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Import a 3D model file and map its meshes.");
+
+      // Description text from the removed "Mesh Import & Mapping" section
+      ImGui::TextWrapped(
+          "Import a 3D model (FBX, glTF, OBJ, etc.) and map its meshes "
+          "to controller parts. After importing, a preview window will "
+          "open where you can assign each mesh to a controller part.");
+
       ImGui::NewLine();
       current_window->mesh_name = mesh_names[selected_mesh].c_str();
       if (ImGui::BeginCombo("Meshes", current_window->mesh_name.c_str(), 0)) {
@@ -944,13 +1062,22 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
         }
         ImGui::EndCombo();
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Select a mesh part to edit.");
+
       if (ImGui::Button("Import Mesh")) {
         model_dialog.Open();
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Replace the selected mesh with an OBJ file.");
+
       ImGui::SameLine();
       if (ImGui::Button("Delete Mesh")) {
         ImGui::OpenPopup("delete_mesh");
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Delete the selected mesh file.");
+
       if (ImGui::BeginPopup("delete_mesh")) {
         ImGui::Text("Delete this mesh?");
         if (ImGui::Button("Confirm")) {
@@ -979,14 +1106,21 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           "X Position",
           &current_window->model.meshes[selected_mesh].position[0], 0.01f, 1.0f,
           "%.3f");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Translate mesh along X.");
       ImGui::InputFloat(
           "Y Position",
           &current_window->model.meshes[selected_mesh].position[1], 0.01f, 1.0f,
           "%.3f");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Translate mesh along Y.");
       ImGui::InputFloat(
           "Z Position",
           &current_window->model.meshes[selected_mesh].position[2], 0.01f, 1.0f,
           "%.3f");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Translate mesh along Z.");
+
       // LEFT STICK
       if (selected_mesh == 5) {
         ImGui::NewLine();
@@ -999,6 +1133,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           current_window->model.meshes[16].stick_max =
               current_window->model.meshes[5].stick_max;
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Maximum deflection angle for the left stick.");
       }
       // RIGHT STICK
       if (selected_mesh == 6) {
@@ -1012,6 +1148,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           current_window->model.meshes[17].stick_max =
               current_window->model.meshes[6].stick_max;
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Maximum deflection angle for the right stick.");
       }
       // TRIGGERS
       if (selected_mesh == 3 || selected_mesh == 4) {
@@ -1020,42 +1158,62 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             "Max Angle",
             &current_window->model.meshes[selected_mesh].trigger_max, 0.0f,
             90.0f);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Maximum pull angle for the trigger.");
         ImGui::NewLine();
         ImGui::InputFloat(
             "X Travel", &current_window->model.meshes[selected_mesh].travel[0],
             0.01f, 1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along X when pressed.");
         ImGui::InputFloat(
             "Y Travel", &current_window->model.meshes[selected_mesh].travel[1],
             0.01f, 1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along Y when pressed.");
         ImGui::InputFloat(
             "Z Travel", &current_window->model.meshes[selected_mesh].travel[2],
             0.01f, 1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along Z when pressed.");
         ImGui::NewLine();
         ImGui::InputFloat(
             "Popup Offset X",
             &current_window->model.meshes[selected_mesh].popup_offset[0], 0.01f,
             1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Offset when popping up.");
         ImGui::InputFloat(
             "Popup Offset Y",
             &current_window->model.meshes[selected_mesh].popup_offset[1], 0.01f,
             1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Offset when popping up.");
         ImGui::InputFloat(
             "Popup Offset Z",
             &current_window->model.meshes[selected_mesh].popup_offset[2], 0.01f,
             1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Offset when popping up.");
         ImGui::NewLine();
         ImGui::SliderAngle(
             "Popup Yaw",
             &current_window->model.meshes[selected_mesh].popup_rotation[1],
             -180, 180);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Yaw rotation when popping up.");
         ImGui::SliderAngle(
             "Popup Pitch",
             &current_window->model.meshes[selected_mesh].popup_rotation[0],
             -180, 180);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Pitch rotation when popping up.");
         ImGui::SliderAngle(
             "Popup Roll",
             &current_window->model.meshes[selected_mesh].popup_rotation[2],
             -180, 180);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Roll rotation when popping up.");
       }
       // BUTTONS
       if (selected_mesh > 8 && selected_mesh < 30) {
@@ -1063,13 +1221,19 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
         ImGui::InputFloat(
             "X Travel", &current_window->model.meshes[selected_mesh].travel[0],
             0.01f, 1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along X when pressed.");
         ImGui::InputFloat(
             "Y Travel", &current_window->model.meshes[selected_mesh].travel[1],
             0.01f, 1.0f, "%.3f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along Y when pressed.");
         ImGui::InputFloat(
             "Z Travel", &current_window->model.meshes[selected_mesh].travel[2],
             0.01f, 1.0f, "%.3f");
-        // BUMPERS AN PADDLES
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Movement along Z when pressed.");
+        // BUMPERS AND PADDLES
         if ((selected_mesh == 18 || selected_mesh == 19) ||
             (selected_mesh > 24 && selected_mesh < 29)) {
           ImGui::NewLine();
@@ -1077,27 +1241,39 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
               "Popup Offset X",
               &current_window->model.meshes[selected_mesh].popup_offset[0],
               0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset when popping up.");
           ImGui::InputFloat(
               "Popup Offset Y",
               &current_window->model.meshes[selected_mesh].popup_offset[1],
               0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset when popping up.");
           ImGui::InputFloat(
               "Popup Offset Z",
               &current_window->model.meshes[selected_mesh].popup_offset[2],
               0.01f, 1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset when popping up.");
           ImGui::NewLine();
           ImGui::SliderAngle(
               "Popup Yaw",
               &current_window->model.meshes[selected_mesh].popup_rotation[1],
               -180, 180);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Yaw rotation when popping up.");
           ImGui::SliderAngle(
               "Popup Pitch",
               &current_window->model.meshes[selected_mesh].popup_rotation[0],
               -180, 180);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Pitch rotation when popping up.");
           ImGui::SliderAngle(
               "Popup Roll",
               &current_window->model.meshes[selected_mesh].popup_rotation[2],
               -180, 180);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Roll rotation when popping up.");
         }
       }
       // TOUCHPAD
@@ -1109,83 +1285,32 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           current_window->model.meshes[31].touch_width =
               current_window->model.meshes[30].touch_width;
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Width of the touchpad area.");
         if (ImGui::InputFloat("Touch Area Height",
                               &current_window->model.meshes[30].touch_height,
                               0.01f, 1.0f, "%.3f")) {
           current_window->model.meshes[31].touch_height =
               current_window->model.meshes[30].touch_height;
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Height of the touchpad area.");
       }
     }
 
-    if (ImGui::CollapsingHeader("Mesh Import & Mapping")) {
-      // Only show if a controller window is selected
-      controller_window *current_window =
-          getControllerWindow(tabs[selected_tab].ID);
-      if (!current_window)
-        return;
-
-      ImGui::Text("Import a 3D model (FBX, glTF, OBJ, etc.) and map its meshes "
-                  "to controller parts.");
-
-      if (ImGui::Button("Import Model File...")) {
-        model_dialog.Open();
-        spdlog::info("Model dialog opened (flag set)");
-      }
-
-      if (current_window->model.has_imported_meshes) {
-        ImGui::Text("Imported %zu meshes. Assign each to a controller part:",
-                    current_window->model.imported_meshes.size());
-
-        for (size_t i = 0; i < current_window->model.imported_meshes.size();
-             ++i) {
-          auto &imp = current_window->model.imported_meshes[i];
-          ImGui::PushID(i);
-          ImGui::Text("Mesh: %s", imp.name.c_str());
-          ImGui::SameLine();
-          // Combo to select part
-          int current_part = imp.assigned_part;
-          // --- FIX: use temporary array of const char* ---
-          const char *mesh_names_cstr[32];
-          for (int j = 0; j < 32; ++j) {
-            mesh_names_cstr[j] = mesh_names[j].c_str();
-          }
-          if (ImGui::Combo("##part", &current_part, mesh_names_cstr,
-                           IM_ARRAYSIZE(mesh_names_cstr))) {
-            imp.assigned_part = current_part;
-          }
-          ImGui::PopID();
-        }
-
-        if (ImGui::Button("Apply Mapping")) {
-          applyMeshMapping(current_window->model);
-          writeInfo(current_window->model, current_window->model.path);
-          spdlog::info("Mesh mapping applied.");
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
-          current_window->model.imported_meshes.clear();
-          current_window->model.has_imported_meshes = false;
-        }
-      } else {
-        ImGui::Text("No imported meshes. Click 'Import Model File...' to load "
-                    "a 3D file.");
-      }
-    }
-
+    // ============================================================
+    // GYRO
+    // ============================================================
     if (ImGui::CollapsingHeader("Gyro")) {
-      // Determine if the current controller has a gyro
       bool has_gyro = false;
       if (current_window->is_gamecontroller && current_window->sdl_controller) {
         has_gyro = SDL_GameControllerHasSensor(current_window->sdl_controller,
                                                SDL_SENSOR_GYRO) == SDL_TRUE;
       }
-      // Also check if we opened a generic gyro sensor
       if (!has_gyro && current_window->gyro_sensor) {
         has_gyro = true;
       }
 
-      // Always show the enable checkbox, but disable it if no gyro
       bool enabled = current_window->gyro_enabled;
       ImGui::BeginDisabled(!has_gyro);
       if (ImGui::Checkbox("Enable Gyro", &enabled)) {
@@ -1198,7 +1323,6 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
         }
         if (enabled) {
           current_window->gyro_toggled = true;
-          // Read initial timestamp
           Uint64 timestamp;
           if (SDL_GameControllerGetSensorDataWithTimestamp(
                   current_window->sdl_controller, SDL_SENSOR_GYRO, &timestamp,
@@ -1206,38 +1330,23 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             current_window->gyro_time = timestamp;
           }
         } else {
-          // Reset matrix when disabled to avoid sudden jumps later
           current_window->gyro_matrix = glm::mat4(1.0f);
         }
       }
       ImGui::EndDisabled();
 
-      // Only show the rest of the controls if gyro is present and enabled
       if (has_gyro && current_window->gyro_enabled) {
-        // Sensitivity slider
         ImGui::SliderFloat("Gyro Sensitivity",
                            &current_window->gyro_sensitivity, 0.1f, 100.0f,
                            "%.1f");
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(
-              "Higher values make the controller react more to movement.");
-
-        // Correction slider
         ImGui::SliderInt("Gyro Correction", &current_window->gyro_correction, 0,
                          10);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Attempts to keep the controller upright. Higher = "
-                            "stronger correction.");
-
-        // Reset button
         if (ImGui::Button("Reset Gyro")) {
           current_window->gyro_matrix = glm::mat4(1.0f);
         }
-
         ImGui::NewLine();
         ImGui::Text("Reset Gyro button combo");
 
-        // Button 1
         std::string button1_name = "";
         if (current_window->reset_gyro_button1 > -1) {
           button1_name =
@@ -1260,7 +1369,6 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           ImGui::EndCombo();
         }
 
-        // Button 2
         std::string button2_name = "";
         if (current_window->reset_gyro_button2 > -1) {
           button2_name =
@@ -1283,16 +1391,16 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           ImGui::EndCombo();
         }
 
-        // Debug logging checkbox
         ImGui::Checkbox("Gyro Debug Logging",
                         &current_window->gyro_debug_logging);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Log gyro data and status to console.");
       } else if (!has_gyro) {
         ImGui::TextDisabled("No gyroscope detected for this controller.");
       }
     }
 
+    // ============================================================
+    // LIGHTING
+    // ============================================================
     if (ImGui::CollapsingHeader("Lighting")) {
       if (ImGui::TreeNode("Directional Lights")) {
         static unsigned current_dir_light = 0;
@@ -1309,6 +1417,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           }
           ImGui::EndCombo();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a directional light to edit.");
         if (current_window->direct_lights.size() < 16) {
           if (ImGui::Button("New Light")) {
             direct_light new_dir_light;
@@ -1335,6 +1445,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             current_window->direct_lights.push_back(new_dir_light);
             current_dir_light = current_window->direct_lights.size() - 1;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Create a new directional light.");
         }
         if (current_window->direct_lights.size() > 0 &&
             current_window->direct_lights.size() < 16)
@@ -1345,6 +1457,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                 current_window->direct_lights.begin() + current_dir_light);
             current_dir_light = 0;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Delete the selected directional light.");
           ImGui::NewLine();
           direct_light *d = &current_window->direct_lights[current_dir_light];
           char name[64] = {};
@@ -1361,13 +1475,24 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             if (!exists)
               d->name = std::string(name);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Rename the light.");
           ImGui::SliderFloat("X Direction", &d->direction.x, -1, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light direction X.");
           ImGui::SliderFloat("Y Direction", &d->direction.y, -1, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light direction Y.");
           ImGui::SliderFloat("Z Direction", &d->direction.z, -1, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light direction Z.");
           ImGui::ColorEdit3("Color", d->color);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light colour.");
         }
         ImGui::TreePop();
       }
+
       if (ImGui::TreeNode("Point Lights")) {
         static unsigned current_point_light = 0;
         std::string preview_name = "";
@@ -1383,6 +1508,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           }
           ImGui::EndCombo();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a point light to edit.");
         if (current_window->point_lights.size() < 16) {
           if (ImGui::Button("New Light")) {
             point_light new_point_light;
@@ -1412,6 +1539,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             current_window->point_lights.push_back(new_point_light);
             current_point_light = current_window->point_lights.size() - 1;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Create a new point light.");
         }
         if (current_window->point_lights.size() > 0 &&
             current_window->point_lights.size() < 16)
@@ -1422,6 +1551,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                 current_window->point_lights.begin() + current_point_light);
             current_point_light = 0;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Delete the selected point light.");
           ImGui::NewLine();
           point_light *p = &current_window->point_lights[current_point_light];
           char name[64] = {};
@@ -1438,27 +1569,40 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             if (!exists)
               p->name = std::string(name);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Rename the light.");
           ImGui::Checkbox("Hide Source", &p->hide);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hide the light bulb visual.");
           ImGui::SliderFloat("X Position", &p->position.x, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position X.");
           ImGui::SliderFloat("Y Position", &p->position.y, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position Y.");
           ImGui::SliderFloat("Z Position", &p->position.z, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position Z.");
           ImGui::SliderFloat("Brightness", &p->intensity, 0, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light intensity.");
           if (ImGui::ColorEdit3("Color", p->color)) {
             p->ambient.r = p->color[0] * 0.05f;
             p->ambient.g = p->color[1] * 0.05f;
             p->ambient.b = p->color[2] * 0.05f;
-
             p->diffuse.r = p->color[0] * 0.8f;
             p->diffuse.g = p->color[1] * 0.8f;
             p->diffuse.b = p->color[2] * 0.8f;
-
             p->specular.r = p->color[0];
             p->specular.g = p->color[1];
             p->specular.b = p->color[2];
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light colour.");
         }
         ImGui::TreePop();
       }
+
       if (ImGui::TreeNode("Spot Lights")) {
         static unsigned current_spot_light = 0;
         std::string preview_name = "";
@@ -1474,6 +1618,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
           }
           ImGui::EndCombo();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a spot light to edit.");
         if (current_window->spot_lights.size() < 16) {
           if (ImGui::Button("New Light")) {
             spot_light new_spot_light;
@@ -1503,6 +1649,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             current_window->spot_lights.push_back(new_spot_light);
             current_spot_light = current_window->spot_lights.size() - 1;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Create a new spot light.");
         }
         if (current_window->spot_lights.size() > 0 &&
             current_window->spot_lights.size() < 16)
@@ -1513,6 +1661,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
                 current_window->spot_lights.begin() + current_spot_light);
             current_spot_light = 0;
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Delete the selected spot light.");
           ImGui::NewLine();
           spot_light *s = &current_window->spot_lights[current_spot_light];
           char name[64] = {};
@@ -1529,24 +1679,36 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             if (!exists)
               s->name = std::string(name);
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Rename the light.");
           ImGui::Checkbox("Hide Source", &s->hide);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hide the light bulb visual.");
           ImGui::SliderFloat("X Position", &s->position.x, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position X.");
           ImGui::SliderFloat("Y Position", &s->position.y, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position Y.");
           ImGui::SliderFloat("Z Position", &s->position.z, -10, 10);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light position Z.");
           ImGui::SliderFloat("Brightness", &s->intensity, 0, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light intensity.");
           if (ImGui::ColorEdit3("Color", s->color)) {
             s->ambient.r = s->color[0] * 0.05f;
             s->ambient.g = s->color[1] * 0.05f;
             s->ambient.b = s->color[2] * 0.05f;
-
             s->diffuse.r = s->color[0] * 0.8f;
             s->diffuse.g = s->color[1] * 0.8f;
             s->diffuse.b = s->color[2] * 0.8f;
-
             s->specular.r = s->color[0];
             s->specular.g = s->color[1];
             s->specular.b = s->color[2];
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Light colour.");
           if (ImGui::SliderFloat("Yaw", &s->yaw, -180, 180)) {
             s->direction.x =
                 cos(glm::radians(s->pitch)) * sin(glm::radians(s->yaw + 180));
@@ -1554,6 +1716,8 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             s->direction.z =
                 cos(glm::radians(s->pitch)) * cos(glm::radians(s->yaw + 180));
           }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Horizontal direction.");
           if (ImGui::SliderFloat("Pitch", &s->pitch, -90, 90)) {
             s->direction.x =
                 cos(glm::radians(s->pitch)) * sin(glm::radians(s->yaw + 180));
@@ -1561,184 +1725,260 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
             s->direction.z =
                 cos(glm::radians(s->pitch)) * cos(glm::radians(s->yaw + 180));
           }
-          // ImGui::SliderFloat("X Direction", &s->direction.x, -1, 1);
-          // ImGui::SliderFloat("Y Direction", &s->direction.y, -1, 1);
-          // ImGui::SliderFloat("Z Direction", &s->direction.z, -1, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Vertical direction.");
           ImGui::SliderFloat("Beam Angle", &s->cutoff, 0, 90);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Inner cone angle.");
           ImGui::SliderFloat("Edge Blur", &s->outer_cutoff, 0, 100);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Softness of the cone edge.");
         }
         ImGui::TreePop();
       }
     }
+    // ============================================================
+    // MAPPING
+    // ============================================================
     if (ImGui::CollapsingHeader("Mapping")) {
-      std::vector<std::string> mapping =
-          get_current_mapping(current_window->sdl_controller);
-      for (std::string s : mapping) {
-        std::vector<std::string> binding = get_binding(s);
-        for (int i = 0; i < 27; i++) {
-          if (binding[0] == mapping_names[i]) {
-            current_mapping[i] = binding[1];
-          }
-        }
-      }
-      static unsigned current_input = 0;
-      std::string input_name = input_names[current_input];
-      if (ImGui::BeginCombo("Input", input_name.c_str(), 0)) {
-        for (unsigned i = 0; i < 27; i++) {
-          if (ImGui::Selectable(input_names[i].c_str())) {
-            current_input = i;
-          }
-        }
-        ImGui::EndCombo();
-      }
-      int current_binding = -1;
-      for (unsigned i = 0; i < IM_ARRAYSIZE(binding_names); i++) {
-        if (binding_names[i] == current_mapping[current_input]) {
-          current_binding = i;
-        }
-      }
-      std::string binding_name = "";
-      if (current_binding > -1) {
-        binding_name = binding_names[current_binding];
-      }
-      if (ImGui::BeginCombo("Binding", binding_name.c_str(), 0)) {
-        for (unsigned i = 0; i < IM_ARRAYSIZE(binding_names); i++) {
-          if (ImGui::Selectable(binding_names[i].c_str())) {
-            // current_binding = i;
-            if (i == 0) {
-              current_mapping[current_input] = "";
-            } else {
-              current_mapping[current_input] = binding_names[i];
-            }
+      ImGui::Checkbox("Log Button Presses", &g_log_buttons);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Log controller inputs to console.");
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(1, 1, 0, 1), "Loaded: %s",
+                         g_loaded_mapping_name.empty()
+                             ? "(default)"
+                             : g_loaded_mapping_name.c_str());
 
-            SDL_Joystick *joystick = SDL_GameControllerGetJoystick(
-                getControllerWindow(tabs[selected_tab].ID)->sdl_controller);
-            SDL_JoystickGUID guid = SDL_JoystickGetGUID(joystick);
-            char guid_string[100] = {};
-            SDL_JoystickGetGUIDString(guid, guid_string, 100);
-            ////std::cout << "GUID for controller is : " << guid_string <<
-            /// std::endl;
-            std::string new_mapping = guid_string;
-            new_mapping.append(",");
-            new_mapping.append(
-                SDL_GameControllerName(current_window->sdl_controller));
-            new_mapping.append(",");
-            // new_mapping.append(",controller,");
-            for (int i = 0; i < 27; i++) {
-              if (current_mapping[i] != "") {
-                new_mapping.append(mapping_names[i]);
-                new_mapping.append(":");
-                new_mapping.append(current_mapping[i]);
-                new_mapping.append(",");
+      if (!current_window) {
+        ImGui::TextDisabled("No controller window selected.");
+        return;
+      }
+
+      std::vector<std::string> allBindings;
+
+      // Use is_gamecontroller to decide type, not the pointer (union aliases)
+      if (current_window->is_gamecontroller && current_window->sdl_controller) {
+        for (int i = 0; i < IM_ARRAYSIZE(binding_names); ++i)
+          allBindings.push_back(binding_names[i]);
+
+        SDL_Joystick *joy =
+            SDL_GameControllerGetJoystick(current_window->sdl_controller);
+        if (joy) {
+          int numAxes = SDL_JoystickNumAxes(joy);
+          if (current_window->joystick_index != last_logged_device_index) {
+            spdlog::info(
+                "Gamecontroller: adding axis direction bindings for {} axes",
+                numAxes);
+            last_logged_device_index = current_window->joystick_index;
+          }
+          for (int i = 0; i < numAxes; ++i) {
+            allBindings.push_back("a" + std::to_string(i) + "+");
+            allBindings.push_back("a" + std::to_string(i) + "-");
+          }
+        }
+      } else if (!current_window->is_gamecontroller &&
+                 current_window->sdl_joystick) {
+        int numAxes = SDL_JoystickNumAxes(current_window->sdl_joystick);
+        int numButtons = SDL_JoystickNumButtons(current_window->sdl_joystick);
+        int numHats = SDL_JoystickNumHats(current_window->sdl_joystick);
+
+        if (current_window->joystick_index != last_logged_device_index) {
+          spdlog::info("Joystick: axes={}, buttons={}, hats={}", numAxes,
+                       numButtons, numHats);
+          last_logged_device_index = current_window->joystick_index;
+        }
+
+        allBindings.push_back("unbound");
+        for (int i = 0; i < numButtons; ++i)
+          allBindings.push_back("b" + std::to_string(i));
+        for (int i = 0; i < numAxes; ++i) {
+          allBindings.push_back("a" + std::to_string(i));
+          allBindings.push_back("a" + std::to_string(i) + "+");
+          allBindings.push_back("a" + std::to_string(i) + "-");
+        }
+        for (int h = 0; h < numHats; ++h) {
+          for (int d = 0; d < 8; ++d)
+            allBindings.push_back("h" + std::to_string(h) + "." +
+                                  std::to_string(d));
+        }
+      } else {
+        ImGui::TextDisabled("No controller connected.");
+        return;
+      }
+
+      ImGui::Text("Available bindings: %zu", allBindings.size());
+      // no tooltip for this line
+
+      // --- mapping table ---
+      if (ImGui::BeginTable("MappingTable", 3,
+                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Binding", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        for (int i = 0; i < 27; ++i) {
+          ImGui::TableNextRow();
+          ImGui::TableSetColumnIndex(0);
+          ImGui::Text("%d", i);
+          ImGui::TableSetColumnIndex(1);
+          ImGui::Text("%s", input_names[i].c_str());
+          ImGui::TableSetColumnIndex(2);
+
+          std::string currentBinding = current_window->mapping[i];
+          std::string displayLabel =
+              currentBinding.empty()
+                  ? "unbound"
+                  : currentBinding + " (" +
+                        getBindingDescription(currentBinding) + ")";
+
+          std::string comboID = "##combo_" + std::to_string(i);
+          if (ImGui::BeginCombo(comboID.c_str(), displayLabel.c_str(),
+                                ImGuiComboFlags_HeightLargest)) {
+            for (const std::string &bind : allBindings) {
+              std::string display =
+                  bind + " (" + getBindingDescription(bind) + ")";
+              bool isSelected = (bind == currentBinding);
+              if (ImGui::Selectable(display.c_str(), isSelected)) {
+                current_window->mapping[i] = (bind == "unbound") ? "" : bind;
               }
             }
-            std::cout << new_mapping << std::endl;
-            SDL_GameControllerAddMapping(new_mapping.c_str());
+            ImGui::EndCombo();
           }
+          // Tooltip for each binding combo – only when hovered
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Assign a controller input to this part.");
         }
-        ImGui::EndCombo();
+        ImGui::EndTable();
       }
-      if (ImGui::Button("Save")) {
-        ImGui::OpenPopup("save");
+
+      // --- buttons ---
+      if (ImGui::Button("Apply Mapping")) {
+        spdlog::info("Mapping stored. It will be used in the input loop.");
+        g_loaded_mapping_name = "(applied)";
       }
-      if (ImGui::BeginPopup("save")) {
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Apply current mapping to the model.");
+
+      ImGui::SameLine();
+
+      if (ImGui::Button("Save Mapping")) {
+        ImGui::OpenPopup("save_mapping_popup");
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Save current mapping to a file.");
+
+      if (ImGui::BeginPopup("save_mapping_popup")) {
         char name[32] = {};
         static bool name_valid = true;
         if (ImGui::InputText("Mapping Name", name, IM_ARRAYSIZE(name),
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
           bool valid = check_filename_valid(name);
           name_valid = valid;
-
           if (valid) {
             std::filesystem::path path(SDL_GetBasePath());
             path.append("mapping/");
             std::filesystem::create_directory(path);
             path.append(name);
             open_ofstream(path);
-            // char* mapping =
-            // SDL_GameControllerMapping(getControllerWindow(tabs[selected_tab].ID)->sdl_controller);
             std::string mapping = "";
-            for (int i = 0; i < 27; i++) {
-              if (current_mapping[i] != "") {
+            for (int i = 0; i < 27; ++i) {
+              if (!current_window->mapping[i].empty()) {
                 mapping.append(mapping_names[i]);
                 mapping.append(":");
-                mapping.append(current_mapping[i]);
+                mapping.append(current_window->mapping[i]);
                 mapping.append(",");
               }
             }
             write_line(mapping);
             close_ofstream();
-            get_current_mapping(current_window->sdl_controller);
+            g_loaded_mapping_name = name;
+            spdlog::info("Saved mapping to {}", name);
             ImGui::CloseCurrentPopup();
           } else {
-            std::cout << "Name contains invalid characters "
-                      << invalid_characters << std::endl;
+            ImGui::Text("Invalid characters in name.");
           }
         }
-        if (!name_valid) {
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Enter a name for the mapping file.");
+        if (!name_valid)
           ImGui::Text("Name cannot include characters \\/:*?\"<>|");
-        }
         ImGui::EndPopup();
       }
+
       ImGui::SameLine();
-      if (ImGui::Button("Load")) {
-        ImGui::OpenPopup("load");
+
+      if (ImGui::Button("Load Mapping")) {
+        ImGui::OpenPopup("load_mapping_popup");
       }
-      if (ImGui::BeginPopup("load")) {
-        if (ImGui::BeginListBox("Mappings")) {
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Load a saved mapping from a file.");
+
+      if (ImGui::BeginPopup("load_mapping_popup")) {
+        if (ImGui::BeginListBox("Mappings", ImVec2(-1, 150))) {
           std::string dir_path = SDL_GetBasePath();
           dir_path.append("mapping/");
           std::filesystem::create_directory(dir_path);
-          struct stat sb;
           for (const auto &entry :
                std::filesystem::directory_iterator(dir_path)) {
             std::string mapping_path = entry.path().string();
-            std::string mapping_name = mapping_path;
-            std::string delimiter = "/";
-            if (stat(mapping_path.c_str(), &sb) == 0 &&
-                !(sb.st_mode & S_IFDIR)) {
-              size_t pos = 0;
-              while ((pos = mapping_name.find(delimiter)) !=
-                     std::string::npos) {
-                mapping_name.erase(0, pos + delimiter.length());
-              }
-              if (ImGui::Selectable(mapping_name.c_str())) {
-                for (int i = 0; i < 27; i++) {
-                  current_mapping[i] = "";
+            std::string mapping_name =
+                std::filesystem::path(mapping_path).filename().string();
+            if (ImGui::Selectable(mapping_name.c_str(),
+                                  g_loaded_mapping_name == mapping_name)) {
+              for (int i = 0; i < 27; ++i)
+                current_window->mapping[i] = "";
+              open_ifstream(mapping_path);
+              std::vector<std::string> lines;
+              read_file(&lines);
+              close_ifstream();
+              if (!lines.empty()) {
+                std::string mapStr = lines[0];
+                std::stringstream ss(mapStr);
+                std::string item;
+                while (std::getline(ss, item, ',')) {
+                  if (item.empty())
+                    continue;
+                  std::vector<std::string> kv = get_binding(item);
+                  if (kv.size() == 2) {
+                    for (int i = 0; i < 27; ++i) {
+                      if (kv[0] == mapping_names[i]) {
+                        current_window->mapping[i] = kv[1];
+                        break;
+                      }
+                    }
+                  }
                 }
-                open_ifstream(mapping_path);
-                std::vector<std::string> mapping;
-                read_file(&mapping);
-                std::cout << "mapping file : " << mapping[0] << std::endl;
-                SDL_Joystick *joystick = SDL_GameControllerGetJoystick(
-                    getControllerWindow(tabs[selected_tab].ID)->sdl_controller);
-                SDL_JoystickGUID guid = SDL_JoystickGetGUID(joystick);
-                char guid_string[100] = {};
-                SDL_JoystickGetGUIDString(guid, guid_string, 100);
-                // std::cout << "GUID for controller is : " << guid_string <<
-                // std::endl;
-                std::string mapping_string = guid_string;
-                mapping_string.append(",");
-                mapping_string.append(
-                    SDL_GameControllerName(current_window->sdl_controller));
-                mapping_string.append(",");
-                mapping_string.append(mapping[0]);
-                std::cout << "mapping_string : " << mapping_string << std::endl;
-                SDL_GameControllerAddMapping(mapping_string.c_str());
-                close_ifstream();
-                ImGui::CloseCurrentPopup();
+                g_loaded_mapping_name = mapping_name;
+                spdlog::info("Loaded mapping from {}", mapping_name);
               }
+              ImGui::CloseCurrentPopup();
             }
           }
           ImGui::EndListBox();
         }
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Select a mapping file to load.");
         ImGui::EndPopup();
       }
+
       ImGui::SameLine();
-      // if (ImGui::Button("Default")) {
-      //   SDL_GameControllerAddMapping(current_window->default_mapping.c_str());
-      // }
-    }
+
+      if (ImGui::Button("Reset to Default")) {
+        for (int i = 0; i < 27; ++i)
+          current_window->mapping[i] = "";
+        g_loaded_mapping_name = "";
+        spdlog::info("Mapping reset to default.");
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Clear all mappings.");
+    } // end Mapping
+
+    // ============================================================
+    // HELP
+    // ============================================================
     if (ImGui::CollapsingHeader("Help")) {
       ImGui::Text("3D Controller Overlay version 1.12");
       ImGui::NewLine();
@@ -1746,15 +1986,22 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
       if (ImGui::Button("Open Github Page")) {
         OsOpenInShell("https://github.com/larfingshnew/3d-controller-overlay");
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Open the project repository in your browser.");
       ImGui::NewLine();
       ImGui::Text("https://discord.gg/aKwHHvCMnS");
       if (ImGui::Button("Join Discord Server")) {
         OsOpenInShell("https://discord.gg/aKwHHvCMnS");
       }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Open the Discord invite link.");
     }
-  }
 
-  // --- Import Preview Controls ---
+  } // end big if (tabs.size() > 0 && new_controller_window == false)
+
+  // ============================================================
+  // Import Preview Controls (outside the if)
+  // ============================================================
   for (auto &w : windows) {
     if (w.is_import_preview && w.import_preview.is_open) {
       if (ImGui::CollapsingHeader("Import Preview",
@@ -1794,21 +2041,27 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
   if (model_dialog.HasSelected()) {
     std::cout << "Selected filename : " << model_dialog.GetSelected().string()
               << std::endl;
-    const auto copy_options = std::filesystem::copy_options::overwrite_existing;
-    std::filesystem::path from_path = model_dialog.GetSelected();
-    std::cout << "from_path : " << from_path.string() << std::endl;
-    std::filesystem::path to_path = SDL_GetBasePath();
-    to_path.append(getControllerWindow(tabs[selected_tab].ID)->model.path);
-    to_path.append(mesh_filenames[selected_mesh]);
-    std::cout << "to_path : " << to_path.string() << std::endl;
-    std::filesystem::copy(from_path, to_path, copy_options);
-    writeInfo(getControllerWindow(tabs[selected_tab].ID)->model,
-              getControllerWindow(tabs[selected_tab].ID)->model.path);
-    glfwMakeContextCurrent(
-        getControllerWindow(tabs[selected_tab].ID)->glfw_window);
-    loadModel(getControllerWindow(tabs[selected_tab].ID)->model,
-              getControllerWindow(tabs[selected_tab].ID)->model.path);
-    glfwMakeContextCurrent(glfw_settings_window);
+
+    controller_window *ctrl_win = getControllerWindow(tabs[selected_tab].ID);
+    if (!ctrl_win) {
+      spdlog::error("No valid controller window for model import.");
+      model_dialog.ClearSelected();
+    } else if (selected_mesh >= 32) {
+      spdlog::error("Invalid mesh index: {}", selected_mesh);
+      model_dialog.ClearSelected();
+    } else {
+      const auto copy_options =
+          std::filesystem::copy_options::overwrite_existing;
+      std::filesystem::path from_path = model_dialog.GetSelected();
+      std::filesystem::path to_path = SDL_GetBasePath();
+      to_path.append(ctrl_win->model.path);
+      to_path.append(mesh_filenames[selected_mesh]);
+      std::filesystem::copy(from_path, to_path, copy_options);
+      writeInfo(ctrl_win->model, ctrl_win->model.path);
+      glfwMakeContextCurrent(ctrl_win->glfw_window);
+      loadModel(ctrl_win->model, ctrl_win->model.path);
+      glfwMakeContextCurrent(glfw_settings_window);
+    }
     model_dialog.ClearSelected();
   }
 
@@ -1824,18 +2077,17 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
       spdlog::error("Failed to import model: no meshes found.");
       import_model_dialog.ClearSelected();
     } else {
-      // Create a preview window
       std::string preview_title =
           "Import Preview - " +
           std::filesystem::path(filepath).filename().string();
       createControllerWindow(preview_title, "dummy");
       controller_window *preview_window = getLastWindow();
       preview_window->model = temp_model;
+      convertImportedToMeshes(preview_window->model);
       preview_window->is_import_preview = true;
       preview_window->import_preview.is_open = true;
       preview_window->import_preview.imported_model = temp_model;
 
-      // Initialize assignments
       preview_window->import_preview.assignments.clear();
       for (auto &mesh : temp_model.imported_meshes) {
         ImportAssignment assign;
@@ -1869,31 +2121,113 @@ ImGui::SetTooltip("Set the maximum frame rate of controller window.");
       tabs_made--;
     }
   }
-}
+} // end drawSettingsWindow()
+
+// =========================================================================
+//  HELPER FUNCTION DEFINITIONS
+// =========================================================================
 
 void DrawImportPreviewControls(controller_window &w) {
   ImGui::Text("Imported Model: %zu meshes",
-              w.import_preview.imported_meshes.size());
+              w.import_preview.imported_model.imported_meshes.size());
 
-  for (size_t i = 0; i < w.import_preview.assignments.size(); ++i) {
-    auto &assign = w.import_preview.assignments[i];
-    ImGui::PushID(i);
-    ImGui::Text("Mesh: %s", assign.mesh_name.c_str());
-    ImGui::SameLine();
+  if (ImGui::BeginTable("ImportAssignTable", 5,
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                            ImGuiTableFlags_SizingStretchSame)) {
+    ImGui::TableSetupColumn("Mesh Name", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Assign to Part",
+                            ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Max Angle", ImGuiTableColumnFlags_WidthFixed,
+                            100.0f);
+    ImGui::TableSetupColumn("Parent Part", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
+    ImGui::TableHeadersRow();
 
-    int current_part = assign.assigned_part + 1;
-    const char *part_names[33];
-    part_names[0] = "Unassigned";
-    for (int j = 0; j < 32; ++j) {
-      part_names[j + 1] = mesh_names[j].c_str();
+    for (size_t i = 0; i < w.import_preview.assignments.size(); ++i) {
+      auto &assign = w.import_preview.assignments[i];
+      ImGui::TableNextRow();
+      ImGui::TableSetColumnIndex(0);
+      ImGui::Text("%s", assign.mesh_name.c_str());
+      ImGui::TableSetColumnIndex(1);
+      int current_part = assign.assigned_part + 1;
+      const char *part_names[33];
+      part_names[0] = "Unassigned";
+      for (int j = 0; j < 32; ++j)
+        part_names[j + 1] = mesh_names[j].c_str();
+      ImGui::PushID(i);
+      if (ImGui::Combo("##part", &current_part, part_names, 33)) {
+        assign.assigned_part = current_part - 1;
+        assign.max_angle = 0.0f;
+        assign.parent_part = -1;
+        if (assign.assigned_part >= 0 &&
+            assign.assigned_part < (int)w.model.meshes.size()) {
+          w.model.meshes[assign.assigned_part].stick_max = 0.0f;
+          w.model.meshes[assign.assigned_part].trigger_max = 0.0f;
+        }
+      }
+      ImGui::PopID();
+
+      // ---- Max Angle Column ----
+      ImGui::TableSetColumnIndex(2);
+      bool isStick = (assign.assigned_part == 5 || assign.assigned_part == 6);
+      bool isTrigger = (assign.assigned_part == 3 || assign.assigned_part == 4);
+      if (isStick || isTrigger) {
+        float max_angle_deg = glm::degrees(assign.max_angle);
+        float min_deg = 0.0f, max_deg = 45.0f;
+        if (isTrigger)
+          max_deg = 90.0f;
+        ImGui::PushID(i + 1000);
+        if (ImGui::SliderFloat("##maxangle", &max_angle_deg, min_deg, max_deg,
+                               "%.1f°")) {
+          assign.max_angle = glm::radians(max_angle_deg);
+          if (assign.assigned_part >= 0 &&
+              assign.assigned_part < (int)w.model.meshes.size()) {
+            if (isStick)
+              w.model.meshes[assign.assigned_part].stick_max = assign.max_angle;
+            else if (isTrigger)
+              w.model.meshes[assign.assigned_part].trigger_max =
+                  assign.max_angle;
+          }
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Maximum rotation/pull angle in degrees.");
+        }
+        ImGui::PopID();
+      } else {
+        ImGui::TextDisabled("N/A");
+      }
+
+      // ---- Parent Part Column ----
+      ImGui::TableSetColumnIndex(3);
+      if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
+        int current_parent = assign.parent_part + 1;
+        const char *parent_names[33];
+        parent_names[0] = "None";
+        for (int j = 0; j < 32; ++j)
+          parent_names[j + 1] = mesh_names[j].c_str();
+        ImGui::PushID(i + 2000);
+        if (ImGui::Combo("##parent", &current_parent, parent_names, 33)) {
+          assign.parent_part = current_parent - 1;
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Attach this mesh to a parent part (e.g., stick).");
+        }
+        ImGui::PopID();
+      } else {
+        ImGui::TextDisabled("N/A");
+      }
+
+      // ---- Actions Column ----
+      ImGui::TableSetColumnIndex(4);
+      ImGui::PushID(i);
+      if (ImGui::Button("Highlight")) {
+        w.import_preview.selected_mesh_index = i;
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Highlight this mesh in the 3D view.");
+      ImGui::PopID();
     }
-    if (ImGui::Combo("##part", &current_part, part_names, 33)) {
-      assign.assigned_part = current_part - 1;
-    }
-    if (ImGui::Button("Highlight")) {
-      w.import_preview.selected_mesh_index = i;
-    }
-    ImGui::PopID();
+    ImGui::EndTable();
   }
 
   char save_name[64] = {};
@@ -1901,16 +2235,21 @@ void DrawImportPreviewControls(controller_window &w) {
   if (ImGui::InputText("Model Name", save_name, 64)) {
     w.import_preview.save_name = save_name;
   }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Name for the new model folder.");
 
   if (ImGui::Button("Save Model")) {
     SaveImportedModel(w);
   }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Save the imported model with current assignments.");
   ImGui::SameLine();
   if (ImGui::Button("Cancel")) {
-    w.is_import_preview = false;
     w.import_preview.is_open = false;
     glfwSetWindowShouldClose(w.glfw_window, true);
   }
+  if (ImGui::IsItemHovered())
+    ImGui::SetTooltip("Close the preview without saving.");
 }
 
 void SaveImportedModel(controller_window &w) {
@@ -1924,51 +2263,111 @@ void SaveImportedModel(controller_window &w) {
       std::string(SDL_GetBasePath()) + "models/" + model_name;
   std::filesystem::create_directories(new_model_path);
 
+  // Group imported meshes by assigned part
+  std::map<int, std::vector<ImportedMesh>> groups;
   for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
-      auto it = std::find_if(w.import_preview.imported_meshes.begin(),
-                             w.import_preview.imported_meshes.end(),
-                             [&](const ImportedMesh &mesh) {
-                               return mesh.name == assign.mesh_name;
-                             });
-      if (it != w.import_preview.imported_meshes.end()) {
-        std::string obj_path =
-            new_model_path + "/" + mesh_filenames[assign.assigned_part];
-        writeOBJ(obj_path, *it);
-        spdlog::info("Saved mesh '{}' as {}", assign.mesh_name, obj_path);
-      }
+    if (assign.assigned_part < 0 || assign.assigned_part >= 32)
+      continue;
+    auto it =
+        std::find_if(w.import_preview.imported_model.imported_meshes.begin(),
+                     w.import_preview.imported_model.imported_meshes.end(),
+                     [&](const ImportedMesh &mesh) {
+                       return mesh.name == assign.mesh_name;
+                     });
+    if (it != w.import_preview.imported_model.imported_meshes.end()) {
+      groups[assign.assigned_part].push_back(*it);
     }
   }
 
-  // Create default info.txt
+  // Write each group to a single OBJ
+  for (auto &kv : groups) {
+    int part = kv.first;
+    auto &meshes = kv.second;
+    ImportedMesh merged;
+    merged.name = "merged";
+    size_t vertex_offset = 0;
+    for (auto &mesh : meshes) {
+      merged.positions.insert(merged.positions.end(), mesh.positions.begin(),
+                              mesh.positions.end());
+      merged.normals.insert(merged.normals.end(), mesh.normals.begin(),
+                            mesh.normals.end());
+      merged.texcoords.insert(merged.texcoords.end(), mesh.texcoords.begin(),
+                              mesh.texcoords.end());
+      for (auto idx : mesh.indices) {
+        merged.indices.push_back(idx + vertex_offset);
+      }
+      vertex_offset += mesh.positions.size();
+    }
+    std::string obj_path = new_model_path + "/" + mesh_filenames[part];
+    writeOBJ(obj_path, merged);
+    spdlog::info("Saved merged mesh for part {} with {} vertices", part,
+                 merged.positions.size());
+  }
+
+  // Build a map of part -> max_angle from assignments
+  std::map<int, float> max_angle_map;
+  for (auto &assign : w.import_preview.assignments) {
+    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
+      max_angle_map[assign.assigned_part] = assign.max_angle;
+    }
+  }
+
+  // Build parent map from assignments
+  std::map<int, int> parent_map;
+  for (auto &assign : w.import_preview.assignments) {
+    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
+      parent_map[assign.assigned_part] = assign.parent_part;
+    }
+  }
+
+  // Write info.txt with proper trigger_max and stick_max
   std::string info_path = new_model_path + "/info.txt";
   std::ofstream info_file(info_path);
   if (info_file.is_open()) {
     for (int i = 0; i < 32; ++i) {
       info_file << mesh_filenames[i] << "\n";
       for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n";
+        info_file << "0.0\n"; // position
       for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n";
+        info_file << "0.0\n"; // travel
       for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n";
+        info_file << "0.0\n"; // popup_offset
       for (int j = 0; j < 3; ++j)
+        info_file << "0.0\n"; // popup_rotation
+
+      // trigger_max
+      if (i == 3 || i == 4) {
+        auto it = max_angle_map.find(i);
+        info_file << (it != max_angle_map.end() ? it->second : 0.0f) << "\n";
+      } else {
         info_file << "0.0\n";
-      info_file << "0.0\n";
-      info_file << "0.0\n";
-      info_file << "0.0\n";
-      info_file << "0.0\n";
+      }
+      // stick_max
+      if (i == 5 || i == 6) {
+        auto it = max_angle_map.find(i);
+        info_file << (it != max_angle_map.end() ? it->second : 0.0f) << "\n";
+      } else {
+        info_file << "0.0\n";
+      }
+      info_file << "0.0\n"; // touch_width
+      info_file << "0.0\n"; // touch_height
+
+      // parent index
+      auto it_parent = parent_map.find(i);
+      info_file << (it_parent != parent_map.end() ? it_parent->second : -1)
+                << "\n";
     }
+
     info_file.close();
   }
 
   spdlog::info("New model saved: {}", new_model_path);
 
+  // Close the preview window without manually removing the tab
   w.is_import_preview = false;
   w.import_preview.is_open = false;
   glfwSetWindowShouldClose(w.glfw_window, true);
 }
-
 void writeOBJ(const std::string &path, const ImportedMesh &mesh) {
   std::ofstream f(path);
   if (!f.is_open()) {
@@ -2003,10 +2402,8 @@ void saveTabs() {
     std::string path = "settings/";
     path.append(t.title);
     open_ofstream(path);
-    // Model
     write_string(std::string("model path"),
                  getControllerWindow(t.ID)->model.path);
-    // Window Settings
     write_string(std::string("title"), t.title);
     write_int(std::string("always on top"),
               getControllerWindow(t.ID)->always_on_top);
@@ -2017,16 +2414,14 @@ void saveTabs() {
               getControllerWindow(t.ID)->scroll_to_resize);
     write_int(std::string("show grid"), getControllerWindow(t.ID)->grid);
     write_int(std::string("wireframe"), getControllerWindow(t.ID)->wireframe);
-    int w = 640;
-    int h = 480;
+    int w = 640, h = 480;
     if (!glfwGetWindowAttrib(getControllerWindow(t.ID)->glfw_window,
                              GLFW_ICONIFIED)) {
       glfwGetWindowSize(getControllerWindow(t.ID)->glfw_window, &w, &h);
     }
     write_int(std::string("width"), w);
     write_int(std::string("height"), h);
-    int x = 100;
-    int y = 100;
+    int x = 100, y = 100;
     if (!glfwGetWindowAttrib(getControllerWindow(t.ID)->glfw_window,
                              GLFW_ICONIFIED)) {
       glfwGetWindowPos(getControllerWindow(t.ID)->glfw_window, &x, &y);
@@ -2042,7 +2437,6 @@ void saveTabs() {
     write_float(std::string("bg blue"), getControllerWindow(t.ID)->bg_color[2]);
     write_float(std::string("bg alpha"),
                 getControllerWindow(t.ID)->bg_color[3]);
-    // Camera Settings
     write_int(std::string("freelook"), getControllerWindow(t.ID)->freelook);
     write_float(std::string("camera distance"),
                 getControllerWindow(t.ID)->camera_distance);
@@ -2062,7 +2456,6 @@ void saveTabs() {
                    getControllerWindow(t.ID)->freelook_position.x,
                    getControllerWindow(t.ID)->freelook_position.y,
                    getControllerWindow(t.ID)->freelook_position.z);
-    // Controller Settings
     write_int(std::string("popup bumbers"),
               getControllerWindow(t.ID)->model.popup_bumpers);
     write_int(std::string("popup triggers"),
@@ -2081,7 +2474,6 @@ void saveTabs() {
                 getControllerWindow(t.ID)->highlight_color[1]);
     write_float(std::string("highlight blue"),
                 getControllerWindow(t.ID)->highlight_color[2]);
-    // Materials
     write_int(std::string("model meshes"),
               getControllerWindow(t.ID)->model.meshes.size());
     write_line(std::string("materials"));
@@ -2108,7 +2500,6 @@ void saveTabs() {
       write_line(std::to_string(
           getControllerWindow(t.ID)->model.meshes[i].material.highlight[2]));
     }
-    // Textures
     write_line(std::string("textures"));
     for (int i = 0; i < (int)getControllerWindow(t.ID)->model.meshes.size();
          i++) {
@@ -2147,7 +2538,6 @@ void saveTabs() {
             getControllerWindow(t.ID)->model.meshes[i].textures[j].border[3]));
       }
     }
-    // Gyro
     write_int(std::string("gyro debug logging"),
               getControllerWindow(t.ID)->gyro_debug_logging);
     write_int(std::string("gyro enabled"),
@@ -2160,7 +2550,6 @@ void saveTabs() {
               getControllerWindow(t.ID)->gyro_correction);
     write_float(std::string("gyro sensitivity"),
                 getControllerWindow(t.ID)->gyro_sensitivity);
-    // Lighting
     write_int(std::string("direct lights"),
               getControllerWindow(t.ID)->direct_lights.size());
     for (int i = 0; i < (int)getControllerWindow(t.ID)->direct_lights.size();
@@ -2253,14 +2642,12 @@ void loadTabs() {
     unsigned line_index = 0;
 
     for (std::string line : lines) {
-      // Model
       if (line == "model path") {
         createControllerWindow(new_tab_title, lines[line_index + 1]);
         getLastWindow()->ID = tabs_made;
         getControllerWindow(tabs.back().ID)->model_name =
             get_top_folder(getControllerWindow(tabs.back().ID)->model.path);
       }
-      // Window Settings
       if (line == "title") {
         tabs.back().title = lines[line_index + 1];
         glfwSetWindowTitle(getControllerWindow(tabs.back().ID)->glfw_window,
@@ -2316,7 +2703,6 @@ void loadTabs() {
       if (line == "bg alpha")
         getControllerWindow(tabs.back().ID)->bg_color[3] =
             std::stof(lines[line_index + 1]);
-      // Camera Settings
       if (line == "freelook")
         getControllerWindow(tabs.back().ID)->freelook =
             std::stoi(lines[line_index + 1]);
@@ -2352,7 +2738,6 @@ void loadTabs() {
         getControllerWindow(tabs.back().ID)->freelook_position.z =
             std::stof(lines[line_index + 3]);
       }
-      // Controller Settings
       if (line == "popup bumbers")
         getControllerWindow(tabs.back().ID)->model.popup_bumpers =
             std::stoi(lines[line_index + 1]);
@@ -2395,7 +2780,6 @@ void loadTabs() {
               getControllerWindow(tabs.back().ID)->highlight_color[2];
         }
       }
-      // Materials
       if (line == "materials") {
         for (int i = 0;
              i < (int)getControllerWindow(tabs.back().ID)->model.meshes.size();
@@ -2435,7 +2819,6 @@ void loadTabs() {
               std::stof(lines[line_index + 10 + (i * 10)]);
         }
       }
-      // Textures
       if (line == "textures") {
         unsigned texture_count = 0;
         for (int mesh = 0;
@@ -2514,7 +2897,6 @@ void loadTabs() {
           }
         }
       }
-      // Motion Settings
       if (line == "gyro debug logging") {
         getControllerWindow(tabs.back().ID)->gyro_debug_logging =
             std::stoi(lines[line_index + 1]);
@@ -2541,7 +2923,6 @@ void loadTabs() {
         getControllerWindow(tabs.back().ID)->gyro_correction =
             std::stoi(lines[line_index + 1]);
       line_index++;
-      // Direct Lights
       if (line == "direct lights") {
         getControllerWindow(tabs.back().ID)->direct_lights.clear();
         int lights = std::stoi(lines[line_index]);
@@ -2558,7 +2939,6 @@ void loadTabs() {
               ->direct_lights.push_back(new_light);
         }
       }
-      // Point Lights
       if (line == "point lights") {
         getControllerWindow(tabs.back().ID)->point_lights.clear();
         int lights = std::stoi(lines[line_index]);
@@ -2586,7 +2966,6 @@ void loadTabs() {
               ->point_lights.push_back(new_light);
         }
       }
-      // Spot Lights
       if (line == "spot lights") {
         getControllerWindow(tabs.back().ID)->spot_lights.clear();
         int lights = std::stoi(lines[line_index]);
@@ -2629,9 +3008,7 @@ void loadTabs() {
 bool check_filename_valid(const char *name) {
   bool valid = true;
   for (int i = 0; i < 32; i++) {
-    // std::cout << "name[" << i << "] : " << name[i] << std::endl;
     for (char c : invalid_characters) {
-      // std::cout << c << std::endl;
       if (name[i] == c) {
         valid = false;
         break;
@@ -2669,18 +3046,17 @@ std::vector<std::string> get_binding(std::string b) {
 std::vector<std::string>
 get_current_mapping(SDL_GameController *sdl_controller) {
   std::vector<std::string> mapping;
-  if (SDL_GameControllerMapping(sdl_controller)) {
-    char *current_mapping = SDL_GameControllerMapping(sdl_controller);
-    // std::cout << current_mapping << std::endl;
-    std::stringstream line_stream(current_mapping);
-    std::string word;
-    while (std::getline(line_stream, word, ',')) {
-      mapping.push_back(word);
+  if (sdl_controller) {
+    char *mapping_str = SDL_GameControllerMapping(sdl_controller);
+    if (mapping_str) {
+      std::stringstream line_stream(mapping_str);
+      std::string word;
+      while (std::getline(line_stream, word, ',')) {
+        if (!word.empty())
+          mapping.push_back(word);
+      }
+      SDL_free(mapping_str);
     }
-    // mapping.erase(mapping.begin());
-    // mapping.erase(mapping.begin());
-    mapping.erase(mapping.end());
-    mapping.erase(mapping.end());
   }
   return mapping;
 }
@@ -2688,13 +3064,10 @@ get_current_mapping(SDL_GameController *sdl_controller) {
 std::string get_first_model() {
   std::string dir_path = SDL_GetBasePath();
   dir_path.append("models/");
-
-  // Create directory if it doesn't exist (so future iterations don't fail)
   if (!std::filesystem::exists(dir_path)) {
     std::filesystem::create_directories(dir_path);
-    return ""; // No models yet
+    return "";
   }
-
   std::vector<std::string> model_folders;
   struct stat sb;
   for (const auto &entry : std::filesystem::directory_iterator(dir_path)) {
@@ -2710,19 +3083,18 @@ std::string get_first_model() {
 
 void OsOpenInShell(const char *path) {
   std::string open_executable = "";
-
 #if defined(__linux__)
   open_executable = "xdg-open";
-#elif __FreeBSD__
-#elif __ANDROID__
 #elif __APPLE__
   open_executable = "open";
 #elif _WIN32
   ::ShellExecuteA(NULL, "open", path, NULL, NULL, SW_SHOWDEFAULT);
-#else // some other operating system
+#else
+  // unsupported
 #endif
-
-  char command[256];
-  snprintf(command, 256, "%s \"%s\"", open_executable.c_str(), path);
-  system(command);
+  if (!open_executable.empty()) {
+    char command[256];
+    snprintf(command, 256, "%s \"%s\"", open_executable.c_str(), path);
+    system(command);
+  }
 }

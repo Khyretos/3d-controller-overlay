@@ -1,9 +1,64 @@
 #include "controller_window.h"
 #include "cube_info.h"
+#include "settings_window.h"
 #include "shaders.h"
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
+
+extern bool g_log_buttons;
+
+// Helper to log axis changes (only when logging is enabled)
+void logAxisChange(controller_window &w, int axisIdx, float value,
+                   const std::string &label) {
+  if (g_log_buttons && axisIdx < 32) {
+    float diff = value - w.last_axis_values[axisIdx];
+    if (fabs(diff) > 0.01f) { // avoid spam
+      spdlog::info("Axis {} ({}) changed to {:.3f}", axisIdx, label, value);
+      w.last_axis_values[axisIdx] = value;
+    }
+  }
+}
+
+// Helper to log hat changes
+void logHatChange(controller_window &w, int hatIdx, Uint8 value) {
+  if (g_log_buttons && hatIdx < 16) {
+    if (value != w.last_hat_values[hatIdx]) {
+      const char *dirName = "Center";
+      switch (value) {
+      case SDL_HAT_UP:
+        dirName = "Up";
+        break;
+      case SDL_HAT_RIGHT:
+        dirName = "Right";
+        break;
+      case SDL_HAT_DOWN:
+        dirName = "Down";
+        break;
+      case SDL_HAT_LEFT:
+        dirName = "Left";
+        break;
+      case SDL_HAT_RIGHTUP:
+        dirName = "Right-Up";
+        break;
+      case SDL_HAT_RIGHTDOWN:
+        dirName = "Right-Down";
+        break;
+      case SDL_HAT_LEFTUP:
+        dirName = "Left-Up";
+        break;
+      case SDL_HAT_LEFTDOWN:
+        dirName = "Left-Down";
+        break;
+      default:
+        dirName = "Unknown";
+        break;
+      }
+      spdlog::info("Hat {} changed to {}", hatIdx, dirName);
+      w.last_hat_values[hatIdx] = value;
+    }
+  }
+}
 
 std::string button_names[21] = {"south button", "east button",  "west button",
                                 "north button", "back button",  "guide button",
@@ -23,13 +78,24 @@ std::vector<controller_window> windows;
 
 // Helper: get axis value (works for gamecontroller or joystick)
 float get_axis_value(controller_window &w, int axis_idx) {
-  if (w.is_gamecontroller) {
-    return SDL_GameControllerGetAxis(w.sdl_controller,
-                                     (SDL_GameControllerAxis)axis_idx) /
-           32767.0f;
-  } else {
+  if (w.is_gamecontroller && w.sdl_controller) {
+    // Standard gamecontroller axes: 0..5
+    if (axis_idx >= 0 && axis_idx < 6) {
+      return SDL_GameControllerGetAxis(w.sdl_controller,
+                                       (SDL_GameControllerAxis)axis_idx) /
+             32767.0f;
+    } else {
+      // Extra axes: use the underlying joystick
+      SDL_Joystick *joy = SDL_GameControllerGetJoystick(w.sdl_controller);
+      if (joy && axis_idx < SDL_JoystickNumAxes(joy)) {
+        return SDL_JoystickGetAxis(joy, axis_idx) / 32767.0f;
+      }
+    }
+  } else if (w.sdl_joystick) {
+    // Generic joystick
     return SDL_JoystickGetAxis(w.sdl_joystick, axis_idx) / 32767.0f;
   }
+  return 0.0f;
 }
 
 // Helper: get button value
@@ -96,323 +162,681 @@ void createControllerWindow(std::string title, std::string model_path) {
   w.model_name = get_top_folder(model_path);
 
   // --- Device enumeration and opening ---
-  int num_joysticks = SDL_NumJoysticks();
-  if (num_joysticks == 0) {
-    spdlog::error("No joysticks found.");
-  } else {
-    spdlog::info("Found {} joystick(s).", num_joysticks);
-    for (int i = 0; i < num_joysticks; ++i) {
-      const char *name = SDL_JoystickNameForIndex(i);
-      bool is_game = SDL_IsGameController(i);
-      spdlog::debug("Device {}: {} (gamecontroller: {})", i,
-                    name ? name : "Unknown", is_game);
-    }
-
-    // For now, open the first available device
-    int chosen = 0;
-    if (SDL_IsGameController(chosen)) {
-      w.sdl_controller = SDL_GameControllerOpen(chosen);
-      w.is_gamecontroller = true;
-      w.joystick_index = chosen;
-      if (w.sdl_controller) {
-        spdlog::info("Opened gamecontroller: {}",
-                     SDL_GameControllerName(w.sdl_controller));
-        // Enable sensors if available
-        if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_GYRO)) {
-          SDL_GameControllerSetSensorEnabled(w.sdl_controller, SDL_SENSOR_GYRO,
-                                             SDL_TRUE);
-          spdlog::info("Controller has gyro: true");
-          w.gyro_enabled = true;
-          // Read initial timestamp to avoid large dt on first frame
-          Uint64 timestamp;
-          if (SDL_GameControllerGetSensorDataWithTimestamp(
-                  w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
-                  3) == 0) {
-            w.gyro_time = timestamp;
-            w.gyro_toggled = true;
-          }
-        }
-        if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_ACCEL)) {
-          SDL_GameControllerSetSensorEnabled(w.sdl_controller, SDL_SENSOR_ACCEL,
-                                             SDL_TRUE);
-        }
-      } else {
-        spdlog::error("Failed to open gamecontroller {}: {}", chosen,
-                      SDL_GetError());
-      }
+  // Skip if this is a dummy preview window (import preview)
+  if (model_path == "dummy") {
+    // Dummy preview window – no controller attached
+    spdlog::info("Creating import preview window (no controller)");
+    w.sdl_controller = nullptr;
+    w.sdl_joystick = nullptr;
+    w.is_gamecontroller = false;
+    w.gyro_enabled = false;
+    w.gyro_sensor = nullptr;
+    w.accel_sensor = nullptr;
+    w.scroll_to_resize = false;
+    w.drag_to_move = false;
+    w.freelook = false;         // <-- add this
+    w.mouse_first_click = true; // <-- add this
+  }
+  if (model_path != "dummy") {
+    int num_joysticks = SDL_NumJoysticks();
+    if (num_joysticks == 0) {
+      spdlog::error("No joysticks found.");
     } else {
-      w.sdl_joystick = SDL_JoystickOpen(chosen);
-      w.is_gamecontroller = false;
-      w.joystick_index = chosen;
-      if (w.sdl_joystick) {
-        spdlog::info("Opened generic joystick: {}",
-                     SDL_JoystickName(w.sdl_joystick));
-        // Try to open sensors for this joystick (by matching device index)
-        int num_sensors = SDL_NumSensors();
-        for (int s = 0; s < num_sensors; ++s) {
-          if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
-            w.gyro_sensor = SDL_SensorOpen(s);
-            if (w.gyro_sensor) {
-              spdlog::info("Gyro sensor opened (index {})", s);
-              w.gyro_enabled = true;
-              break;
+      spdlog::info("Found {} joystick(s).", num_joysticks);
+      for (int i = 0; i < num_joysticks; ++i) {
+        const char *name = SDL_JoystickNameForIndex(i);
+        bool is_game = SDL_IsGameController(i);
+        spdlog::debug("Device {}: {} (gamecontroller: {})", i,
+                      name ? name : "Unknown", is_game);
+      }
+
+      // For now, open the first available device
+      int chosen = 0;
+      if (SDL_IsGameController(chosen)) {
+        w.sdl_controller = SDL_GameControllerOpen(chosen);
+        w.is_gamecontroller = true;
+        w.joystick_index = chosen;
+        if (w.sdl_controller) {
+          spdlog::info("Opened gamecontroller: {}",
+                       SDL_GameControllerName(w.sdl_controller));
+          // Enable sensors if available
+          if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_GYRO)) {
+            SDL_GameControllerSetSensorEnabled(w.sdl_controller,
+                                               SDL_SENSOR_GYRO, SDL_TRUE);
+            spdlog::info("Controller has gyro: true");
+            w.gyro_enabled = true;
+            // Read initial timestamp to avoid large dt on first frame
+            Uint64 timestamp;
+            if (SDL_GameControllerGetSensorDataWithTimestamp(
+                    w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
+                    3) == 0) {
+              w.gyro_time = timestamp;
+              w.gyro_toggled = true;
             }
           }
-        }
-        for (int s = 0; s < num_sensors; ++s) {
-          if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
-            w.accel_sensor = SDL_SensorOpen(s);
-            if (w.accel_sensor) {
-              spdlog::info("Accel sensor opened (index {})", s);
-              break;
-            }
+          if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_ACCEL)) {
+            SDL_GameControllerSetSensorEnabled(w.sdl_controller,
+                                               SDL_SENSOR_ACCEL, SDL_TRUE);
           }
+        } else {
+          spdlog::error("Failed to open gamecontroller {}: {}", chosen,
+                        SDL_GetError());
         }
       } else {
-        spdlog::error("Failed to open generic joystick {}: {}", chosen,
-                      SDL_GetError());
+        w.sdl_joystick = SDL_JoystickOpen(chosen);
+        w.is_gamecontroller = false;
+        w.joystick_index = chosen;
+        if (w.sdl_joystick) {
+          spdlog::info("Opened generic joystick: {}",
+                       SDL_JoystickName(w.sdl_joystick));
+          // Try to open sensors for this joystick (by matching device index)
+          int num_sensors = SDL_NumSensors();
+          for (int s = 0; s < num_sensors; ++s) {
+            if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
+              w.gyro_sensor = SDL_SensorOpen(s);
+              if (w.gyro_sensor) {
+                spdlog::info("Gyro sensor opened (index {})", s);
+                w.gyro_enabled = true;
+                break;
+              }
+            }
+          }
+          for (int s = 0; s < num_sensors; ++s) {
+            if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
+              w.accel_sensor = SDL_SensorOpen(s);
+              if (w.accel_sensor) {
+                spdlog::info("Accel sensor opened (index {})", s);
+                break;
+              }
+            }
+          }
+        } else {
+          spdlog::error("Failed to open generic joystick {}: {}", chosen,
+                        SDL_GetError());
+        }
       }
     }
+  } else {
+    // Dummy preview window – no controller attached
+    spdlog::info("Creating import preview window (no controller)");
+    w.sdl_controller = nullptr;
+    w.sdl_joystick = nullptr;
+    w.is_gamecontroller = false;
+    w.gyro_enabled = false;
+    w.gyro_sensor = nullptr;
+    w.accel_sensor = nullptr;
+    w.scroll_to_resize = false;
+    w.drag_to_move = false;
+    w.freelook = false;         // <-- add this
+    w.mouse_first_click = true; // <-- add this
   }
 
   w.gyro_matrix = glm::mat4(1.0f);
   windows.push_back(w);
+
+  // Initialize mapping to empty strings
+  for (int i = 0; i < 27; ++i) {
+    windows.back().mapping[i] = "";
+  }
 }
 
-// ... (rest of functions: lightingSpecification, createShader, callbacks, etc.)
-// unchanged
+void applyMappingToMeshes(controller_window &w) {
+  // Helper to read axis values (including extra axes via raw joystick)
+  auto getAxisValue = [&](int axisIdx) -> float {
+    return get_axis_value(w, axisIdx);
+  };
 
-// The big change: controller_window_input()
-void controller_window_input() {
-  SDL_PumpEvents();
-  for (auto &w : windows) {
-    if (w.model.meshes.empty()) {
-      spdlog::warn("Controller window has empty model meshes; skipping input.");
+  auto getButtonValue = [&](int btnIdx) -> bool {
+    if (w.is_gamecontroller && w.sdl_controller) {
+      return SDL_GameControllerGetButton(w.sdl_controller,
+                                         (SDL_GameControllerButton)btnIdx);
+    } else if (w.sdl_joystick) {
+      return SDL_JoystickGetButton(w.sdl_joystick, btnIdx);
+    }
+    return false;
+  };
+
+  auto getHatValue = [&](int hatIdx) -> Uint8 {
+    if (w.sdl_joystick) {
+      return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
+    }
+    return SDL_HAT_CENTERED;
+  };
+
+  // Map input index to target mesh and type
+  struct Target {
+    int meshIdx;
+    enum Type { BUTTON, AXIS_X, AXIS_Y, TRIGGER } type;
+  };
+
+  Target targets[27];
+  for (int i = 0; i < 27; ++i) {
+    Target t;
+    t.meshIdx = -1;
+    t.type = Target::BUTTON;
+    if (i < 7) {
+      t.meshIdx = 9 + i; // a=9, b=10, x=11, y=12, back=13, guide=14, start=15
+    } else if (i == 7) {
+      t.meshIdx = 5; // left stick click
+    } else if (i == 8) {
+      t.meshIdx = 6; // right stick click
+    } else if (i >= 9 && i <= 14) {
+      t.meshIdx = 18 + (i - 9); // bumpers and dpad
+    } else if (i == 15) {
+      t.meshIdx = 29; // touchpad click
+    } else if (i >= 16 && i <= 20) {
+      t.meshIdx = 24 + (i - 16); // misc, paddle1-4
+    } else if (i == 21 || i == 22) {
+      t.meshIdx = 5; // left stick axes
+      t.type = (i == 21) ? Target::AXIS_X : Target::AXIS_Y;
+    } else if (i == 23 || i == 24) {
+      t.meshIdx = 6; // right stick axes
+      t.type = (i == 23) ? Target::AXIS_X : Target::AXIS_Y;
+    } else if (i == 25) {
+      t.meshIdx = 3; // left trigger
+      t.type = Target::TRIGGER;
+    } else if (i == 26) {
+      t.meshIdx = 4; // right trigger
+      t.type = Target::TRIGGER;
+    }
+    targets[i] = t;
+  }
+
+  // Process each input with a binding
+  for (int i = 0; i < 27; ++i) {
+    std::string binding = w.mapping[i];
+    if (binding.empty())
+      continue;
+
+    char type = binding[0];
+    int num = 0;
+    int hatDir = -1;
+    bool isDirection = false;
+    int dir = 0;
+
+    if (type == 'b') {
+      num = std::stoi(binding.substr(1));
+    } else if (type == 'a') {
+      if (binding.back() == '+') {
+        isDirection = true;
+        dir = 1;
+        num = std::stoi(binding.substr(1, binding.size() - 2));
+      } else if (binding.back() == '-') {
+        isDirection = true;
+        dir = -1;
+        num = std::stoi(binding.substr(1, binding.size() - 2));
+      } else {
+        num = std::stoi(binding.substr(1));
+      }
+    } else if (type == 'h') {
+      size_t dot = binding.find('.');
+      if (dot != std::string::npos) {
+        num = std::stoi(binding.substr(1, dot - 1));
+        hatDir = std::stoi(binding.substr(dot + 1));
+      } else {
+        continue;
+      }
+    } else {
       continue;
     }
 
-    // ---------- GYRO ----------
-    if (w.gyro_enabled) {
-      bool has_gyro_source = false;
+    Target &target = targets[i];
+    if (target.meshIdx < 0 || target.meshIdx >= (int)w.model.meshes.size())
+      continue;
 
-      // GameController path
-      if (w.is_gamecontroller && w.sdl_controller) {
-        has_gyro_source = true;
-        Uint64 timestamp;
-        if (SDL_GameControllerGetSensorDataWithTimestamp(
-                w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
-                3) == 0) {
+    Mesh &mesh = w.model.meshes[target.meshIdx];
 
-          // Check for invalid data
-          if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
-              isnan(w.gyro_data[2])) {
-            if (w.gyro_debug_logging) {
-              spdlog::warn("Gyro data contains NaN, skipping frame");
-            }
-            continue;
+    // ---- Button-like inputs (b, h, axis direction) ----
+    if (type == 'b' || type == 'h' || (type == 'a' && isDirection)) {
+      bool pressed = false;
+      float axisVal = 0.0f;
+      if (type == 'b') {
+        pressed = getButtonValue(num);
+      } else if (type == 'h') {
+        Uint8 hatVal = getHatValue(num);
+        Uint8 sdlDir = 0;
+        switch (hatDir) {
+        case 0:
+          sdlDir = SDL_HAT_UP;
+          break;
+        case 1:
+          sdlDir = SDL_HAT_RIGHTUP;
+          break;
+        case 2:
+          sdlDir = SDL_HAT_RIGHT;
+          break;
+        case 3:
+          sdlDir = SDL_HAT_RIGHTDOWN;
+          break;
+        case 4:
+          sdlDir = SDL_HAT_DOWN;
+          break;
+        case 5:
+          sdlDir = SDL_HAT_LEFTDOWN;
+          break;
+        case 6:
+          sdlDir = SDL_HAT_LEFT;
+          break;
+        case 7:
+          sdlDir = SDL_HAT_LEFTUP;
+          break;
+        }
+        pressed = (hatVal & sdlDir) != 0;
+      } else if (type == 'a' && isDirection) {
+        float val = getAxisValue(num);
+        float threshold = 0.5f;
+        pressed = (dir > 0) ? (val > threshold) : (val < -threshold);
+        axisVal = (dir > 0) ? val : -val; // positive magnitude
+      }
+
+      // Apply based on target type
+      if (target.type == Target::BUTTON) {
+        mesh.press = pressed ? 1.0f : 0.0f;
+        mesh.highlight_value = pressed ? 1.0f : 0.0f;
+      } else if (target.type == Target::AXIS_X ||
+                 target.type == Target::AXIS_Y) {
+        float value = 0.0f;
+        if (type == 'a' && isDirection) {
+          value = axisVal;
+        } else {
+          value = pressed ? 1.0f : 0.0f;
+        }
+        // Apply with correct sign
+        if (target.type == Target::AXIS_X) {
+          mesh.stick_X = (dir > 0) ? value * 32767.0f : -value * 32767.0f;
+          // keep Y unchanged (or zero?)
+          if (target.meshIdx == 5 || target.meshIdx == 6) {
+            // We'll propagate after setting
           }
+        } else { // AXIS_Y
+          mesh.stick_Y = (dir > 0) ? value * 32767.0f : -value * 32767.0f;
+        }
+        // Highlight value based on magnitude
+        mesh.highlight_value = value;
+        // Propagate to ring and cap if this is a stick mesh
+        if (target.meshIdx == 5) { // left stick
+          w.model.meshes[7].stick_X = mesh.stick_X;
+          w.model.meshes[7].stick_Y = mesh.stick_Y;
+          w.model.meshes[16].stick_X = mesh.stick_X;
+          w.model.meshes[16].stick_Y = mesh.stick_Y;
+          // Also set highlight on ring based on magnitude
+          w.model.meshes[7].highlight_value = value * 1.2f; // same as original
+        } else if (target.meshIdx == 6) {                   // right stick
+          w.model.meshes[8].stick_X = mesh.stick_X;
+          w.model.meshes[8].stick_Y = mesh.stick_Y;
+          w.model.meshes[17].stick_X = mesh.stick_X;
+          w.model.meshes[17].stick_Y = mesh.stick_Y;
+          w.model.meshes[8].highlight_value = value * 1.2f;
+        }
+      } else if (target.type == Target::TRIGGER) {
+        float value = 0.0f;
+        if (type == 'a' && isDirection) {
+          value = axisVal;
+        } else {
+          value = pressed ? 1.0f : 0.0f;
+        }
+        mesh.pull = value * 32767.0f;
+        mesh.press = value;
+        mesh.highlight_value = value;
+      }
+    }
+    // ---- Full axis mapping (no direction) ----
+    else if (type == 'a' && !isDirection) {
+      float val = getAxisValue(num);
+      if (target.type == Target::AXIS_X) {
+        mesh.stick_X = val * 32767.0f;
+        // propagate to ring and cap if stick mesh
+        if (target.meshIdx == 5) {
+          w.model.meshes[7].stick_X = mesh.stick_X;
+          w.model.meshes[16].stick_X = mesh.stick_X;
+          // also set highlight
+          float mag = fabs(val);
+          w.model.meshes[7].highlight_value = mag * 1.2f;
+        } else if (target.meshIdx == 6) {
+          w.model.meshes[8].stick_X = mesh.stick_X;
+          w.model.meshes[17].stick_X = mesh.stick_X;
+          float mag = fabs(val);
+          w.model.meshes[8].highlight_value = mag * 1.2f;
+        }
+      } else if (target.type == Target::AXIS_Y) {
+        mesh.stick_Y = val * 32767.0f;
+        if (target.meshIdx == 5) {
+          w.model.meshes[7].stick_Y = mesh.stick_Y;
+          w.model.meshes[16].stick_Y = mesh.stick_Y;
+          float mag = fabs(val);
+          w.model.meshes[7].highlight_value = mag * 1.2f;
+        } else if (target.meshIdx == 6) {
+          w.model.meshes[8].stick_Y = mesh.stick_Y;
+          w.model.meshes[17].stick_Y = mesh.stick_Y;
+          float mag = fabs(val);
+          w.model.meshes[8].highlight_value = mag * 1.2f;
+        }
+      } else if (target.type == Target::TRIGGER) {
+        // For trigger, we want only positive half
+        float triggerVal = (val > 0.0f) ? val : 0.0f;
+        mesh.pull = triggerVal * 32767.0f;
+        mesh.press = triggerVal;
+        mesh.highlight_value = triggerVal;
+      }
+    }
+  }
+}
 
-          // Skip very small values to reduce noise
-          if (fabs(w.gyro_data[0]) < 1e-6f && fabs(w.gyro_data[1]) < 1e-6f &&
-              fabs(w.gyro_data[2]) < 1e-6f) {
-            continue;
-          }
+void controller_window_input() {
+  SDL_PumpEvents();
 
-          // Debug logging for raw data (every 60 frames)
-          if (w.gyro_debug_logging) {
-            static int frame_counter = 0;
-            if (++frame_counter % 60 == 0) {
-              spdlog::debug("Gyro raw: x={:.3f} y={:.3f} z={:.3f}",
-                            w.gyro_data[0], w.gyro_data[1], w.gyro_data[2]);
-            }
-          }
-
-          if (w.gyro_toggled) {
-            w.gyro_time = timestamp;
-            w.gyro_toggled = false;
-          } else {
-            float dt = (timestamp - w.gyro_time) * 0.000001f; // micro to sec
-            if (dt > 0.1f)
-              dt = 0.1f;
-            if (dt < 0.0001f)
-              dt = 0.0001f;
-
-            // Apply rotation with user sensitivity
-            float sens = w.gyro_sensitivity; // 0.1 .. 20.0
-            w.gyro_matrix = glm::rotate(
-                w.gyro_matrix, w.gyro_data[0] * dt * sens, glm::vec3(1, 0, 0));
-            w.gyro_matrix = glm::rotate(
-                w.gyro_matrix, w.gyro_data[1] * dt * sens, glm::vec3(0, 1, 0));
-            w.gyro_matrix = glm::rotate(
-                w.gyro_matrix, w.gyro_data[2] * dt * sens, glm::vec3(0, 0, 1));
-
-            // Keep pure rotation (no translation)
-            w.gyro_matrix[3][0] = 0.0f;
-            w.gyro_matrix[3][1] = 0.0f;
-            w.gyro_matrix[3][2] = 0.0f;
-            w.gyro_matrix[3][3] = 1.0f;
-
-            w.gyro_time = timestamp;
-
-            // ---- Correction (tries to keep controller upright) ----
-            glm::vec3 up_error =
-                glm::cross(glm::vec3(0, 1, 0),
-                           glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
-            if (glm::length(up_error) > 0.001f) {
-              w.gyro_matrix =
-                  glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
-                              glm::normalize(up_error));
-            }
-            glm::vec3 right_error =
-                glm::cross(glm::vec3(1, 0, 0),
-                           glm::vec3(1, 0, 0) * glm::mat3(w.gyro_matrix));
-            if (glm::length(right_error) > 0.001f) {
-              w.gyro_matrix =
-                  glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
-                              glm::normalize(right_error));
-            }
-
-            // Reset combo
-            if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
-              if (get_button_value(w, w.reset_gyro_button1) &&
-                  get_button_value(w, w.reset_gyro_button2)) {
-                w.gyro_matrix = glm::mat4(1.0f);
+  for (auto &w : windows) {
+    // ---------- CONTROLLER INPUT (skip for preview windows) ----------
+    if (!w.is_import_preview) {
+      if (w.model.meshes.empty()) {
+        spdlog::warn("Controller window has empty model meshes; skipping "
+                     "controller input.");
+        // Still allow mouse orbit below
+      } else {
+        // --- GYRO ---
+        if (w.gyro_enabled) {
+          bool has_gyro_source = false;
+          if (w.is_gamecontroller && w.sdl_controller) {
+            has_gyro_source = true;
+            Uint64 timestamp;
+            if (SDL_GameControllerGetSensorDataWithTimestamp(
+                    w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
+                    3) == 0) {
+              if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
+                  isnan(w.gyro_data[2])) {
                 if (w.gyro_debug_logging) {
-                  spdlog::debug("Gyro reset via button combo");
+                  spdlog::warn("Gyro data contains NaN, skipping frame");
+                }
+                continue;
+              }
+              if (fabs(w.gyro_data[0]) < 1e-6f &&
+                  fabs(w.gyro_data[1]) < 1e-6f &&
+                  fabs(w.gyro_data[2]) < 1e-6f) {
+                continue;
+              }
+              if (w.gyro_debug_logging) {
+                static int frame_counter = 0;
+                if (++frame_counter % 60 == 0) {
+                  spdlog::debug("Gyro raw: x={:.3f} y={:.3f} z={:.3f}",
+                                w.gyro_data[0], w.gyro_data[1], w.gyro_data[2]);
                 }
               }
-            }
+              if (w.gyro_toggled) {
+                w.gyro_time = timestamp;
+                w.gyro_toggled = false;
+              } else {
+                float dt = (timestamp - w.gyro_time) * 0.000001f;
+                if (dt > 0.1f)
+                  dt = 0.1f;
+                if (dt < 0.0001f)
+                  dt = 0.0001f;
+                float sens = w.gyro_sensitivity;
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[0] * dt * sens,
+                                glm::vec3(1, 0, 0));
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[1] * dt * sens,
+                                glm::vec3(0, 1, 0));
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[2] * dt * sens,
+                                glm::vec3(0, 0, 1));
+                w.gyro_matrix[3][0] = 0.0f;
+                w.gyro_matrix[3][1] = 0.0f;
+                w.gyro_matrix[3][2] = 0.0f;
+                w.gyro_matrix[3][3] = 1.0f;
+                w.gyro_time = timestamp;
 
-            // Debug: log accumulated euler angles (every 120 frames)
-            if (w.gyro_debug_logging) {
-              static int log_counter = 0;
-              if (++log_counter % 120 == 0) {
-                glm::vec3 euler =
-                    glm::eulerAngles(glm::quat_cast(w.gyro_matrix));
-                spdlog::debug("Gyro Euler: yaw={:.3f} pitch={:.3f} roll={:.3f}",
-                              glm::degrees(euler.y), glm::degrees(euler.x),
-                              glm::degrees(euler.z));
+                glm::vec3 up_error =
+                    glm::cross(glm::vec3(0, 1, 0),
+                               glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
+                if (glm::length(up_error) > 0.001f) {
+                  w.gyro_matrix =
+                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
+                                  glm::normalize(up_error));
+                }
+                glm::vec3 right_error =
+                    glm::cross(glm::vec3(1, 0, 0),
+                               glm::vec3(1, 0, 0) * glm::mat3(w.gyro_matrix));
+                if (glm::length(right_error) > 0.001f) {
+                  w.gyro_matrix =
+                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
+                                  glm::normalize(right_error));
+                }
+
+                if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
+                  if (get_button_value(w, w.reset_gyro_button1) &&
+                      get_button_value(w, w.reset_gyro_button2)) {
+                    w.gyro_matrix = glm::mat4(1.0f);
+                    if (w.gyro_debug_logging) {
+                      spdlog::debug("Gyro reset via button combo");
+                    }
+                  }
+                }
+
+                if (w.gyro_debug_logging) {
+                  static int log_counter = 0;
+                  if (++log_counter % 120 == 0) {
+                    glm::vec3 euler =
+                        glm::eulerAngles(glm::quat_cast(w.gyro_matrix));
+                    spdlog::debug(
+                        "Gyro Euler: yaw={:.3f} pitch={:.3f} roll={:.3f}",
+                        glm::degrees(euler.y), glm::degrees(euler.x),
+                        glm::degrees(euler.z));
+                  }
+                }
+              }
+            } else {
+              if (w.gyro_debug_logging) {
+                spdlog::debug(
+                    "Failed to read gyro data (maybe sensor not ready)");
               }
             }
+          } else if (w.gyro_sensor) {
+            has_gyro_source = true;
           }
-        } else {
-          // Only log if debug is enabled
-          if (w.gyro_debug_logging) {
-            spdlog::debug("Failed to read gyro data (maybe sensor not ready)");
+
+          if (!has_gyro_source) {
+            w.gyro_enabled = false;
+            w.gyro_debug_logging = false;
+            if (w.gyro_debug_logging) {
+              spdlog::debug("No gyro source available; disabling gyro.");
+            }
           }
         }
-      }
-      // Generic joystick path (sensor events handled in controller_sdl_events)
-      else if (w.gyro_sensor) {
-        has_gyro_source = true;
-        // Data is read via SDL_SENSORUPDATE events, so nothing to do here.
-      }
 
-      // If no gyro source is available, disable the feature to avoid repeated
-      // checks.
-      if (!has_gyro_source) {
-        w.gyro_enabled = false;
-        w.gyro_debug_logging = false;
-        if (w.gyro_debug_logging) {
-          spdlog::debug("No gyro source available; disabling gyro.");
-        }
-      }
-    }
-
-    // ---------- AXES ----------
-    // Left stick (axes 0 and 1)
-    float lx = get_axis_value(w, 0); // assuming left X
-    float ly = get_axis_value(w, 1); // left Y
-    w.model.meshes[5].stick_X = lx * 32767.0f;
-    w.model.meshes[5].stick_Y = ly * 32767.0f;
-    w.model.meshes[7].stick_X = lx * 32767.0f;
-    w.model.meshes[7].stick_Y = ly * 32767.0f;
-    w.model.meshes[16].stick_X = lx * 32767.0f;
-    w.model.meshes[16].stick_Y = ly * 32767.0f;
-    if (fabs(lx) > w.model.meshes[7].ring_highlight_deadzone * 0.01f ||
-        fabs(ly) > w.model.meshes[7].ring_highlight_deadzone * 0.01f) {
-      w.model.meshes[7].highlight_value = std::max(fabs(lx), fabs(ly)) * 1.2f;
-    } else {
-      w.model.meshes[7].highlight_value = 0.0f;
-    }
-
-    // Right stick (axes 2 and 3)
-    float rx = get_axis_value(w, 2);
-    float ry = get_axis_value(w, 3);
-    w.model.meshes[6].stick_X = rx * 32767.0f;
-    w.model.meshes[6].stick_Y = ry * 32767.0f;
-    w.model.meshes[8].stick_X = rx * 32767.0f;
-    w.model.meshes[8].stick_Y = ry * 32767.0f;
-    w.model.meshes[17].stick_X = rx * 32767.0f;
-    w.model.meshes[17].stick_Y = ry * 32767.0f;
-    if (fabs(rx) > w.model.meshes[8].ring_highlight_deadzone * 0.01f ||
-        fabs(ry) > w.model.meshes[8].ring_highlight_deadzone * 0.01f) {
-      w.model.meshes[8].highlight_value = std::max(fabs(rx), fabs(ry)) * 1.2f;
-    } else {
-      w.model.meshes[8].highlight_value = 0.0f;
-    }
-
-    // Triggers (axes 4 and 5)
-    float lt = get_axis_value(w, 4);
-    float rt = get_axis_value(w, 5);
-    w.model.meshes[3].pull = lt * 32767.0f;
-    w.model.meshes[3].highlight_value = lt;
-    w.model.meshes[3].press = lt;
-    w.model.meshes[4].pull = rt * 32767.0f;
-    w.model.meshes[4].highlight_value = rt;
-    w.model.meshes[4].press = rt;
-
-    // Buttons (for gamecontroller, indices 0-20; for joystick, we have to map)
-    // We'll assume the first 21 buttons are standard.
-    for (int b = 0; b < 21; ++b) {
-      bool pressed = get_button_value(w, b);
-      w.model.meshes[9 + b].press = pressed ? 1.0f : 0.0f;
-      w.model.meshes[9 + b].highlight_value = pressed ? 1.0f : 0.0f;
-    }
-
-    // Touchpad (only for gamecontroller that support it)
-    if (w.is_gamecontroller && w.sdl_controller) {
-      int touch_pads = SDL_GameControllerGetNumTouchpads(w.sdl_controller);
-      if (touch_pads > 0) {
-        // Finger 0
-        SDL_GameControllerGetTouchpadFinger(
-            w.sdl_controller, 0, 0, &w.model.meshes[30].touch_state,
-            &w.model.meshes[30].touch_X, &w.model.meshes[30].touch_Y, nullptr);
-        if (w.model.meshes[30].touch_state > 0) {
-          w.model.meshes[30].highlight_value = w.model.meshes[29].press ? 0 : 1;
-          w.model.meshes[30].visible = true;
+        // --- AXES ---
+        float lx = get_axis_value(w, 0);
+        float ly = get_axis_value(w, 1);
+        w.model.meshes[5].stick_X = lx * 32767.0f;
+        w.model.meshes[5].stick_Y = ly * 32767.0f;
+        w.model.meshes[7].stick_X = lx * 32767.0f;
+        w.model.meshes[7].stick_Y = ly * 32767.0f;
+        w.model.meshes[16].stick_X = lx * 32767.0f;
+        w.model.meshes[16].stick_Y = ly * 32767.0f;
+        if (fabs(lx) > w.model.meshes[7].ring_highlight_deadzone * 0.01f ||
+            fabs(ly) > w.model.meshes[7].ring_highlight_deadzone * 0.01f) {
+          w.model.meshes[7].highlight_value =
+              std::max(fabs(lx), fabs(ly)) * 1.2f;
         } else {
-          w.model.meshes[30].highlight_value = 0;
-          w.model.meshes[30].visible = false;
+          w.model.meshes[7].highlight_value = 0.0f;
         }
-        // Finger 1
-        SDL_GameControllerGetTouchpadFinger(
-            w.sdl_controller, 0, 1, &w.model.meshes[31].touch_state,
-            &w.model.meshes[31].touch_X, &w.model.meshes[31].touch_Y, nullptr);
-        if (w.model.meshes[31].touch_state > 0) {
-          w.model.meshes[31].highlight_value = w.model.meshes[29].press ? 0 : 1;
-          w.model.meshes[31].visible = true;
+
+        float rx = get_axis_value(w, 2);
+        float ry = get_axis_value(w, 3);
+        w.model.meshes[6].stick_X = rx * 32767.0f;
+        w.model.meshes[6].stick_Y = ry * 32767.0f;
+        w.model.meshes[8].stick_X = rx * 32767.0f;
+        w.model.meshes[8].stick_Y = ry * 32767.0f;
+        w.model.meshes[17].stick_X = rx * 32767.0f;
+        w.model.meshes[17].stick_Y = ry * 32767.0f;
+        if (fabs(rx) > w.model.meshes[8].ring_highlight_deadzone * 0.01f ||
+            fabs(ry) > w.model.meshes[8].ring_highlight_deadzone * 0.01f) {
+          w.model.meshes[8].highlight_value =
+              std::max(fabs(rx), fabs(ry)) * 1.2f;
         } else {
-          w.model.meshes[31].highlight_value = 0;
-          w.model.meshes[31].visible = false;
+          w.model.meshes[8].highlight_value = 0.0f;
         }
+
+        float lt = get_axis_value(w, 4);
+        float rt = get_axis_value(w, 5);
+        w.model.meshes[3].pull = lt * 32767.0f;
+        w.model.meshes[3].highlight_value = lt;
+        w.model.meshes[3].press = lt;
+        w.model.meshes[4].pull = rt * 32767.0f;
+        w.model.meshes[4].highlight_value = rt;
+        w.model.meshes[4].press = rt;
+
+        for (int b = 0; b < 21; ++b) {
+          bool pressed = get_button_value(w, b);
+          w.model.meshes[9 + b].press = pressed ? 1.0f : 0.0f;
+          w.model.meshes[9 + b].highlight_value = pressed ? 1.0f : 0.0f;
+        }
+
+        if (w.is_gamecontroller && w.sdl_controller) {
+          int touch_pads = SDL_GameControllerGetNumTouchpads(w.sdl_controller);
+          if (touch_pads > 0) {
+            SDL_GameControllerGetTouchpadFinger(
+                w.sdl_controller, 0, 0, &w.model.meshes[30].touch_state,
+                &w.model.meshes[30].touch_X, &w.model.meshes[30].touch_Y,
+                nullptr);
+            if (w.model.meshes[30].touch_state > 0) {
+              w.model.meshes[30].highlight_value =
+                  w.model.meshes[29].press ? 0 : 1;
+              w.model.meshes[30].visible = true;
+            } else {
+              w.model.meshes[30].highlight_value = 0;
+              w.model.meshes[30].visible = false;
+            }
+            SDL_GameControllerGetTouchpadFinger(
+                w.sdl_controller, 0, 1, &w.model.meshes[31].touch_state,
+                &w.model.meshes[31].touch_X, &w.model.meshes[31].touch_Y,
+                nullptr);
+            if (w.model.meshes[31].touch_state > 0) {
+              w.model.meshes[31].highlight_value =
+                  w.model.meshes[29].press ? 0 : 1;
+              w.model.meshes[31].visible = true;
+            } else {
+              w.model.meshes[31].highlight_value = 0;
+              w.model.meshes[31].visible = false;
+            }
+          }
+        }
+
+        // --- LOGGING ---
+        if (g_log_buttons) {
+          if (w.is_gamecontroller && w.sdl_controller) {
+            SDL_Joystick *joy = SDL_GameControllerGetJoystick(w.sdl_controller);
+            if (joy) {
+              int numAxes = SDL_JoystickNumAxes(joy);
+              for (int i = 0; i < numAxes; ++i) {
+                float val = get_axis_value(w, i);
+                std::string label;
+                if (i < 6) {
+                  switch (i) {
+                  case 0:
+                    label = "Left X";
+                    break;
+                  case 1:
+                    label = "Left Y";
+                    break;
+                  case 2:
+                    label = "Right X";
+                    break;
+                  case 3:
+                    label = "Right Y";
+                    break;
+                  case 4:
+                    label = "Left Trigger";
+                    break;
+                  case 5:
+                    label = "Right Trigger";
+                    break;
+                  }
+                } else {
+                  label = "Axis " + std::to_string(i);
+                }
+                logAxisChange(w, i, val, label);
+              }
+            }
+          } else if (!w.is_gamecontroller && w.sdl_joystick) {
+            int numButtons = SDL_JoystickNumButtons(w.sdl_joystick);
+            for (int i = 0; i < numButtons; ++i) {
+              bool pressed = SDL_JoystickGetButton(w.sdl_joystick, i);
+              if (pressed) {
+                spdlog::info("Generic Button {} pressed", i);
+              }
+            }
+            int numAxes = SDL_JoystickNumAxes(w.sdl_joystick);
+            for (int i = 0; i < numAxes; ++i) {
+              float val = SDL_JoystickGetAxis(w.sdl_joystick, i) / 32767.0f;
+              std::string label = "Generic Axis " + std::to_string(i);
+              logAxisChange(w, i, val, label);
+            }
+            int numHats = SDL_JoystickNumHats(w.sdl_joystick);
+            for (int i = 0; i < numHats; ++i) {
+              Uint8 hatVal = SDL_JoystickGetHat(w.sdl_joystick, i);
+              logHatChange(w, i, hatVal);
+            }
+          }
+        }
+
+        // --- APPLY CUSTOM MAPPING ---
+        applyMappingToMeshes(w);
+      }
+    } // end if (!w.is_import_preview)
+
+    // ---------- MOUSE ORBIT & ZOOM (for ALL windows, unless freelook)
+    // ----------
+    if (!w.freelook) {
+      int win_width, win_height;
+      glfwGetWindowSize(w.glfw_window, &win_width, &win_height);
+      if (win_width == 0 || win_height == 0)
+        continue;
+
+      double mouse_x, mouse_y;
+      glfwGetCursorPos(w.glfw_window, &mouse_x, &mouse_y);
+      int left_button =
+          glfwGetMouseButton(w.glfw_window, GLFW_MOUSE_BUTTON_LEFT);
+      int middle_button =
+          glfwGetMouseButton(w.glfw_window, GLFW_MOUSE_BUTTON_MIDDLE);
+
+      if (left_button == GLFW_PRESS && !w.drag_to_move) {
+        if (w.mouse_first_click) {
+          w.prev_mouse_x = mouse_x;
+          w.prev_mouse_y = mouse_y;
+          w.mouse_first_click = false;
+        }
+        double delta_x = mouse_x - w.prev_mouse_x;
+        double delta_y = mouse_y - w.prev_mouse_y;
+        float sensitivity = 0.5f;
+        w.camera_yaw -= delta_x * sensitivity;
+        w.camera_pitch += delta_y * sensitivity;
+        if (w.camera_pitch > 89.999f)
+          w.camera_pitch = 89.999f;
+        if (w.camera_pitch < -89.999f)
+          w.camera_pitch = -89.999f;
+        w.prev_mouse_x = mouse_x;
+        w.prev_mouse_y = mouse_y;
+      } else {
+        w.mouse_first_click = true;
+      }
+
+      if (middle_button == GLFW_PRESS) {
+        w.camera_yaw = 0.0f;
+        w.camera_pitch = 89.999f;
+        w.camera_distance = 3.5f;
+        w.camera_roll = 0.0f;
       }
     }
+  } // end for
 
-    // ... (rest of input handling: window dragging, freelook, etc. unchanged)
-    // (Keep the existing code for mouse, keyboard, freelook from your original)
-    // I'll copy that part verbatim from your original file to avoid missing
-    // anything. Since it's long, I'll put it in a comment but you must keep it.
-    // For brevity, I'll include a placeholder – but in your final code, paste
-    // your original mouse/keyboard handling here.
-  }
-  // Check for windows that should close
+  // Close windows that should close
   for (int i = (int)windows.size() - 1; i >= 0; --i) {
     if (glfwWindowShouldClose(windows[i].glfw_window)) {
       unsigned id = windows[i].ID;
       glfwDestroyWindow(windows[i].glfw_window);
       windows.erase(windows.begin() + i);
-      removeTab(id); // remove the corresponding tab in settings
+      removeTab(id);
     }
   }
 }
@@ -465,26 +889,39 @@ void controller_sdl_events(SDL_Event *event) {
 void controller_window_scroll_callback(GLFWwindow *window, double xoffset,
                                        double yoffset) {
   for (auto &w : windows) {
-    if (w.glfw_window == window && w.scroll_to_resize) {
-      int ww = 0, hh = 0;
-      glfwGetWindowSize(window, &ww, &hh);
-      const GLFWvidmode *mode = get_vid_mode();
-      if (yoffset > 0) {
-        ww = (int)(ww * 1.05f);
-        hh = (int)(hh * 1.05f);
-        if (ww > mode->width)
-          ww = mode->width;
-        if (hh > mode->height)
-          hh = mode->height;
-      } else if (yoffset < 0) {
-        ww = (int)(ww * 0.95f);
-        hh = (int)(hh * 0.95f);
-        if (ww < 10)
-          ww = 10;
-        if (hh < 10)
-          hh = 10;
+    if (w.glfw_window == window) {
+      if (w.scroll_to_resize) {
+        // Resize window (original behavior)
+        int ww = 0, hh = 0;
+        glfwGetWindowSize(window, &ww, &hh);
+        const GLFWvidmode *mode = get_vid_mode();
+        if (yoffset > 0) {
+          ww = (int)(ww * 1.05f);
+          hh = (int)(hh * 1.05f);
+          if (ww > mode->width)
+            ww = mode->width;
+          if (hh > mode->height)
+            hh = mode->height;
+        } else if (yoffset < 0) {
+          ww = (int)(ww * 0.95f);
+          hh = (int)(hh * 0.95f);
+          if (ww < 10)
+            ww = 10;
+          if (hh < 10)
+            hh = 10;
+        }
+        glfwSetWindowSize(window, ww, hh);
+      } else {
+        // Zoom camera (if not freelook)
+        if (!w.freelook) {
+          float zoom_speed = 0.2f;
+          w.camera_distance -= yoffset * zoom_speed;
+          if (w.camera_distance < 0.5f)
+            w.camera_distance = 0.5f;
+          if (w.camera_distance > 20.0f)
+            w.camera_distance = 20.0f;
+        }
       }
-      glfwSetWindowSize(window, ww, hh);
       break;
     }
   }
@@ -594,29 +1031,37 @@ void update_camera(controller_window &w, GLuint &shader, int window_width,
 }
 
 void drawControllerWindows() {
-  int highlight =
-      w.is_import_preview ? w.import_preview.selected_mesh_index : -1;
-  drawModel(w.model, w.shader, highlight);
   for (controller_window &w : windows) {
+    if (glfwWindowShouldClose(w.glfw_window))
+      continue;
     if (!glfwGetWindowAttrib(w.glfw_window, GLFW_ICONIFIED)) {
       glfwMakeContextCurrent(w.glfw_window);
       glfwSwapInterval(w.swap_interval);
       w.deltaTime = glfwGetTime() - w.lastTime;
       w.lastTime = glfwGetTime();
+
       int width = 0, height = 0;
       glfwGetWindowSize(w.glfw_window, &width, &height);
       glViewport(0, 0, width, height);
+
+      // Update all camera uniforms (view/projection)
       update_camera(w, w.shader, width, height);
       update_camera(w, w.light_source_shader, width, height);
       update_camera(w, w.grid_shader, width, height);
+
       glEnable(GL_DEPTH_TEST);
+
+      // Polygon mode
       if (w.wireframe)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
       else
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+      // Clear
       glClearColor(w.bg_color[0] * w.bg_color[3], w.bg_color[1] * w.bg_color[3],
                    w.bg_color[2] * w.bg_color[3], 1.0f * w.bg_color[3]);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
       // Draw grid
       if (w.grid) {
         glBindVertexArray(w.grid_vao);
@@ -629,6 +1074,7 @@ void drawControllerWindows() {
         shaderUniformMat4(w.grid_shader, "model", grid_model);
         glDrawElements(GL_LINES, w.grid_length, GL_UNSIGNED_INT, NULL);
       }
+
       // Draw light sources
       glBindVertexArray(w.lighting_vao);
       glUseProgram(w.light_source_shader);
@@ -661,13 +1107,18 @@ void drawControllerWindows() {
           glDrawArrays(GL_TRIANGLES, 0, 36);
         }
       }
-      // Draw model
+
+      // ---------- Draw the main model ----------
       glUseProgram(w.shader);
+
+      // View position
       if (w.freelook)
         shaderUniformVec3(w.shader, "viewPos", w.freelook_position);
       else
         shaderUniformVec3(w.shader, "viewPos", w.camera_position);
+
       shaderUniformFloat(w.shader, "time", glfwGetTime());
+
       // Direct lights
       shaderUniformInt(w.shader, "direct_lights", w.direct_lights.size());
       for (unsigned i = 0; i < w.direct_lights.size(); ++i) {
@@ -696,6 +1147,7 @@ void drawControllerWindows() {
                       w.direct_lights[i].color[2] *
                           w.direct_lights[i].specular));
       }
+
       // Point lights
       shaderUniformInt(w.shader, "point_lights", w.point_lights.size());
       for (unsigned i = 0; i < w.point_lights.size(); ++i) {
@@ -724,6 +1176,7 @@ void drawControllerWindows() {
                           std::string(name).append(".specular").c_str(),
                           w.point_lights[i].specular);
       }
+
       // Spot lights
       shaderUniformInt(w.shader, "spot_lights", w.spot_lights.size());
       for (unsigned i = 0; i < w.spot_lights.size(); ++i) {
@@ -762,8 +1215,19 @@ void drawControllerWindows() {
                           std::string(name).append(".specular").c_str(),
                           w.spot_lights[i].specular);
       }
+
+      // ---------- FINALLY: draw the model with highlight ----------
+      int highlight =
+          w.is_import_preview ? w.import_preview.selected_mesh_index : -1;
+      if (w.is_import_preview) {
+        if (highlight != w.last_highlight_index) {
+          spdlog::debug("Preview highlight index: {}", highlight);
+          w.last_highlight_index = highlight;
+        }
+      }
       w.model.motion_matrix = w.gyro_matrix;
-      drawModel(w.model, w.shader);
+      drawModel(w.model, w.shader, highlight);
+
       glUseProgram(0);
       glfwSwapBuffers(w.glfw_window);
     }

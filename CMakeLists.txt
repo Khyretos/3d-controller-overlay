@@ -17,6 +17,14 @@ list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
 add_executable(3dco ${SRC_FILES})
 
+# Copy the models folder to the build directory
+add_custom_command(TARGET 3dco POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/models
+        ${CMAKE_BINARY_DIR}/models
+    COMMENT "Copying models folder to build directory"
+)
+
 # Force inclusion of preinclude.h for all C++ sources
 target_compile_options(3dco PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>

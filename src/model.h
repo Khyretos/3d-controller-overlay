@@ -97,6 +97,8 @@ typedef struct mesh_struct {
   Uint8 touch_state = 0;
   float touch_X = 0.0f;
   float touch_Y = 0.0f;
+
+  int parentIndex = -1;
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----
@@ -109,6 +111,8 @@ typedef struct imported_mesh_struct {
   std::vector<glm::vec3> normals;
   std::vector<glm::vec2> texcoords;
   std::vector<unsigned int> indices;
+
+  int parent_part = -1; // -1 = no parent
 } ImportedMesh;
 
 typedef struct model_struct {
@@ -128,6 +132,8 @@ typedef struct model_struct {
 struct ImportAssignment {
   std::string mesh_name;
   int assigned_part = -1; // -1 = unassigned, 0-31 = part index
+  float max_angle = 0.0f; // for sticks (5,6) and triggers (3,4)
+  int parent_part = -1;
 };
 
 struct ImportPreviewData {
@@ -155,10 +161,12 @@ void deleteTexture(GLuint &id);
 
 void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1);
 
-void drawMesh(Mesh m, glm::mat4 motion, GLuint shader);
+void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader);
 
 // ----- NEW: functions for custom mesh import and mapping -----
 void importModelFile(Model &m, const std::string &filepath);
 void applyMeshMapping(Model &m);
+
+void convertImportedToMeshes(Model &m);
 
 #endif
