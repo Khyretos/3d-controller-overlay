@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.md
+dist/
+build/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

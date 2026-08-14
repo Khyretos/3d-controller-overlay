@@ -5,28 +5,41 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Find packages
-find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(SDL2 REQUIRED)
-find_package(assimp REQUIRED)
-find_package(spdlog REQUIRED)
+option(BUILD_STATIC "Build with static linking (when possible)" OFF)
 
-# Collect sources (excluding backup/)
+# Find packages – use pkg-config for dynamic libs, but we'll override with static if needed
+find_package(PkgConfig REQUIRED)
+
+if(BUILD_STATIC)
+    # For static libraries, we need to find them explicitly and add -static flag
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    pkg_check_modules(ASSIMP REQUIRED assimp)
+    pkg_check_modules(GLFW REQUIRED glfw3)
+    pkg_check_modules(SPDLOG REQUIRED spdlog)
+    pkg_check_modules(FMT REQUIRED fmt)
+    pkg_check_modules(SDL2 REQUIRED sdl2)
+    # For OpenGL, we still use dynamic linking (system libraries)
+    find_package(OpenGL REQUIRED)
+    find_package(Threads REQUIRED)
+    # Add -static flag to linker
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+else()
+    pkg_check_modules(ASSIMP REQUIRED assimp)
+    pkg_check_modules(GLFW REQUIRED glfw3)
+    pkg_check_modules(SPDLOG REQUIRED spdlog)
+    pkg_check_modules(FMT REQUIRED fmt)
+    pkg_check_modules(SDL2 REQUIRED sdl2)
+    find_package(OpenGL REQUIRED)
+    find_package(Threads REQUIRED)
+endif()
+
+# Collect sources
 file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.c)
 list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
 add_executable(3dco ${SRC_FILES})
 
-# Copy the models folder to the build directory
-add_custom_command(TARGET 3dco POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/models
-        ${CMAKE_BINARY_DIR}/models
-    COMMENT "Copying models folder to build directory"
-)
-
-# Force inclusion of preinclude.h for all C++ sources
+# Force inclusion of preinclude.h
 target_compile_options(3dco PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
 )
@@ -36,24 +49,58 @@ target_include_directories(3dco PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/imgui
     ${CMAKE_SOURCE_DIR}/include
-    ${GLFW3_INCLUDE_DIRS}
+    ${GLFW_INCLUDE_DIRS}
     ${SDL2_INCLUDE_DIRS}
     ${ASSIMP_INCLUDE_DIRS}
+    ${SPDLOG_INCLUDE_DIRS}
+    ${FMT_INCLUDE_DIRS}
 )
 
 # Link libraries
-target_link_libraries(3dco
-    PRIVATE
-    glfw
-    SDL2::SDL2   # or ${SDL2_LIBRARIES}
-    ${OPENGL_LIBRARIES}
-    assimp::assimp
-    spdlog::spdlog
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${ASSIMP_LIBRARIES}
-)
+if(BUILD_STATIC)
+    # For static linking, we need to link libraries in the right order and add dependencies
+    target_link_libraries(3dco
+        PRIVATE
+        ${GLFW_STATIC_LIBRARIES}
+        ${SDL2_STATIC_LIBRARIES}
+        ${OPENGL_LIBRARIES}
+        ${ASSIMP_STATIC_LIBRARIES}
+        ${SPDLOG_STATIC_LIBRARIES}
+        ${FMT_STATIC_LIBRARIES}
+        Threads::Threads
+        # Additional static dependencies
+        -lz
+        -lminizip
+        -ldraco
+        -lrt
+        -lm
+    )
+else()
+    target_link_libraries(3dco
+        PRIVATE
+        ${GLFW_LIBRARIES}
+        ${SDL2_LIBRARIES}
+        ${OPENGL_LIBRARIES}
+        ${ASSIMP_LIBRARIES}
+        ${SPDLOG_LIBRARIES}
+        ${FMT_LIBRARIES}
+        Threads::Threads
+    )
+endif()
 
 # Platform-specific
 if(WIN32)
     target_link_libraries(3dco ws2_32 winmm)
 endif()
+
+# Copy models
+add_custom_command(TARGET 3dco POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/models
+        ${CMAKE_BINARY_DIR}/models
+)
+
+# Install
+install(TARGETS 3dco RUNTIME DESTINATION bin)
+install(FILES icon.png DESTINATION share/icons/hicolor/256x256/apps)
+install(DIRECTORY models/ DESTINATION share/3dco/models)

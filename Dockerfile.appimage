@@ -1,0 +1,119 @@
+# ---- Builder stage ----
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools and system dependencies (development headers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git wget pkg-config ca-certificates \
+    libgl1-mesa-dev libglu1-mesa-dev \
+    libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+    libxkbcommon-dev libwayland-dev libxcb-*-dev libx11-xcb-dev \
+    libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+    libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+    libxcb-sync-dev libxcb-xfixes0-dev libxcb-xinerama0-dev \
+    libxcb-xkb-dev libxcb-xinput-dev libxkbcommon-x11-dev \
+    libpulse-dev libudev-dev libasound2-dev \
+    && apt-get clean
+
+# Build SDL2 statically
+RUN wget -q https://github.com/libsdl-org/SDL/releases/download/release-2.30.0/SDL2-2.30.0.tar.gz && \
+    tar xzf SDL2-2.30.0.tar.gz && \
+    cd SDL2-2.30.0 && \
+    ./configure --prefix=/usr --disable-shared --enable-static && \
+    make -j$(nproc) && \
+    make install && \
+    cd .. && rm -rf SDL2-2.30.0*
+
+# Build GLFW statically
+RUN wget -q https://github.com/glfw/glfw/releases/download/3.3.8/glfw-3.3.8.zip && \
+    unzip glfw-3.3.8.zip && \
+    cd glfw-3.3.8 && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build --prefix /usr && \
+    cd .. && rm -rf glfw-3.3.8*
+
+# Build spdlog statically
+RUN git clone https://github.com/gabime/spdlog.git && \
+    cd spdlog && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DSPDLOG_BUILD_SHARED=OFF -DSPDLOG_FMT_EXTERNAL=OFF && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build --prefix /usr && \
+    cd .. && rm -rf spdlog
+
+# Build assimp statically
+RUN git clone https://github.com/assimp/assimp.git && \
+    cd assimp && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build --prefix /usr && \
+    cd .. && rm -rf assimp
+
+# Build fmt statically (needed by spdlog)
+RUN git clone https://github.com/fmtlib/fmt.git && \
+    cd fmt && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DFMT_TEST=OFF && \
+    cmake --build build -j$(nproc) && \
+    cmake --install build --prefix /usr && \
+    cd .. && rm -rf fmt
+
+# Now build the application
+WORKDIR /app
+COPY . /app
+
+RUN mkdir -p build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_STATIC=ON \
+    -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" && \
+    make -j$(nproc)
+
+# ---- Packaging stage ----
+FROM ubuntu:22.04 AS packager
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget file patchelf libfuse2 ca-certificates squashfs-tools && \
+    apt-get clean
+
+# Copy binary, icon, models
+COPY --from=builder /app/build/3dco /app/3dco
+COPY --from=builder /app/icon.png /app/icon.png
+COPY --from=builder /app/models /app/models
+
+# Create AppDir
+RUN mkdir -p /app/AppDir/usr/bin && \
+    cp /app/3dco /app/AppDir/usr/bin/ && \
+    cp -r /app/models /app/AppDir/usr/bin/models/ && \
+    mkdir -p /app/AppDir/usr/share/applications /app/AppDir/usr/share/icons/hicolor/256x256/apps && \
+    echo "[Desktop Entry]\nName=3D Controller Overlay\nComment=3D controller visualization overlay\nExec=3dco\nIcon=3dco\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco.desktop && \
+    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco.png && \
+    cp /app/icon.png /app/AppDir/3dco.png && \
+    ln -s usr/share/applications/3dco.desktop /app/AppDir/3dco.desktop
+
+# Copy only the system libraries that are absolutely required (GL, X11, etc.)
+RUN ldd /app/AppDir/usr/bin/3dco | grep "=> /" | awk '{print $3}' | while read lib; do \
+    if [ -f "$lib" ]; then \
+    mkdir -p /app/AppDir/usr/lib && \
+    cp -L "$lib" /app/AppDir/usr/lib/; \
+    fi; \
+    done && \
+    patchelf --set-rpath '$ORIGIN/../lib' /app/AppDir/usr/bin/3dco
+
+# Create custom AppRun
+RUN echo '#!/bin/sh\n\
+    SELF=$(readlink -f "$0")\n\
+    HERE="${SELF%/*}"\n\
+    export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"\n\
+    exec "${HERE}/usr/bin/3dco" "$@"' > /app/AppDir/AppRun && \
+    chmod +x /app/AppDir/AppRun
+
+# Download and extract appimagetool
+RUN wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool && \
+    chmod +x /tmp/appimagetool && \
+    /tmp/appimagetool --appimage-extract && \
+    mv squashfs-root /appimagetool-root && \
+    rm /tmp/appimagetool
+
+# Build the AppImage
+ENTRYPOINT ["/appimagetool-root/AppRun", "/app/AppDir", "/dist/3dco.AppImage"]
