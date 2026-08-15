@@ -35,6 +35,7 @@ The `+` in the name is meant literally: **more controllers, more rendering featu
 Comparing the two codebases side by side, the `+` fork roughly **doubles to triples the size** of the core source files (`controller_window.cpp` ~2.2x, `settings_window.cpp` ~1.9x, `model.cpp` ~2.8x) on top of the original architecture. The concrete additions:
 
 ### Rendering & customization
+
 - **Custom model import via Assimp.** You're no longer limited to the built-in controller library — you can import your own mesh (glTF, FBX, and anything else Assimp reads) and map its parts to buttons/axes through a new import-preview/assignment workflow.
 - **Pivot-point editing.** Individual mesh pieces can be repositioned by dragging their pivot in the 3D viewport, instead of only editing raw offsets in a settings panel.
 - **Per-part material alpha (transparency).**
@@ -44,11 +45,13 @@ Comparing the two codebases side by side, the `+` fork roughly **doubles to trip
 - Expanded **touchpad support**: multiple touchpads with 2-finger tracking each (the original supported a single pad; this tracks up to 4 pads × 2 fingers, plus extra touch-point meshes per model).
 
 ### Input
+
 - **Raw joystick fallback.** In addition to SDL's `GameController` API (used for recognized/mapped pads), the `+` fork can open a device as a raw `SDL_Joystick`, so unmapped or unusual controllers still produce usable input instead of being ignored.
 - **Per-axis/button mapping inversion**, so a stick or trigger that reads backwards on your hardware can be flipped without needing a new SDL mapping.
 - **Gyro & accelerometer improvements**: dedicated sensitivity/correction settings, configurable reset-gyro button combo, and optional debug logging of raw sensor data.
 
 ### Engineering / tooling
+
 - **Logging via spdlog**, including rotating log files — the original had no structured logging.
 - **CMake-based build system** (`CMakeLists.txt`) replacing the original's platform-specific shell/batch scripts, plus convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) and Docker-based cross-build files (`Dockerfile.appimage`, `Dockerfile.macos`, `Dockerfile.windows`) for reproducible builds/packaging.
 - **AppImage & `.desktop` integration** on Linux (`3dco.desktop.in`) for proper application-menu installation.
@@ -66,23 +69,21 @@ At a high level, the pipeline is unchanged from the original:
 
 ## Supported input
 
-| Input type | Status |
-|---|---|
-| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController) |
-| Unmapped/generic joysticks | ✅ Supported (via raw SDL Joystick fallback) |
-| Gyro / accelerometer | ✅ Supported, with sensitivity/correction tuning |
-| Touchpads (DualShock/DualSense) | ✅ Supported, multi-touch, multiple pads |
-| Steam Controller | 🚧 Work in progress |
-| Keyboard overlay | 🚧 Work in progress |
-| Mouse overlay | 🚧 Work in progress |
-| Racing wheel | 🚧 Work in progress |
+| Input type                                                                         | Status                                           |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController)            |
+| Unmapped/generic joysticks                                                         | ✅ Supported (via raw SDL Joystick fallback)     |
+| Gyro / accelerometer                                                               | ✅ Supported, with sensitivity/correction tuning |
+| Touchpads (DualShock/DualSense)                                                    | ✅ Supported, multi-touch, multiple pads         |
+| Steam Controller                                                                   | 🚧 Work in progress                              |
+| Keyboard overlay                                                                   | 🚧 Work in progress                              |
+| Mouse overlay                                                                      | 🚧 Work in progress                              |
+| Racing wheel                                                                       | 🚧 Work in progress                              |
 
 ![Joystick demo placeholder](images/joystick_placeholder.gif)
 ![Steam Controller demo placeholder](images/steamcontroller_placeholder.gif)
 ![Keyboard demo placeholder](images/keyboard_placeholder.gif)
 ![Mouse demo placeholder](images/mouse_placeholder.gif)
-
-> All four GIFs above are placeholders — drop in your own recordings (`images/joystick_placeholder.gif`, `images/steamcontroller_placeholder.gif`, `images/keyboard_placeholder.gif`, `images/mouse_placeholder.gif`) or rename the files and update the links.
 
 ## Work in progress / known bugs
 
