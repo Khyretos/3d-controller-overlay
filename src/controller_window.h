@@ -11,6 +11,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
+#include <array>
 
 #include "model.h"
 #include <GLFW/glfw3.h>
@@ -72,7 +74,7 @@ typedef struct controller_window_struct {
   };
   bool is_gamecontroller = false; // true if opened as gamecontroller
   int joystick_index = -1;        // device index
-  std::string mapping[27];
+  std::string mapping[31];
 
   // Sensors
   SDL_Sensor *gyro_sensor = nullptr;
@@ -113,7 +115,6 @@ typedef struct controller_window_struct {
   bool wireframe = false;
   Uint8 frame_cap = 60;
   float bg_color[4] = {0.2f, 0.3f, 0.3f, 1.0f};
-  float highlight_color[3] = {0.0f, 1.0f, 0.0f};
   bool freelook = false;
 
   double deltaTime = 0.0f;
@@ -175,7 +176,26 @@ typedef struct controller_window_struct {
 
   float last_axis_values[32] = {0.0f};
   Uint8 last_hat_values[16] = {SDL_HAT_CENTERED};
-
+  struct TouchpadState {
+    Uint8 state; // 0=not touching, 1=touching, 2=released (SDL uses 1 for down,
+                 // 2 for up)
+    float x, y;
+  };
+  TouchpadState touchpad_data[4][2]; // up to 4 touchpads, 2 fingers each
+  bool last_button_values[64] = {};
+  bool last_joy_button_values[128] = {};
+  bool highlight_enabled = false;
+  float highlight_color[3] = {1.0f, 0.0f, 0.0f};
+  std::map<int, std::array<float, 3>> original_colors;
+  GLuint touch_area_vao = 0;
+  GLuint touch_area_vbo = 0;
+  GLuint touch_area_ebo = 0;
+  GLuint touch_area_elements = 0;
+  bool show_touch_area = false;
+  GLuint touch_shader = 0;
+  GLuint touch_area_wire_ebo = 0;
+  GLuint touch_area_elements_tri = 0;
+  GLuint touch_area_elements_wire = 0;
 } controller_window;
 
 // Function declarations (unchanged)
@@ -200,4 +220,5 @@ void controller_window_scroll_callback(GLFWwindow *window, double xoffset,
                                        double yoffset);
 void controller_window_iconify_callback(GLFWwindow *window, int iconified);
 
+void createTouchAreaRect(controller_window &w);
 #endif

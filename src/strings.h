@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 #include <string>
 
-extern std::string mesh_names[32];
+extern std::string mesh_names[33];
 extern std::string shell_names[3];
 
 #endif

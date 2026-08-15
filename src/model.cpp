@@ -8,11 +8,14 @@
 #include <functional>
 #include <spdlog/spdlog.h>
 #include <sstream>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+#include <iomanip> // for std::fixed, std::setprecision
 
 // mesh_names is defined in settings_window.cpp – we declare it extern here
-extern std::string mesh_names[32];
+extern std::string mesh_names[33];
 
-std::string model_filenames[32] = {
+std::string model_filenames[33] = {
     "top_shell.obj",    "bottom_shell.obj",  "extra.obj",
     "left_trigger.obj", "right_trigger.obj", "left_stick.obj",
     "right_stick.obj",  "left_ring.obj",     "right_ring.obj",
@@ -25,6 +28,104 @@ std::string model_filenames[32] = {
     "paddle3.obj",      "paddle4.obj",       "touchpad.obj",
     "touch_point1.obj", "touch_point2.obj"};
 
+void writeJson(Model &m, const std::string &path) {
+  std::ofstream json(path);
+  if (!json) {
+    spdlog::error("Failed to write JSON to {}", path);
+    return;
+  }
+  json << std::fixed << std::setprecision(6);
+  json << "{\n  \"parts\": [\n";
+  for (int i = 0; i < 32; ++i) {
+    const Mesh &mesh = m.meshes[i];
+    json << "    {\n";
+    json << "      \"filename\": \"" << model_filenames[i] << "\",\n";
+    json << "      \"position\": [" << mesh.position[0] << ", "
+         << mesh.position[1] << ", " << mesh.position[2] << "],\n";
+    json << "      \"travel\": [" << mesh.travel[0] << ", " << mesh.travel[1]
+         << ", " << mesh.travel[2] << "],\n";
+    json << "      \"popup_offset\": [" << mesh.popup_offset[0] << ", "
+         << mesh.popup_offset[1] << ", " << mesh.popup_offset[2] << "],\n";
+    json << "      \"popup_rotation\": [" << mesh.popup_rotation[0] << ", "
+         << mesh.popup_rotation[1] << ", " << mesh.popup_rotation[2] << "],\n";
+    json << "      \"trigger_max\": " << mesh.trigger_max << ",\n";
+    json << "      \"stick_max\": " << mesh.stick_max << ",\n";
+    json << "      \"touch_width\": " << mesh.touch_width << ",\n";
+    json << "      \"touch_height\": " << mesh.touch_height << ",\n";
+    json << "      \"pivot_offset\": [" << mesh.pivot_offset[0] << ", "
+         << mesh.pivot_offset[1] << ", " << mesh.pivot_offset[2] << "],\n";
+    json << "      \"rotation\": [" << mesh.rotation[0] << ", "
+         << mesh.rotation[1] << ", " << mesh.rotation[2] << "]\n";
+    json << "    }" << (i < 31 ? "," : "") << "\n";
+  }
+  json << "  ]\n}\n";
+}
+
+void readInfoJson(Model &m, const std::string &path) {
+  std::ifstream f(path);
+  if (!f)
+    return;
+  json data;
+  try {
+    f >> data;
+  } catch (...) {
+    spdlog::warn("Failed to parse JSON, falling back to info.txt");
+    readInfo(m, path); // fallback
+    return;
+  }
+  if (!data.contains("parts") || !data["parts"].is_array())
+    return;
+  auto &parts = data["parts"];
+  for (int i = 0; i < 32 && i < parts.size(); ++i) {
+    auto &p = parts[i];
+    Mesh &mesh = m.meshes[i];
+    if (p.contains("position")) {
+      auto arr = p["position"].get<std::array<float, 3>>();
+      mesh.position[0] = arr[0];
+      mesh.position[1] = arr[1];
+      mesh.position[2] = arr[2];
+    }
+    if (p.contains("travel")) {
+      auto arr = p["travel"].get<std::array<float, 3>>();
+      mesh.travel[0] = arr[0];
+      mesh.travel[1] = arr[1];
+      mesh.travel[2] = arr[2];
+    }
+    if (p.contains("popup_offset")) {
+      auto arr = p["popup_offset"].get<std::array<float, 3>>();
+      mesh.popup_offset[0] = arr[0];
+      mesh.popup_offset[1] = arr[1];
+      mesh.popup_offset[2] = arr[2];
+    }
+    if (p.contains("popup_rotation")) {
+      auto arr = p["popup_rotation"].get<std::array<float, 3>>();
+      mesh.popup_rotation[0] = arr[0];
+      mesh.popup_rotation[1] = arr[1];
+      mesh.popup_rotation[2] = arr[2];
+    }
+    if (p.contains("trigger_max"))
+      mesh.trigger_max = p["trigger_max"].get<float>();
+    if (p.contains("stick_max"))
+      mesh.stick_max = p["stick_max"].get<float>();
+    if (p.contains("touch_width"))
+      mesh.touch_width = p["touch_width"].get<float>();
+    if (p.contains("touch_height"))
+      mesh.touch_height = p["touch_height"].get<float>();
+    if (p.contains("pivot_offset")) {
+      auto arr = p["pivot_offset"].get<std::array<float, 3>>();
+      mesh.pivot_offset[0] = arr[0];
+      mesh.pivot_offset[1] = arr[1];
+      mesh.pivot_offset[2] = arr[2];
+    }
+    if (p.contains("rotation")) {
+      auto arr = p["rotation"].get<std::array<float, 3>>();
+      mesh.rotation[0] = arr[0];
+      mesh.rotation[1] = arr[1];
+      mesh.rotation[2] = arr[2];
+    }
+  }
+}
+
 // ------------------------------------------------------------------
 // LEGACY OBJ LOADER (32 meshes from folder)
 // ------------------------------------------------------------------
@@ -35,6 +136,7 @@ void loadModel(Model &m, std::string path) {
   m.imported_meshes.clear();
   m.has_imported_meshes = false;
 
+  // 1. Load all 32 OBJ meshes
   for (int i = 0; i < 32; i++) {
     Mesh new_mesh;
     new_mesh.material.color[0] = 0.8f;
@@ -47,6 +149,7 @@ void loadModel(Model &m, std::string path) {
     m.meshes.push_back(new_mesh);
   }
 
+  // 2. Count valid meshes (just for logging)
   int valid_meshes = 0;
   for (auto &mesh : m.meshes) {
     if (mesh.elements > 0)
@@ -59,8 +162,23 @@ void loadModel(Model &m, std::string path) {
                  valid_meshes, path);
   }
 
-  std::string info_file_path = path + "/info.txt";
-  readInfo(m, info_file_path);
+  // 3. Load info data (JSON preferred, fallback to .txt)
+  std::string jsonPath = path + "/info.json";
+  std::string txtPath = path + "/info.txt";
+
+  if (std::filesystem::exists(jsonPath)) {
+    readInfoJson(m, jsonPath);
+    spdlog::info("Loaded info.json for model at '{}'.", path);
+  } else if (std::filesystem::exists(txtPath)) {
+    readInfo(m, txtPath);
+    spdlog::info("Loaded info.txt for model at '{}'.", path);
+    // Convert to JSON for future use
+    writeJson(m, jsonPath);
+    spdlog::info("Converted info.txt -> info.json for model at '{}'.", path);
+  } else {
+    spdlog::warn("No info file found for model at '{}' – using default values.",
+                 path);
+  }
 }
 bool isFloat(std::string myString) {
   std::istringstream iss(myString);
@@ -238,75 +356,98 @@ void loadMesh(Mesh &m, std::string path) {
 }
 
 void readInfo(Model &m, std::string path) {
-  std::ifstream info_file = std::ifstream(path);
+  std::ifstream info_file(path);
   if (!info_file) {
     spdlog::warn("Info file not found: {}", path);
     return;
   }
-  while (info_file) {
-    std::string line;
-    std::getline(info_file, line);
-    if (line.empty())
-      continue;
+  for (int i = 0; i < 32; ++i) {
+    std::string filename;
+    if (!std::getline(info_file, filename))
+      break;
+    // Remove trailing CR if present (Windows line endings)
+    if (!filename.empty() && filename.back() == '\r')
+      filename.pop_back();
 
-    for (int i = 0; i < 32; i++) {
-      if (line == model_filenames[i]) {
-        for (int p = 0; p < 3; p++) {
-          std::getline(info_file, line);
-          if (isFloat(line))
-            m.meshes[i].position[p] = std::stof(line);
-        }
-        for (int t = 0; t < 3; t++) {
-          std::getline(info_file, line);
-          if (isFloat(line))
-            m.meshes[i].travel[t] = std::stof(line);
-        }
-        for (int po = 0; po < 3; po++) {
-          std::getline(info_file, line);
-          if (isFloat(line))
-            m.meshes[i].popup_offset[po] = std::stof(line);
-        }
-        for (int pr = 0; pr < 3; pr++) {
-          std::getline(info_file, line);
-          if (isFloat(line))
-            m.meshes[i].popup_rotation[pr] = std::stof(line);
-        }
-        std::getline(info_file, line);
-        if (isFloat(line))
-          m.meshes[i].trigger_max = std::stof(line);
-        std::getline(info_file, line);
-        if (isFloat(line))
-          m.meshes[i].stick_max = std::stof(line);
-        std::getline(info_file, line);
-        if (isFloat(line))
-          m.meshes[i].touch_width = std::stof(line);
-        std::getline(info_file, line);
-        if (isFloat(line))
-          m.meshes[i].touch_height = std::stof(line);
-        break;
+    float vals[19] = {
+        0}; // position(3)+travel(3)+popup_offset(3)+popup_rotation(3)+trigger_max+stick_max+touch_width+touch_height+pivot_offset(3)
+    int count = 0;
+    std::string line;
+    while (count < 19 && std::getline(info_file, line)) {
+      if (line.empty())
+        continue;
+      if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+      try {
+        vals[count] = std::stof(line);
+      } catch (...) {
+        vals[count] = 0.0f;
       }
+      count++;
     }
+    // Assign to mesh i
+    Mesh &mesh = m.meshes[i];
+    mesh.position[0] = vals[0];
+    mesh.position[1] = vals[1];
+    mesh.position[2] = vals[2];
+    mesh.travel[0] = vals[3];
+    mesh.travel[1] = vals[4];
+    mesh.travel[2] = vals[5];
+    mesh.popup_offset[0] = vals[6];
+    mesh.popup_offset[1] = vals[7];
+    mesh.popup_offset[2] = vals[8];
+    mesh.popup_rotation[0] = vals[9];
+    mesh.popup_rotation[1] = vals[10];
+    mesh.popup_rotation[2] = vals[11];
+    mesh.trigger_max = vals[12];
+    mesh.stick_max = vals[13];
+    mesh.touch_width = vals[14];
+    mesh.touch_height = vals[15];
+    // If we have 19 values, we have pivot_offset (indices 16,17,18)
+    if (count >= 19) {
+      mesh.pivot_offset[0] = vals[16];
+      mesh.pivot_offset[1] = vals[17];
+      mesh.pivot_offset[2] = vals[18];
+    } else {
+      mesh.pivot_offset[0] = mesh.pivot_offset[1] = mesh.pivot_offset[2] = 0.0f;
+    }
+    // rotation is not saved yet, default 0
+    mesh.rotation[0] = mesh.rotation[1] = mesh.rotation[2] = 0.0f;
   }
 }
-
 void writeInfo(Model &m, std::string path) {
   std::string file_path = path + "/info.txt";
   std::ofstream info_file(file_path);
   for (int i = 0; i < 32; i++) {
     info_file << model_filenames[i] << "\n";
-    for (int pos = 0; pos < 3; pos++)
-      info_file << m.meshes[i].position[pos] << "\n";
-    for (int t = 0; t < 3; t++)
-      info_file << m.meshes[i].travel[t] << "\n";
-    for (int po = 0; po < 3; po++)
-      info_file << m.meshes[i].popup_offset[po] << "\n";
-    for (int pr = 0; pr < 3; pr++)
-      info_file << m.meshes[i].popup_rotation[pr] << "\n";
+    info_file << m.meshes[i].position[0] << "\n";
+    info_file << m.meshes[i].position[1] << "\n";
+    info_file << m.meshes[i].position[2] << "\n";
+    info_file << m.meshes[i].travel[0] << "\n";
+    info_file << m.meshes[i].travel[1] << "\n";
+    info_file << m.meshes[i].travel[2] << "\n";
+    info_file << m.meshes[i].popup_offset[0] << "\n";
+    info_file << m.meshes[i].popup_offset[1] << "\n";
+    info_file << m.meshes[i].popup_offset[2] << "\n";
+    info_file << m.meshes[i].popup_rotation[0] << "\n";
+    info_file << m.meshes[i].popup_rotation[1] << "\n";
+    info_file << m.meshes[i].popup_rotation[2] << "\n";
     info_file << m.meshes[i].trigger_max << "\n";
     info_file << m.meshes[i].stick_max << "\n";
     info_file << m.meshes[i].touch_width << "\n";
     info_file << m.meshes[i].touch_height << "\n";
+    info_file << m.meshes[i].pivot_offset[0] << "\n";
+    info_file << m.meshes[i].pivot_offset[1] << "\n";
+    info_file << m.meshes[i].pivot_offset[2] << "\n";
+    info_file << m.meshes[i].rotation[0] << "\n";
+    info_file << m.meshes[i].rotation[1] << "\n";
+    info_file << m.meshes[i].rotation[2] << "\n";
   }
+  info_file.close();
+
+  // Also write JSON (so future loads use the modern format)
+  std::string json_path = path + "/info.json";
+  writeJson(m, json_path);
 }
 void deleteTexture(GLuint &id) {
   glDeleteTextures(1, &id);
@@ -405,9 +546,35 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
   const Mesh &mesh = m.meshes[meshIndex];
   glm::mat4 model = parentMatrix;
 
+  // Apply mesh position
   model = glm::translate(
       model, glm::vec3(mesh.position[0], mesh.position[1], mesh.position[2]));
 
+  // Translate to pivot point
+  model = glm::translate(model,
+                         glm::vec3(mesh.pivot_offset[0], mesh.pivot_offset[1],
+                                   mesh.pivot_offset[2]));
+
+  // Apply Euler rotation (in radians, convert from degrees stored in
+  // mesh.rotation)
+  model =
+      glm::rotate(model, glm::radians(mesh.rotation[0]), glm::vec3(1, 0, 0));
+  model =
+      glm::rotate(model, glm::radians(mesh.rotation[1]), glm::vec3(0, 1, 0));
+  model =
+      glm::rotate(model, glm::radians(mesh.rotation[2]), glm::vec3(0, 0, 1));
+
+  // Translate back from pivot
+  model = glm::translate(model,
+                         -glm::vec3(mesh.pivot_offset[0], mesh.pivot_offset[1],
+                                    mesh.pivot_offset[2]));
+
+  if (mesh.useCustomScale) {
+    model = glm::scale(model,
+                       glm::vec3(mesh.scale[0], mesh.scale[1], mesh.scale[2]));
+  }
+
+  // ---- Now apply popup or normal stick/trigger/button transforms ----
   if (mesh.popup) {
     model = glm::translate(model,
                            glm::vec3(mesh.popup_offset[0], mesh.popup_offset[1],
@@ -419,7 +586,7 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
     model =
         glm::rotate(model, mesh.popup_rotation[2], glm::vec3(0.0f, 0.0f, 1.0f));
   } else {
-    // Always apply stick rotation (zero for non‑sticks)
+    // Stick rotation (always applied; zero for non‑sticks)
     model = glm::rotate(model, mesh.stick_X / -32767 * mesh.stick_max,
                         glm::vec3(0.0f, 0.0f, 1.0f));
     model = glm::rotate(model, mesh.stick_Y / 32767 * mesh.stick_max,
@@ -433,6 +600,7 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
                                             mesh.travel[2] * mesh.press));
   }
 
+  // Touchpad offset
   if (mesh.touch_state > 0) {
     model = glm::translate(
         model,

@@ -1,6 +1,6 @@
 #include "strings.h"
 
-std::string mesh_names[32] = {
+std::string mesh_names[33] = {
     "top shell",     "bottom shell", "extra",         "left trigger",
     "right trigger", "left stick",   "right stick",   "left ring",
     "right ring",    "a button",     "b button",      "x button",
@@ -8,6 +8,7 @@ std::string mesh_names[32] = {
     "left cap",      "right cap",    "left bumper",   "right bumper",
     "d-pad up",      "d-pad down",   "d-pad left",    "d-pad right",
     "misc",          "paddle 1",     "paddle 2",      "paddle 3",
-    "paddle 4",      "touchpad",     "touch point 1", "touch point 2"};
+    "paddle 4",      "touchpad",     "touch point 1", "touch point 2",
+    "touch area"};
 
 std::string shell_names[3] = {"top shell", "bottom shell", "extra"};

@@ -18,11 +18,13 @@ const std::string grid_vertex_shader_code =
 const std::string grid_fragment_shader_code =
     "#version 410 core\n"
     "\n"
+    "uniform vec3 gridColor;\n"
+    "\n"
     "out vec4 FragColor;\n"
     "\n"
     "void main()\n"
     "{\n"
-    "    FragColor = vec4(0.5, 0.5, 0.5, 1.0);\n"
+    "    FragColor = vec4(gridColor, 1.0);\n"
     "}\n";
 
 const std::string light_source_vertex_shader_code =
@@ -320,4 +322,24 @@ const std::string fragment_shader_code =
     "    if(theta > light.outer_cutoff)\n"
     "        result += diffuse + specular;\n"
     "    return result;\n"
+    "}\n";
+
+const std::string touch_area_vertex_shader_code =
+    "#version 330 core\n"
+    "layout (location = 0) in vec3 aPos;\n"
+    "uniform mat4 model;\n"
+    "uniform mat4 view;\n"
+    "uniform mat4 projection;\n"
+    "void main()\n"
+    "{\n"
+    "    gl_Position = projection * view * model * vec4(aPos, 1.0);\n"
+    "}\n";
+
+const std::string touch_area_fragment_shader_code =
+    "#version 330 core\n"
+    "out vec4 FragColor;\n"
+    "uniform vec3 lightColor;\n"
+    "void main()\n"
+    "{\n"
+    "    FragColor = vec4(lightColor, 1.0);\n"
     "}\n";

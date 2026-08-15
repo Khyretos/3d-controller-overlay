@@ -99,6 +99,10 @@ typedef struct mesh_struct {
   float touch_Y = 0.0f;
 
   int parentIndex = -1;
+  float pivot_offset[3] = {0.0f, 0.0f, 0.0f};
+  float rotation[3] = {0.0f, 0.0f, 0.0f}; // Euler angles in radians
+  float scale[3] = {1.0f, 1.0f, 1.0f};
+  bool useCustomScale = false;
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----
@@ -131,9 +135,11 @@ typedef struct model_struct {
 // model.h
 struct ImportAssignment {
   std::string mesh_name;
-  int assigned_part = -1; // -1 = unassigned, 0-31 = part index
-  float max_angle = 0.0f; // for sticks (5,6) and triggers (3,4)
+  int assigned_part = -1;
+  float max_angle = 0.0f;
   int parent_part = -1;
+  float touch_width = 1.0f;
+  float touch_height = 1.0f;
 };
 
 struct ImportPreviewData {
@@ -168,5 +174,8 @@ void importModelFile(Model &m, const std::string &filepath);
 void applyMeshMapping(Model &m);
 
 void convertImportedToMeshes(Model &m);
+
+glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
+                               const glm::mat4 &parentMatrix);
 
 #endif
