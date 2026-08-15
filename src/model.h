@@ -43,6 +43,7 @@ typedef struct material_struct {
   float shininess = 32.0f;
   float color[3] = {0.3f, 0.3f, 0.3f};
   float highlight[3] = {0.0f, 1.0f, 0.0f};
+  float alpha = 1.0f;
 } Material;
 
 typedef struct face_struct {
@@ -103,6 +104,9 @@ typedef struct mesh_struct {
   float rotation[3] = {0.0f, 0.0f, 0.0f}; // Euler angles in radians
   float scale[3] = {1.0f, 1.0f, 1.0f};
   bool useCustomScale = false;
+  glm::vec3 bboxMin = glm::vec3(FLT_MAX);
+  glm::vec3 bboxMax = glm::vec3(-FLT_MAX);
+  bool hasBBox = false;
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----

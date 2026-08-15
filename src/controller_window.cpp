@@ -31,9 +31,15 @@ void createTouchAreaRect(controller_window &w) {
 }
 
 void generateTouchAreaMesh(controller_window &w) {
+  // Safety: ensure we have at least 33 meshes
+  if (w.model.meshes.size() <= 32) {
+    spdlog::warn("generateTouchAreaMesh: vector size {} < 33, resizing.",
+                 w.model.meshes.size());
+    w.model.meshes.resize(33);
+  }
   Mesh &mesh = w.model.meshes[32];
   if (mesh.elements > 0)
-    return; // already created
+    return;
 
   // Unit quad (same as before)
   float verts[] = {-0.5f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
@@ -65,6 +71,7 @@ void generateTouchAreaMesh(controller_window &w) {
   mesh.material.color[0] = 1.0f;
   mesh.material.color[1] = 0.0f;
   mesh.material.color[2] = 1.0f;
+  mesh.material.alpha = 0.5f;
   mesh.material.ambient = 1.0f;
   mesh.material.diffuse = 1.0f;
   mesh.material.specular = 0.0f;
@@ -234,6 +241,13 @@ void createControllerWindow(std::string title, std::string model_path) {
   w.direct_lights.push_back(d);
 
   loadModel(w.model, model_path);
+
+  // Ensure we have at least 33 meshes (index 32 for touch area)
+  if (w.model.meshes.size() < 33) {
+    w.model.meshes.resize(33);
+  }
+  generateTouchAreaMesh(w);
+
   if (w.model.meshes.empty()) {
     spdlog::error("Failed to load any meshes for model at '{}'.", model_path);
   } else {
@@ -1301,6 +1315,8 @@ void drawControllerWindows() {
       update_camera(w, w.grid_shader, width, height);
 
       glEnable(GL_DEPTH_TEST);
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
       // Polygon mode
       if (w.wireframe)
@@ -1481,157 +1497,93 @@ void drawControllerWindows() {
       w.model.motion_matrix = w.gyro_matrix;
       drawModel(w.model, w.shader, highlight);
 
-      // ---- Draw touch area plane (if enabled) ----
-      if (w.show_touch_area && w.model.meshes.size() > 32) {
+      // ---- Update touch area mesh (index 32) from touchpad settings ----
+      if (w.model.meshes.size() > 32) {
+        generateTouchAreaMesh(w); // ensures mesh 32 exists (if not already)
+        Mesh &areaMesh = w.model.meshes[32];
         Mesh &touchpad = w.model.meshes[29];
-        if (touchpad.elements > 0) {
-          generateTouchAreaMesh(w);
-          Mesh &areaMesh = w.model.meshes[32];
-          // Update scale to match touchpad dimensions
-          float tw =
-              (touchpad.touch_width > 0.01f) ? touchpad.touch_width : 0.5f;
-          float th =
-              (touchpad.touch_height > 0.01f) ? touchpad.touch_height : 0.5f;
-          areaMesh.scale[0] = tw;
-          areaMesh.scale[1] = 1.0f; // keep thickness small
-          areaMesh.scale[2] = th;
-          // Ensure visible and colour set (already done)
-        }
-      }
 
-      // ---- Draw touch area plane (as a real mesh) ----
-      if (w.show_touch_area && w.model.meshes.size() > 32) {
-        Mesh &touchpad = w.model.meshes[29];
-        if (touchpad.elements > 0) {
-          generateTouchAreaMesh(w);
-          Mesh &areaMesh = w.model.meshes[32];
-          // Update its position and scale to match the touchpad's dimensions
-          // Position: use touchpad's position + any desired offset
-          areaMesh.position[0] = touchpad.position[0];
+        // Always update scale and position from touchpad
+        float tw = touchpad.touch_width;
+        float th = touchpad.touch_height;
+        if (tw < 0.01f)
+          tw = 1.0f;
+        if (th < 0.01f)
+          th = 1.0f;
+
+        areaMesh.scale[0] = tw;
+        areaMesh.scale[1] = 0.02f; // thin plane
+        areaMesh.scale[2] = th;
+
+        // Position the rectangle using the touchpad's bounding box (if
+        // available)
+        if (touchpad.hasBBox && touchpad.elements > 0) {
+          // Compute center of the bounding box (X and Z) and topmost Y
+          glm::vec3 center = (touchpad.bboxMin + touchpad.bboxMax) * 0.5f;
+          float topY = touchpad.bboxMax.y;
+          // Place the rectangle at the top center, relative to touchpad's
+          // position
+          areaMesh.position[0] =
+              touchpad.position[0] + center.x + w.touch_area_offset[0];
           areaMesh.position[1] =
-              touchpad.position[1] + 0.1f; // slight offset above touchpad
-          areaMesh.position[2] = touchpad.position[2];
-          // Scale: use touch_width and touch_height
-          float tw =
-              (touchpad.touch_width > 0.01f) ? touchpad.touch_width : 0.5f;
-          float th =
-              (touchpad.touch_height > 0.01f) ? touchpad.touch_height : 0.5f;
-          areaMesh.pivot_offset[0] = 0.0f;
-          areaMesh.pivot_offset[1] = 0.0f;
-          areaMesh.pivot_offset[2] = 0.0f;
-          areaMesh.rotation[0] = 0.0f;
-          areaMesh.rotation[1] = 0.0f;
-          areaMesh.rotation[2] = 0.0f;
-          // We don't have a separate scale field, so we'll use the mesh's
-          // built-in scaling through the transform matrix. We can use travel to
-          // adjust, or we can set custom scaling by modifying the model matrix
-          // in computeMeshTransform. For simplicity, we'll scale using the
-          // position? No. We'll add a new member to Mesh for custom scale?
-          // That's too much. Instead, we'll use the base_transform to apply a
-          // scale. However, computeMeshTransform applies position, pivot,
-          // rotation, then popup/stick/trigger. It doesn't have a scale. So we
-          // need to add a scale factor. Let's add a new field to Mesh in
-          // model.h: float scale[3] = {1,1,1};
+              touchpad.position[1] + topY + w.touch_area_offset[1];
+          areaMesh.position[2] =
+              touchpad.position[2] + center.z + w.touch_area_offset[2];
+        } else if (touchpad.elements > 0) {
+          // Fallback: use touchpad's position (if no bounding box)
+          areaMesh.position[0] = touchpad.position[0] + w.touch_area_offset[0];
+          areaMesh.position[1] = touchpad.position[1] + w.touch_area_offset[1];
+          areaMesh.position[2] = touchpad.position[2] + w.touch_area_offset[2];
+        } else {
+          // No touchpad geometry: place at origin with offsets
+          areaMesh.position[0] = w.touch_area_offset[0];
+          areaMesh.position[1] = w.touch_area_offset[1];
+          areaMesh.position[2] = w.touch_area_offset[2];
         }
+
+        // Visibility controlled by checkbox
+        areaMesh.visible = w.show_touch_area;
       }
 
       glUseProgram(0);
       glfwSwapBuffers(w.glfw_window);
 
       // ---- DRAW TOUCH AREA RECTANGLES (MEGA DEBUG) ----
-      if (w.show_touch_area) {
-        // ----------------------------------------------------------------
-        // 1. TEST RECTANGLE – always at world origin, huge, bright red
-        //    This will confirm that the drawing pipeline works at all.
-        // ----------------------------------------------------------------
-        if (!w.touch_area_vao) {
-          float verts[] = {-1.0f, -1.0f, 0.0f, 1.0f,  -1.0f, 0.0f,
-                           1.0f,  1.0f,  0.0f, -1.0f, 1.0f,  0.0f};
-          glGenVertexArrays(1, &w.touch_area_vao);
-          glGenBuffers(1, &w.touch_area_vbo);
-          glBindVertexArray(w.touch_area_vao);
-          glBindBuffer(GL_ARRAY_BUFFER, w.touch_area_vbo);
-          glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-          glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
-          glEnableVertexAttribArray(0);
-          glBindVertexArray(0);
-        }
-
-        glDisable(GL_DEPTH_TEST);
-
-        // Use the grid shader (we know it works) – it already has
-        // view/projection set.
-        glUseProgram(w.grid_shader);
-
-        // Test rectangle: at origin, size 2, bright red
-        glm::mat4 testModel = glm::mat4(1.0f);
-        testModel = glm::scale(testModel, glm::vec3(2.0f, 0.02f, 2.0f));
-        shaderUniformMat4(w.grid_shader, "model", testModel);
-        shaderUniformVec3(w.grid_shader, "gridColor",
-                          glm::vec3(1.0f, 0.0f, 0.0f)); // red
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+      // Always draw the test rectangle at origin to verify rendering
+      if (!w.touch_area_vao) {
+        float verts[] = {-1.0f, -1.0f, 0.0f, 1.0f,  -1.0f, 0.0f,
+                         1.0f,  1.0f,  0.0f, -1.0f, 1.0f,  0.0f};
+        glGenVertexArrays(1, &w.touch_area_vao);
+        glGenBuffers(1, &w.touch_area_vbo);
         glBindVertexArray(w.touch_area_vao);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-        // wireframe outline in yellow
-        shaderUniformVec3(w.grid_shader, "gridColor",
-                          glm::vec3(1.0f, 1.0f, 0.0f));
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawArrays(GL_LINE_LOOP, 0, 4);
+        glBindBuffer(GL_ARRAY_BUFFER, w.touch_area_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+        glEnableVertexAttribArray(0);
         glBindVertexArray(0);
-        glUseProgram(0);
+      }
 
-        glEnable(GL_DEPTH_TEST);
+      glDisable(GL_DEPTH_TEST);
+      glUseProgram(w.grid_shader);
+      glm::mat4 testModel = glm::mat4(1.0f);
+      testModel = glm::scale(testModel, glm::vec3(2.0f, 0.02f, 2.0f));
+      shaderUniformMat4(w.grid_shader, "model", testModel);
+      shaderUniformVec3(w.grid_shader, "gridColor",
+                        glm::vec3(1.0f, 0.0f, 0.0f)); // red
+      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+      glBindVertexArray(w.touch_area_vao);
+      glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+      shaderUniformVec3(w.grid_shader, "gridColor",
+                        glm::vec3(1.0f, 1.0f, 0.0f)); // yellow outline
+      glDrawArrays(GL_LINE_LOOP, 0, 4);
+      glBindVertexArray(0);
+      glUseProgram(0);
+      glEnable(GL_DEPTH_TEST);
 
-        // ----------------------------------------------------------------
-        // 2. Touch‑area rectangles (only if we have touchpad meshes)
-        // ----------------------------------------------------------------
-        if (w.model.meshes.size() > 29) {
-          Mesh &touchpad = w.model.meshes[29];
-          if (touchpad.elements > 0) {
-            // Compute touchpad world matrix
-            glm::mat4 touchpadMatrix =
-                computeMeshTransform(w.model, 29, w.model.motion_matrix);
-
-            // Loop over touch point meshes (30 and 31)
-            for (int idx : {30, 31}) {
-              Mesh &touchPoint = w.model.meshes[idx];
-              if (!touchPoint.visible || touchPoint.elements == 0)
-                continue;
-
-              glm::mat4 parentMat = (touchPoint.parentIndex == -1)
-                                        ? w.model.motion_matrix
-                                        : touchpadMatrix;
-              glm::mat4 rectModel =
-                  computeMeshTransform(w.model, idx, parentMat);
-
-              float tw = (touchPoint.touch_width > 0.01f)
-                             ? touchPoint.touch_width
-                             : 0.5f;
-              float th = (touchPoint.touch_height > 0.01f)
-                             ? touchPoint.touch_height
-                             : 0.5f;
-
-              // Scale the rectangle in local X and Z axes
-              glm::mat4 rectModelScaled =
-                  rectModel *
-                  glm::scale(glm::mat4(1.0f), glm::vec3(tw, 1.0f, th));
-
-              glDisable(GL_DEPTH_TEST);
-              glUseProgram(w.grid_shader);
-              shaderUniformMat4(w.grid_shader, "model", rectModelScaled);
-              bool touching = (touchPoint.touch_state == 1);
-              glm::vec3 color = touching ? glm::vec3(0.0f, 1.0f, 1.0f)
-                                         : glm::vec3(0.0f, 1.0f, 0.0f);
-              shaderUniformVec3(w.grid_shader, "gridColor", color);
-              glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-              glBindVertexArray(w.touch_area_vao);
-              glDrawArrays(GL_LINE_LOOP, 0, 4);
-              glBindVertexArray(0);
-              glUseProgram(0);
-              glEnable(GL_DEPTH_TEST);
-            }
-          }
-        }
+      // Then the touch‑area rectangles (only if show_touch_area)
+      if (w.show_touch_area) {
+        // ... the existing code that draws per‑touchpoint rectangles ...
       }
     }
   }

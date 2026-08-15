@@ -196,6 +196,8 @@ typedef struct controller_window_struct {
   GLuint touch_area_wire_ebo = 0;
   GLuint touch_area_elements_tri = 0;
   GLuint touch_area_elements_wire = 0;
+  float touch_area_offset[3] = {0.0f, 0.01f,
+                                0.0f}; // X, Y, Z offsets from touchpad position
 } controller_window;
 
 // Function declarations (unchanged)
@@ -221,4 +223,5 @@ void controller_window_scroll_callback(GLFWwindow *window, double xoffset,
 void controller_window_iconify_callback(GLFWwindow *window, int iconified);
 
 void createTouchAreaRect(controller_window &w);
+void generateTouchAreaMesh(controller_window &w);
 #endif

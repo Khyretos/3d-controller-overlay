@@ -1070,6 +1070,13 @@ void drawSettingsWindow() {
                 writeInfo(current_window->model, current_window->model.path);
                 glfwMakeContextCurrent(current_window->glfw_window);
                 loadModel(current_window->model, model_path);
+
+                // Ensure touch area mesh exists
+                if (current_window->model.meshes.size() < 33) {
+                  current_window->model.meshes.resize(33);
+                }
+                generateTouchAreaMesh(*current_window);
+
                 glfwMakeContextCurrent(glfw_settings_window);
               }
             }
@@ -1559,7 +1566,22 @@ void drawSettingsWindow() {
           ImGui::Checkbox("Show Touch Area", &current_window->show_touch_area);
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip(
-                "Draws a yellow wireframe rectangle showing the touch area.");
+                "Draws a magenta rectangle showing the touch area.");
+
+          if (current_window->show_touch_area) {
+            ImGui::SliderFloat("X Offset",
+                               &current_window->touch_area_offset[0], -2.0f,
+                               2.0f, "%.3f");
+            ImGui::SliderFloat("Y Offset",
+                               &current_window->touch_area_offset[1], -2.0f,
+                               2.0f, "%.3f");
+            ImGui::SliderFloat("Z Offset",
+                               &current_window->touch_area_offset[2], -2.0f,
+                               2.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Offset of the touch area rectangle from the "
+                                "touchpad's origin.");
+          }
         }
 
         // Delete popup for selected mesh
@@ -1586,6 +1608,19 @@ void drawSettingsWindow() {
             ImGui::CloseCurrentPopup();
           ImGui::EndPopup();
         }
+      }
+
+      // ---- Custom scale (for touch area and other special meshes) ----
+      if (selectedMesh.useCustomScale) {
+        ImGui::NewLine();
+        ImGui::InputFloat("Scale X", &selectedMesh.scale[0], 0.01f, 1.0f,
+                          "%.2f");
+        ImGui::InputFloat("Scale Y", &selectedMesh.scale[1], 0.01f, 1.0f,
+                          "%.2f");
+        ImGui::InputFloat("Scale Z", &selectedMesh.scale[2], 0.01f, 1.0f,
+                          "%.2f");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Custom scale for this mesh.");
       }
 
       // ---- Auto‑save hint ----
@@ -2968,6 +3003,9 @@ void saveTabs() {
     write_float(std::string("highlight red"), w->highlight_color[0]);
     write_float(std::string("highlight green"), w->highlight_color[1]);
     write_float(std::string("highlight blue"), w->highlight_color[2]);
+    write_float(std::string("touch area offset x"), w->touch_area_offset[0]);
+    write_float(std::string("touch area offset y"), w->touch_area_offset[1]);
+    write_float(std::string("touch area offset z"), w->touch_area_offset[2]);
     write_int(std::string("model meshes"), w->model.meshes.size());
     write_line(std::string("materials"));
     for (int i = 0; i < (int)w->model.meshes.size(); ++i) {
@@ -3343,6 +3381,18 @@ void loadTabs() {
       }
       if (line == "gyro sensitivity") {
         getControllerWindow(tabs.back().ID)->gyro_sensitivity =
+            std::stof(lines[line_index + 1]);
+      }
+      if (line == "touch area offset x") {
+        getControllerWindow(tabs.back().ID)->touch_area_offset[0] =
+            std::stof(lines[line_index + 1]);
+      }
+      if (line == "touch area offset y") {
+        getControllerWindow(tabs.back().ID)->touch_area_offset[1] =
+            std::stof(lines[line_index + 1]);
+      }
+      if (line == "touch area offset z") {
+        getControllerWindow(tabs.back().ID)->touch_area_offset[2] =
             std::stof(lines[line_index + 1]);
       }
       if (line == "gyro enabled") {

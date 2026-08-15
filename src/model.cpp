@@ -179,6 +179,95 @@ void loadModel(Model &m, std::string path) {
     spdlog::warn("No info file found for model at '{}' – using default values.",
                  path);
   }
+
+  // ---- Copy touch area dimensions from touch_point1 (or touch_point2) ----
+  if (m.meshes.size() > 29) {
+    Mesh &touchpad = m.meshes[29];
+    // Only do this if touchpad's values are zero (or tiny)
+    if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
+      // Try touch_point1 (index 30)
+      if (m.meshes.size() > 30) {
+        Mesh &tp1 = m.meshes[30];
+        if (tp1.touch_width > 0.001f && tp1.touch_height > 0.001f) {
+          touchpad.touch_width = tp1.touch_width;
+          touchpad.touch_height = tp1.touch_height;
+          spdlog::info(
+              "Copied touch width={:.3f}, height={:.3f} from touch_point1",
+              touchpad.touch_width, touchpad.touch_height);
+        } else if (m.meshes.size() > 31) {
+          // Fallback to touch_point2 if touch_point1 is invalid
+          Mesh &tp2 = m.meshes[31];
+          if (tp2.touch_width > 0.001f && tp2.touch_height > 0.001f) {
+            touchpad.touch_width = tp2.touch_width;
+            touchpad.touch_height = tp2.touch_height;
+            spdlog::info(
+                "Copied touch width={:.3f}, height={:.3f} from touch_point2",
+                touchpad.touch_width, touchpad.touch_height);
+          }
+        }
+      }
+    }
+  }
+
+  // ---- If we still have zero touch dimensions, try to read them from info.txt
+  // directly ----
+  if (m.meshes.size() > 29) {
+    Mesh &touchpad = m.meshes[29];
+    if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
+      std::string txtPath = path + "/info.txt";
+      std::ifstream info_file(txtPath);
+      if (info_file) {
+        std::string line;
+        while (std::getline(info_file, line)) {
+          // Remove trailing CR
+          if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+          if (line == "touch_point1.obj") {
+            // We need to skip 14 lines (positions, travel, popup, rotation,
+            // trigger, stick) and then read the 15th and 16th lines as
+            // touch_width and touch_height.
+            for (int skip = 0; skip < 14; ++skip) {
+              if (!std::getline(info_file, line))
+                break;
+            }
+            // Read touch_width
+            if (std::getline(info_file, line)) {
+              try {
+                touchpad.touch_width = std::stof(line);
+              } catch (...) {
+              }
+            }
+            // Read touch_height
+            if (std::getline(info_file, line)) {
+              try {
+                touchpad.touch_height = std::stof(line);
+              } catch (...) {
+              }
+            }
+            spdlog::info("Read touch width={:.3f}, height={:.3f} from info.txt",
+                         touchpad.touch_width, touchpad.touch_height);
+            break;
+          }
+        }
+        info_file.close();
+      }
+    }
+  }
+
+  // ---- Auto‑compute touch width/height from touchpad mesh (index 29) ----
+  if (m.meshes.size() > 29) {
+    Mesh &touchpad = m.meshes[29];
+    if (touchpad.hasBBox && touchpad.elements > 0) {
+      // If touch_width/height are zero or very small, compute from bbox
+      if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
+        touchpad.touch_width = touchpad.bboxMax.x - touchpad.bboxMin.x;
+        touchpad.touch_height = touchpad.bboxMax.z - touchpad.bboxMin.z;
+        spdlog::info(
+            "Auto‑computed touchpad width={:.3f}, height={:.3f} from mesh",
+            touchpad.touch_width, touchpad.touch_height);
+      }
+    }
+  }
 }
 bool isFloat(std::string myString) {
   std::istringstream iss(myString);
@@ -292,6 +381,23 @@ void loadMesh(Mesh &m, std::string path) {
     return;
   }
 
+  // After reading all vertices, compute bounding box
+  if (!positions.empty()) {
+    m.hasBBox = true;
+    m.bboxMin = glm::vec3(FLT_MAX);
+    m.bboxMax = glm::vec3(-FLT_MAX);
+    for (const auto &v : positions) {
+      m.bboxMin.x = std::min(m.bboxMin.x, v.x);
+      m.bboxMin.y = std::min(m.bboxMin.y, v.y);
+      m.bboxMin.z = std::min(m.bboxMin.z, v.z);
+      m.bboxMax.x = std::max(m.bboxMax.x, v.x);
+      m.bboxMax.y = std::max(m.bboxMax.y, v.y);
+      m.bboxMax.z = std::max(m.bboxMax.z, v.z);
+    }
+  } else {
+    m.hasBBox = false;
+  }
+
   GLfloat vertex_data[vertices.size() * 8];
   for (unsigned long i = 0; i < vertices.size(); i++) {
     int pos_idx = vertices[i].position;
@@ -369,11 +475,11 @@ void readInfo(Model &m, std::string path) {
     if (!filename.empty() && filename.back() == '\r')
       filename.pop_back();
 
-    float vals[19] = {
-        0}; // position(3)+travel(3)+popup_offset(3)+popup_rotation(3)+trigger_max+stick_max+touch_width+touch_height+pivot_offset(3)
+    // Read exactly 16 numbers per mesh
+    float vals[16];
     int count = 0;
     std::string line;
-    while (count < 19 && std::getline(info_file, line)) {
+    while (count < 16 && std::getline(info_file, line)) {
       if (line.empty())
         continue;
       if (!line.empty() && line.back() == '\r')
@@ -385,6 +491,10 @@ void readInfo(Model &m, std::string path) {
       }
       count++;
     }
+    // If we didn't get 16 values, break (malformed file)
+    if (count < 16)
+      break;
+
     // Assign to mesh i
     Mesh &mesh = m.meshes[i];
     mesh.position[0] = vals[0];
@@ -403,18 +513,10 @@ void readInfo(Model &m, std::string path) {
     mesh.stick_max = vals[13];
     mesh.touch_width = vals[14];
     mesh.touch_height = vals[15];
-    // If we have 19 values, we have pivot_offset (indices 16,17,18)
-    if (count >= 19) {
-      mesh.pivot_offset[0] = vals[16];
-      mesh.pivot_offset[1] = vals[17];
-      mesh.pivot_offset[2] = vals[18];
-    } else {
-      mesh.pivot_offset[0] = mesh.pivot_offset[1] = mesh.pivot_offset[2] = 0.0f;
-    }
-    // rotation is not saved yet, default 0
-    mesh.rotation[0] = mesh.rotation[1] = mesh.rotation[2] = 0.0f;
+    // pivot_offset and rotation remain 0 (default)
   }
 }
+
 void writeInfo(Model &m, std::string path) {
   std::string file_path = path + "/info.txt";
   std::ofstream info_file(file_path);
@@ -436,12 +538,6 @@ void writeInfo(Model &m, std::string path) {
     info_file << m.meshes[i].stick_max << "\n";
     info_file << m.meshes[i].touch_width << "\n";
     info_file << m.meshes[i].touch_height << "\n";
-    info_file << m.meshes[i].pivot_offset[0] << "\n";
-    info_file << m.meshes[i].pivot_offset[1] << "\n";
-    info_file << m.meshes[i].pivot_offset[2] << "\n";
-    info_file << m.meshes[i].rotation[0] << "\n";
-    info_file << m.meshes[i].rotation[1] << "\n";
-    info_file << m.meshes[i].rotation[2] << "\n";
   }
   info_file.close();
 
@@ -449,6 +545,7 @@ void writeInfo(Model &m, std::string path) {
   std::string json_path = path + "/info.json";
   writeJson(m, json_path);
 }
+
 void deleteTexture(GLuint &id) {
   glDeleteTextures(1, &id);
   id = 0;
@@ -524,6 +621,7 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader) {
                     glm::vec3(mesh.material.color[0], mesh.material.color[1],
                               mesh.material.color[2]));
   shaderUniformFloat(shader, "material.shininess", mesh.material.shininess);
+  shaderUniformFloat(shader, "material.alpha", mesh.material.alpha);
 
   shaderUniformVec3(shader, "highlight_color",
                     glm::vec3(mesh.material.highlight[0],
@@ -619,7 +717,8 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index) {
   // LEGACY MODELS – use original matrix construction (unchanged)
   // ============================================================
   if (!m.has_imported_meshes) {
-    for (int i = 0; i < num_meshes; ++i) {
+    for (int i = 0; i < (int)m.meshes.size(); ++i) {
+
       Mesh mesh = m.meshes[i]; // copy to modify popup
 
       // ---- Set popup flags (exactly as original) ----
@@ -633,10 +732,16 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index) {
 
       // ---- Build matrix (EXACT original order and operations) ----
       glm::mat4 model = glm::mat4(1.0f);
-      model *= m.motion_matrix; // gyro or identity
+      model *= m.motion_matrix;
       model =
           glm::translate(model, glm::vec3(mesh.position[0], mesh.position[1],
                                           mesh.position[2]));
+
+      // Apply custom scale if enabled
+      if (mesh.useCustomScale) {
+        model = glm::scale(
+            model, glm::vec3(mesh.scale[0], mesh.scale[1], mesh.scale[2]));
+      }
 
       // Stick rotation (always applied; zero for non‑sticks)
       model = glm::rotate(model, mesh.stick_X / -32767 * mesh.stick_max,
@@ -736,6 +841,7 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index) {
     drawMesh(mesh, finalMatrices[i], shader);
   }
 }
+
 // ------------------------------------------------------------------
 // NEW: CUSTOM MODEL IMPORT (using Assimp) and MAPPING
 // ------------------------------------------------------------------
