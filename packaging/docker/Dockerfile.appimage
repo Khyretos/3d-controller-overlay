@@ -78,8 +78,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy binary, icon, models
 COPY --from=builder /app/build/3dco /app/3dco
-COPY --from=builder /app/icon.png /app/icon.png
-COPY --from=builder /app/models /app/models
+COPY --from=builder /app/assets/icon.png /app/icon.png
+COPY --from=builder /app/assets/models /app/models
 
 # Create AppDir
 RUN mkdir -p /app/AppDir/usr/bin && \

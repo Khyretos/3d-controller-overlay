@@ -24,10 +24,12 @@ CMakeUserPresets.json
 *.cmake
 !CMakeLists.txt
 !*.cmake.in
+!third_party/include/**/*.cmake
 
-# Compiled object files
+# Compiled object files (build output only — not the vendored .obj mesh assets)
 *.o
 *.obj
+!assets/models/**/*.obj
 *.ko
 *.dylib
 *.dll
@@ -83,3 +85,10 @@ Testing/
 *.gcda
 *.gcno
 *.gcov
+
+# Keep vendored prebuilt libs (moved from old top-level /lib)
+!third_party/lib/
+!third_party/lib/**
+
+# Keep Windows runtime redistributables (moved from repo root)
+!packaging/windows/redist/*.dll

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(3dco+)
+project(3dco)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,18 +37,18 @@ endif()
 file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.c)
 list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
-add_executable(3dco+ ${SRC_FILES})
+add_executable(3dco ${SRC_FILES})
 
 # Force inclusion of preinclude.h
-target_compile_options(3dco+ PRIVATE
+target_compile_options(3dco PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
 )
 
 # Include directories
-target_include_directories(3dco+ PRIVATE
+target_include_directories(3dco PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/imgui
-    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/third_party/include
     ${GLFW_INCLUDE_DIRS}
     ${SDL2_INCLUDE_DIRS}
     ${ASSIMP_INCLUDE_DIRS}
@@ -59,7 +59,7 @@ target_include_directories(3dco+ PRIVATE
 # Link libraries
 if(BUILD_STATIC)
     # For static linking, we need to link libraries in the right order and add dependencies
-    target_link_libraries(3dco+
+    target_link_libraries(3dco
         PRIVATE
         ${GLFW_STATIC_LIBRARIES}
         ${SDL2_STATIC_LIBRARIES}
@@ -76,7 +76,7 @@ if(BUILD_STATIC)
         -lm
     )
 else()
-    target_link_libraries(3dco+
+    target_link_libraries(3dco
         PRIVATE
         ${GLFW_LIBRARIES}
         ${SDL2_LIBRARIES}
@@ -90,17 +90,29 @@ endif()
 
 # Platform-specific
 if(WIN32)
-    target_link_libraries(3dco+ ws2_32 winmm)
+    target_link_libraries(3dco ws2_32 winmm)
+
+    # Drop the MinGW/SDL2 runtime DLLs next to the executable for dynamic
+    # (non-static) Windows builds, so 3dco(+) .exe runs without extra setup.
+    if(NOT BUILD_STATIC)
+        file(GLOB WINDOWS_REDIST "${CMAKE_SOURCE_DIR}/packaging/windows/redist/*.dll")
+        foreach(dll ${WINDOWS_REDIST})
+            add_custom_command(TARGET 3dco POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${dll}" "$<TARGET_FILE_DIR:3dco>"
+            )
+        endforeach()
+    endif()
 endif()
 
-# Copy models
-add_custom_command(TARGET 3dco+ POST_BUILD
+# Copy models next to the built executable
+add_custom_command(TARGET 3dco POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/models
+        ${CMAKE_SOURCE_DIR}/assets/models
         ${CMAKE_BINARY_DIR}/models
 )
 
 # Install
-install(TARGETS 3dco+ RUNTIME DESTINATION bin)
-install(FILES icon.png DESTINATION share/icons/hicolor/256x256/apps)
-install(DIRECTORY models/ DESTINATION share/3dco+/models)
+install(TARGETS 3dco RUNTIME DESTINATION bin)
+install(FILES assets/icon.png DESTINATION share/icons/hicolor/256x256/apps)
+install(DIRECTORY assets/models/ DESTINATION share/3dco/models)
