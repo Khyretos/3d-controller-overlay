@@ -13,9 +13,42 @@ using json = nlohmann::json;
 #include <iomanip> // for std::fixed, std::setprecision
 
 // mesh_names is defined in settings_window.cpp – we declare it extern here
-extern std::string mesh_names[33];
+extern std::string mesh_names[35];
 
-std::string model_filenames[33] = {
+static std::string escapeJson(const std::string &s) {
+  std::string out;
+  for (char c : s) {
+    switch (c) {
+    case '"':
+      out += "\\\"";
+      break;
+    case '\\':
+      out += "\\\\";
+      break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      out += c;
+      break;
+    }
+  }
+  return out;
+}
+
+std::string model_filenames[35] = {
     "top_shell.obj",    "bottom_shell.obj",  "extra.obj",
     "left_trigger.obj", "right_trigger.obj", "left_stick.obj",
     "right_stick.obj",  "left_ring.obj",     "right_ring.obj",
@@ -26,7 +59,8 @@ std::string model_filenames[33] = {
     "dpad_down.obj",    "dpad_left.obj",     "dpad_right.obj",
     "misc.obj",         "paddle1.obj",       "paddle2.obj",
     "paddle3.obj",      "paddle4.obj",       "touchpad.obj",
-    "touch_point1.obj", "touch_point2.obj"};
+    "touch_point1.obj", "touch_point2.obj",  "touchpad2.obj",
+    "touch_point3.obj", "touch_point4.obj"};
 
 void writeJson(Model &m, const std::string &path) {
   std::ofstream json(path);
@@ -36,10 +70,12 @@ void writeJson(Model &m, const std::string &path) {
   }
   json << std::fixed << std::setprecision(6);
   json << "{\n  \"parts\": [\n";
-  for (int i = 0; i < 32; ++i) {
+  for (size_t i = 0; i < m.meshes.size(); ++i) {
     const Mesh &mesh = m.meshes[i];
     json << "    {\n";
-    json << "      \"filename\": \"" << model_filenames[i] << "\",\n";
+    json << "      \"filename\": \"" << escapeJson(mesh.filename) << "\",\n";
+    json << "      \"name\": \"" << escapeJson(mesh.name) << "\",\n";
+    json << "      \"assigned_part\": " << mesh.assignedPart << ",\n";
     json << "      \"position\": [" << mesh.position[0] << ", "
          << mesh.position[1] << ", " << mesh.position[2] << "],\n";
     json << "      \"travel\": [" << mesh.travel[0] << ", " << mesh.travel[1]
@@ -55,12 +91,18 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"pivot_offset\": [" << mesh.pivot_offset[0] << ", "
          << mesh.pivot_offset[1] << ", " << mesh.pivot_offset[2] << "],\n";
     json << "      \"rotation\": [" << mesh.rotation[0] << ", "
-         << mesh.rotation[1] << ", " << mesh.rotation[2] << "]\n";
-    json << "    }" << (i < 31 ? "," : "") << "\n";
+         << mesh.rotation[1] << ", " << mesh.rotation[2] << "],\n";
+    json << "      \"parent\": " << mesh.parentIndex << ",\n";
+    json << "      \"press_color\": [" << mesh.press_color[0] << ", "
+         << mesh.press_color[1] << ", " << mesh.press_color[2] << "],\n";
+    json << "      \"use_joystick\": " << (mesh.useJoystick ? "true" : "false")
+         << "\n";
+    json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
   }
-  json << "  ]\n}\n";
+  json << "  ],\n";
+  json << "  \"source\": \"" << escapeJson(m.source) << "\"\n";
+  json << "}\n";
 }
-
 void readInfoJson(Model &m, const std::string &path) {
   std::ifstream f(path);
   if (!f)
@@ -69,16 +111,31 @@ void readInfoJson(Model &m, const std::string &path) {
   try {
     f >> data;
   } catch (...) {
-    spdlog::warn("Failed to parse JSON, falling back to info.txt");
-    readInfo(m, path); // fallback
+    spdlog::warn("Failed to parse JSON: {}", path);
     return;
   }
+
   if (!data.contains("parts") || !data["parts"].is_array())
     return;
   auto &parts = data["parts"];
-  for (int i = 0; i < 32 && i < parts.size(); ++i) {
-    auto &p = parts[i];
-    Mesh &mesh = m.meshes[i];
+  m.meshes.clear();
+  m.meshes.reserve(parts.size());
+
+  for (auto &p : parts) {
+    Mesh mesh;
+    // Load OBJ file
+    std::string filename = p.value("filename", "");
+    mesh.filename = filename;
+    if (filename.empty())
+      continue;
+    std::string objPath = m.path + "/" + filename;
+    loadMesh(mesh, objPath);
+    if (mesh.elements == 0) {
+      spdlog::warn("Failed to load OBJ: {}", objPath);
+      continue;
+    }
+
+    // Read properties
     if (p.contains("position")) {
       auto arr = p["position"].get<std::array<float, 3>>();
       mesh.position[0] = arr[0];
@@ -123,9 +180,30 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.rotation[1] = arr[1];
       mesh.rotation[2] = arr[2];
     }
-  }
-}
+    if (p.contains("parent"))
+      mesh.parentIndex = p["parent"].get<int>();
+    if (p.contains("use_joystick"))
+      mesh.useJoystick = p["use_joystick"].get<bool>();
+    if (p.contains("assigned_part"))
+      mesh.assignedPart = p["assigned_part"].get<int>();
+    mesh.name = p.value("name", filename);
+    if (p.contains("press_color")) {
+      auto arr = p["press_color"].get<std::array<float, 3>>();
+      mesh.press_color[0] = arr[0];
+      mesh.press_color[1] = arr[1];
+      mesh.press_color[2] = arr[2];
+    } else {
+      // default to zero (use global)
+      mesh.press_color[0] = mesh.press_color[1] = mesh.press_color[2] = 0.0f;
+    }
 
+    m.meshes.push_back(std::move(mesh));
+  }
+
+  if (data.contains("source"))
+    m.source = data["source"].get<std::string>();
+  spdlog::info("Loaded {} meshes from JSON", m.meshes.size());
+}
 // ------------------------------------------------------------------
 // LEGACY OBJ LOADER (32 meshes from folder)
 // ------------------------------------------------------------------
@@ -133,142 +211,93 @@ void readInfoJson(Model &m, const std::string &path) {
 void loadModel(Model &m, std::string path) {
   m.path = path;
   m.meshes.clear();
-  m.imported_meshes.clear();
-  m.has_imported_meshes = false;
 
-  // 1. Load all 32 OBJ meshes
-  for (int i = 0; i < 32; i++) {
-    Mesh new_mesh;
-    new_mesh.material.color[0] = 0.8f;
-    new_mesh.material.color[1] = 0.8f;
-    new_mesh.material.color[2] = 0.8f;
-    new_mesh.material.specular = 0.2f;
-    new_mesh.material.shininess = 32.0f;
-    std::string file_path = path + "/" + model_filenames[i];
-    loadMesh(new_mesh, file_path);
-    m.meshes.push_back(new_mesh);
-  }
-
-  // 2. Count valid meshes (just for logging)
-  int valid_meshes = 0;
-  for (auto &mesh : m.meshes) {
-    if (mesh.elements > 0)
-      valid_meshes++;
-  }
-  if (valid_meshes == 0) {
-    spdlog::error("No valid meshes loaded for model at '{}'.", path);
-  } else {
-    spdlog::info("Loaded {} valid meshes out of 32 for model at '{}'.",
-                 valid_meshes, path);
-  }
-
-  // 3. Load info data (JSON preferred, fallback to .txt)
+  // 1. Try to read info.json first
   std::string jsonPath = path + "/info.json";
-  std::string txtPath = path + "/info.txt";
-
   if (std::filesystem::exists(jsonPath)) {
     readInfoJson(m, jsonPath);
-    spdlog::info("Loaded info.json for model at '{}'.", path);
-  } else if (std::filesystem::exists(txtPath)) {
-    readInfo(m, txtPath);
-    spdlog::info("Loaded info.txt for model at '{}'.", path);
+    spdlog::info("Loaded model from JSON: {}", path);
+    return;
+  }
+
+  // 2. Fallback to info.txt (legacy)
+  std::string txtPath = path + "/info.txt";
+  if (std::filesystem::exists(txtPath)) {
+    // Read legacy info.txt (35 entries)
+    std::ifstream info_file(txtPath);
+    if (!info_file) {
+      spdlog::warn("Info file not found: {}", txtPath);
+      return;
+    }
+
+    m.meshes.resize(35); // legacy fixed size
+
+    std::string line;
+    int meshIdx = 0;
+    while (std::getline(info_file, line)) {
+      if (line.empty())
+        continue;
+      if (meshIdx >= 35)
+        break; // ignore extra
+
+      // Skip the filename line (we already have it)
+      // Read 16 numbers
+      float vals[16];
+      int count = 0;
+      while (count < 16 && std::getline(info_file, line)) {
+        if (line.empty())
+          continue;
+        try {
+          vals[count] = std::stof(line);
+        } catch (...) {
+          vals[count] = 0.0f;
+        }
+        count++;
+      }
+      if (count < 16) {
+        spdlog::warn("Info.txt ended early for mesh {}", meshIdx);
+        break;
+      }
+
+      Mesh &mesh = m.meshes[meshIdx];
+      mesh.position[0] = vals[0];
+      mesh.position[1] = vals[1];
+      mesh.position[2] = vals[2];
+      mesh.travel[0] = vals[3];
+      mesh.travel[1] = vals[4];
+      mesh.travel[2] = vals[5];
+      mesh.popup_offset[0] = vals[6];
+      mesh.popup_offset[1] = vals[7];
+      mesh.popup_offset[2] = vals[8];
+      mesh.popup_rotation[0] = vals[9];
+      mesh.popup_rotation[1] = vals[10];
+      mesh.popup_rotation[2] = vals[11];
+      mesh.trigger_max = vals[12];
+      mesh.stick_max = vals[13];
+      mesh.touch_width = vals[14];
+      mesh.touch_height = vals[15];
+
+      // Load the OBJ file
+      std::string objPath = path + "/" + model_filenames[meshIdx];
+      mesh.filename = model_filenames[meshIdx];
+      loadMesh(mesh, objPath);
+      // Set assignedPart to the index (legacy: part index = mesh index)
+      mesh.assignedPart = meshIdx;
+      mesh.name = mesh_names[meshIdx]; // use the fixed name from arrays
+
+      meshIdx++;
+    }
+
     // Convert to JSON for future use
     writeJson(m, jsonPath);
-    spdlog::info("Converted info.txt -> info.json for model at '{}'.", path);
-  } else {
-    spdlog::warn("No info file found for model at '{}' – using default values.",
-                 path);
+    spdlog::info("Converted legacy info.txt to JSON for model at '{}'.", path);
+    return;
   }
 
-  // ---- Copy touch area dimensions from touch_point1 (or touch_point2) ----
-  if (m.meshes.size() > 29) {
-    Mesh &touchpad = m.meshes[29];
-    // Only do this if touchpad's values are zero (or tiny)
-    if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
-      // Try touch_point1 (index 30)
-      if (m.meshes.size() > 30) {
-        Mesh &tp1 = m.meshes[30];
-        if (tp1.touch_width > 0.001f && tp1.touch_height > 0.001f) {
-          touchpad.touch_width = tp1.touch_width;
-          touchpad.touch_height = tp1.touch_height;
-          spdlog::info(
-              "Copied touch width={:.3f}, height={:.3f} from touch_point1",
-              touchpad.touch_width, touchpad.touch_height);
-        } else if (m.meshes.size() > 31) {
-          // Fallback to touch_point2 if touch_point1 is invalid
-          Mesh &tp2 = m.meshes[31];
-          if (tp2.touch_width > 0.001f && tp2.touch_height > 0.001f) {
-            touchpad.touch_width = tp2.touch_width;
-            touchpad.touch_height = tp2.touch_height;
-            spdlog::info(
-                "Copied touch width={:.3f}, height={:.3f} from touch_point2",
-                touchpad.touch_width, touchpad.touch_height);
-          }
-        }
-      }
-    }
-  }
-
-  // ---- If we still have zero touch dimensions, try to read them from info.txt
-  // directly ----
-  if (m.meshes.size() > 29) {
-    Mesh &touchpad = m.meshes[29];
-    if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
-      std::string txtPath = path + "/info.txt";
-      std::ifstream info_file(txtPath);
-      if (info_file) {
-        std::string line;
-        while (std::getline(info_file, line)) {
-          // Remove trailing CR
-          if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-          if (line == "touch_point1.obj") {
-            // We need to skip 14 lines (positions, travel, popup, rotation,
-            // trigger, stick) and then read the 15th and 16th lines as
-            // touch_width and touch_height.
-            for (int skip = 0; skip < 14; ++skip) {
-              if (!std::getline(info_file, line))
-                break;
-            }
-            // Read touch_width
-            if (std::getline(info_file, line)) {
-              try {
-                touchpad.touch_width = std::stof(line);
-              } catch (...) {
-              }
-            }
-            // Read touch_height
-            if (std::getline(info_file, line)) {
-              try {
-                touchpad.touch_height = std::stof(line);
-              } catch (...) {
-              }
-            }
-            spdlog::info("Read touch width={:.3f}, height={:.3f} from info.txt",
-                         touchpad.touch_width, touchpad.touch_height);
-            break;
-          }
-        }
-        info_file.close();
-      }
-    }
-  }
-
-  // ---- Auto‑compute touch width/height from touchpad mesh (index 29) ----
-  if (m.meshes.size() > 29) {
-    Mesh &touchpad = m.meshes[29];
-    if (touchpad.hasBBox && touchpad.elements > 0) {
-      // If touch_width/height are zero or very small, compute from bbox
-      if (touchpad.touch_width < 0.001f || touchpad.touch_height < 0.001f) {
-        touchpad.touch_width = touchpad.bboxMax.x - touchpad.bboxMin.x;
-        touchpad.touch_height = touchpad.bboxMax.z - touchpad.bboxMin.z;
-        spdlog::info(
-            "Auto‑computed touchpad width={:.3f}, height={:.3f} from mesh",
-            touchpad.touch_width, touchpad.touch_height);
-      }
-    }
-  }
+  // 3. No info file – create an empty model (no meshes)
+  spdlog::warn("No info file found for model at '{}'.", path);
 }
+
 bool isFloat(std::string myString) {
   std::istringstream iss(myString);
   float f;
@@ -467,60 +496,83 @@ void readInfo(Model &m, std::string path) {
     spdlog::warn("Info file not found: {}", path);
     return;
   }
-  for (int i = 0; i < 32; ++i) {
-    std::string filename;
-    if (!std::getline(info_file, filename))
-      break;
-    // Remove trailing CR if present (Windows line endings)
-    if (!filename.empty() && filename.back() == '\r')
-      filename.pop_back();
 
-    // Read exactly 16 numbers per mesh
+  spdlog::info("Reading info file: {}", path);
+
+  int mesh_count = 0;
+  std::string line;
+  while (std::getline(info_file, line)) {
+    // Remove trailing CR if present
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    if (line.empty())
+      continue; // skip empty lines
+
+    if (mesh_count >= 35) {
+      spdlog::warn(
+          "Info file has more than 35 meshes, ignoring extra entries.");
+      break;
+    }
+
+    // Read 16 numbers for this mesh
     float vals[16];
     int count = 0;
-    std::string line;
     while (count < 16 && std::getline(info_file, line)) {
-      if (line.empty())
-        continue;
       if (!line.empty() && line.back() == '\r')
         line.pop_back();
+      if (line.empty())
+        continue;
       try {
         vals[count] = std::stof(line);
       } catch (...) {
+        spdlog::warn("Failed to parse number at line: {}", line);
         vals[count] = 0.0f;
       }
       count++;
     }
-    // If we didn't get 16 values, break (malformed file)
-    if (count < 16)
-      break;
 
-    // Assign to mesh i
-    Mesh &mesh = m.meshes[i];
-    mesh.position[0] = vals[0];
-    mesh.position[1] = vals[1];
-    mesh.position[2] = vals[2];
-    mesh.travel[0] = vals[3];
-    mesh.travel[1] = vals[4];
-    mesh.travel[2] = vals[5];
-    mesh.popup_offset[0] = vals[6];
-    mesh.popup_offset[1] = vals[7];
-    mesh.popup_offset[2] = vals[8];
-    mesh.popup_rotation[0] = vals[9];
-    mesh.popup_rotation[1] = vals[10];
-    mesh.popup_rotation[2] = vals[11];
-    mesh.trigger_max = vals[12];
-    mesh.stick_max = vals[13];
-    mesh.touch_width = vals[14];
-    mesh.touch_height = vals[15];
-    // pivot_offset and rotation remain 0 (default)
+    if (count < 16) {
+      spdlog::warn("Info file ended unexpectedly after {} numbers for mesh {}",
+                   count, mesh_count);
+      break;
+    }
+
+    // Assign to mesh index mesh_count
+    if (mesh_count < (int)m.meshes.size()) {
+      Mesh &mesh = m.meshes[mesh_count];
+      mesh.position[0] = vals[0];
+      mesh.position[1] = vals[1];
+      mesh.position[2] = vals[2];
+      mesh.travel[0] = vals[3];
+      mesh.travel[1] = vals[4];
+      mesh.travel[2] = vals[5];
+      mesh.popup_offset[0] = vals[6];
+      mesh.popup_offset[1] = vals[7];
+      mesh.popup_offset[2] = vals[8];
+      mesh.popup_rotation[0] = vals[9];
+      mesh.popup_rotation[1] = vals[10];
+      mesh.popup_rotation[2] = vals[11];
+      mesh.trigger_max = vals[12];
+      mesh.stick_max = vals[13];
+      mesh.touch_width = vals[14];
+      mesh.touch_height = vals[15];
+      if (mesh_count < 3) { // log first few meshes
+        spdlog::debug("Read mesh {}: pos({:.3f},{:.3f},{:.3f})", mesh_count,
+                      mesh.position[0], mesh.position[1], mesh.position[2]);
+      }
+    } else {
+      spdlog::warn("Mesh index {} out of range, ignoring.", mesh_count);
+    }
+    mesh_count++;
   }
+
+  spdlog::info("Read {} meshes from info.txt", mesh_count);
 }
 
 void writeInfo(Model &m, std::string path) {
   std::string file_path = path + "/info.txt";
   std::ofstream info_file(file_path);
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < 35; i++) {
     info_file << model_filenames[i] << "\n";
     info_file << m.meshes[i].position[0] << "\n";
     info_file << m.meshes[i].position[1] << "\n";
@@ -586,7 +638,8 @@ void loadTexture(GLuint &id, std::string path) {
   stbi_image_free(data);
 }
 
-void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader) {
+void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
+              const glm::vec3 &pressColor) {
   if (!mesh.vao || mesh.elements == 0)
     return;
 
@@ -634,6 +687,11 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader) {
   shaderUniformMat3(shader, "normal_model",
                     glm::transpose(glm::inverse(normal)));
 
+  shaderUniformVec3(
+      shader, "pressColor",
+      glm::vec3(mesh.press_color[0], mesh.press_color[1], mesh.press_color[2]));
+  shaderUniformFloat(shader, "pressValue", mesh.press);
+
   if (mesh.visible) {
     glDrawElements(GL_TRIANGLES, mesh.elements, GL_UNSIGNED_INT, 0);
   }
@@ -653,8 +711,8 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
                          glm::vec3(mesh.pivot_offset[0], mesh.pivot_offset[1],
                                    mesh.pivot_offset[2]));
 
-  // Apply Euler rotation (in radians, convert from degrees stored in
-  // mesh.rotation)
+  // ---- Apply ALL rotations while at the pivot ----
+  // Mesh Euler rotation
   model =
       glm::rotate(model, glm::radians(mesh.rotation[0]), glm::vec3(1, 0, 0));
   model =
@@ -662,17 +720,27 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
   model =
       glm::rotate(model, glm::radians(mesh.rotation[2]), glm::vec3(0, 0, 1));
 
-  // Translate back from pivot
+  // Stick rotation (always applied; zero for non‑sticks)
+  model = glm::rotate(model, mesh.stick_X / -32767 * mesh.stick_max,
+                      glm::vec3(0.0f, 0.0f, 1.0f));
+  model = glm::rotate(model, mesh.stick_Y / 32767 * mesh.stick_max,
+                      glm::vec3(1.0f, 0.0f, 0.0f));
+  // Trigger rotation
+  model = glm::rotate(model, mesh.pull / -32767 * mesh.trigger_max,
+                      glm::vec3(1.0f, 0.0f, 0.0f));
+
+  // ---- Translate back from pivot ----
   model = glm::translate(model,
                          -glm::vec3(mesh.pivot_offset[0], mesh.pivot_offset[1],
                                     mesh.pivot_offset[2]));
 
+  // ---- Custom scale (if enabled) ----
   if (mesh.useCustomScale) {
     model = glm::scale(model,
                        glm::vec3(mesh.scale[0], mesh.scale[1], mesh.scale[2]));
   }
 
-  // ---- Now apply popup or normal stick/trigger/button transforms ----
+  // ---- Popup or button travel (translations) ----
   if (mesh.popup) {
     model = glm::translate(model,
                            glm::vec3(mesh.popup_offset[0], mesh.popup_offset[1],
@@ -684,21 +752,13 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
     model =
         glm::rotate(model, mesh.popup_rotation[2], glm::vec3(0.0f, 0.0f, 1.0f));
   } else {
-    // Stick rotation (always applied; zero for non‑sticks)
-    model = glm::rotate(model, mesh.stick_X / -32767 * mesh.stick_max,
-                        glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::rotate(model, mesh.stick_Y / 32767 * mesh.stick_max,
-                        glm::vec3(1.0f, 0.0f, 0.0f));
-    // Trigger rotation
-    model = glm::rotate(model, mesh.pull / -32767 * mesh.trigger_max,
-                        glm::vec3(1.0f, 0.0f, 0.0f));
-    // Button travel
+    // Button press travel
     model = glm::translate(model, glm::vec3(mesh.travel[0] * mesh.press,
                                             mesh.travel[1] * mesh.press,
                                             mesh.travel[2] * mesh.press));
   }
 
-  // Touchpad offset
+  // ---- Touchpad offset ----
   if (mesh.touch_state > 0) {
     model = glm::translate(
         model,
@@ -710,100 +770,50 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
   return model;
 }
 
-void drawModel(Model m, GLuint shader, int highlight_mesh_index) {
-  int num_meshes = m.meshes.size();
-
-  // ============================================================
-  // LEGACY MODELS – use original matrix construction (unchanged)
-  // ============================================================
-  if (!m.has_imported_meshes) {
-    for (int i = 0; i < (int)m.meshes.size(); ++i) {
-
-      Mesh mesh = m.meshes[i]; // copy to modify popup
-
-      // ---- Set popup flags (exactly as original) ----
-      mesh.popup = false;
-      if (m.popup_bumpers && (i == 18 || i == 19))
-        mesh.popup = true;
-      if (m.popup_triggers && (i == 3 || i == 4))
-        mesh.popup = true;
-      if (m.popup_paddles && (i >= 25 && i <= 28))
-        mesh.popup = true;
-
-      // ---- Build matrix (EXACT original order and operations) ----
-      glm::mat4 model = glm::mat4(1.0f);
-      model *= m.motion_matrix;
-      model =
-          glm::translate(model, glm::vec3(mesh.position[0], mesh.position[1],
-                                          mesh.position[2]));
-
-      // Apply custom scale if enabled
-      if (mesh.useCustomScale) {
-        model = glm::scale(
-            model, glm::vec3(mesh.scale[0], mesh.scale[1], mesh.scale[2]));
-      }
-
-      // Stick rotation (always applied; zero for non‑sticks)
-      model = glm::rotate(model, mesh.stick_X / -32767 * mesh.stick_max,
-                          glm::vec3(0.0f, 0.0f, 1.0f));
-      model = glm::rotate(model, mesh.stick_Y / 32767 * mesh.stick_max,
-                          glm::vec3(1.0f, 0.0f, 0.0f));
-
-      if (mesh.popup) {
-        model = glm::translate(model, glm::vec3(mesh.popup_offset[0],
-                                                mesh.popup_offset[1],
-                                                mesh.popup_offset[2]));
-        model = glm::rotate(model, mesh.popup_rotation[0],
-                            glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::rotate(model, mesh.popup_rotation[1],
-                            glm::vec3(0.0f, 1.0f, 0.0f));
-        model = glm::rotate(model, mesh.popup_rotation[2],
-                            glm::vec3(0.0f, 0.0f, 1.0f));
-      } else {
-        // Button travel
-        model = glm::translate(model, glm::vec3(mesh.travel[0] * mesh.press,
-                                                mesh.travel[1] * mesh.press,
-                                                mesh.travel[2] * mesh.press));
-        // Trigger rotation
-        model = glm::rotate(model, mesh.pull / -32767 * mesh.trigger_max,
-                            glm::vec3(1.0f, 0.0f, 0.0f));
-      }
-
-      // Touchpad offset
-      if (mesh.touch_state > 0) {
-        model = glm::translate(
-            model,
-            glm::vec3(
-                (mesh.touch_X * mesh.touch_width) - mesh.touch_width * 0.5, 0,
-                (mesh.touch_Y * mesh.touch_height) - mesh.touch_height * 0.5));
-      }
-
-      // ---- Highlight ----
-      if (i == highlight_mesh_index) {
-        mesh.material.color[0] = 0.0f;
-        mesh.material.color[1] = 1.0f;
-        mesh.material.color[2] = 0.0f;
-      }
-
-      drawMesh(mesh, model, shader);
-    }
-    return;
+glm::mat4 getMeshFinalMatrix(const Model &m, int idx, const glm::mat4 &parent) {
+  if (idx < 0 || idx >= (int)m.meshes.size())
+    return glm::mat4(1.0f);
+  const Mesh &mesh = m.meshes[idx];
+  if (mesh.parentIndex != -1) {
+    glm::mat4 parentMat = getMeshFinalMatrix(m, mesh.parentIndex, parent);
+    return computeMeshTransform(m, idx, parentMat);
+  } else {
+    return computeMeshTransform(m, idx, parent);
   }
+}
 
-  // ============================================================
-  // IMPORTED MODELS – use parent‑child logic
-  // ============================================================
+void drawModel(Model m, GLuint shader, int highlight_mesh_index,
+               const glm::vec3 &globalPressColor) {
+  int num_meshes = (int)m.meshes.size();
   std::vector<glm::mat4> finalMatrices(num_meshes, glm::mat4(1.0f));
   std::vector<bool> computed(num_meshes, false);
 
-  // First pass: root meshes (parentIndex == -1)
+  // ---- Set popup flags and highlight colours ----
+  for (int i = 0; i < num_meshes; ++i) {
+    Mesh &mesh = m.meshes[i];
+    mesh.popup = false;
+    int part = mesh.assignedPart;
+    if (m.popup_bumpers && (part == 18 || part == 19))
+      mesh.popup = true;
+    if (m.popup_triggers && (part == 3 || part == 4))
+      mesh.popup = true;
+    if (m.popup_paddles && (part >= 25 && part <= 28))
+      mesh.popup = true;
+    if (i == highlight_mesh_index) {
+      mesh.material.color[0] = 0.0f;
+      mesh.material.color[1] = 1.0f;
+      mesh.material.color[2] = 0.0f;
+    }
+  }
+
+  // ---- Compute matrices (parent-child hierarchy) ----
+  // First pass: roots (parentIndex == -1)
   for (int i = 0; i < num_meshes; ++i) {
     if (m.meshes[i].parentIndex == -1) {
       finalMatrices[i] = computeMeshTransform(m, i, m.motion_matrix);
       computed[i] = true;
     }
   }
-
   // Second pass: children
   for (int i = 0; i < num_meshes; ++i) {
     if (computed[i])
@@ -814,31 +824,45 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index) {
       computed[i] = true;
     }
   }
-
-  // Fallback
+  // Fallback for any remaining
   for (int i = 0; i < num_meshes; ++i) {
     if (!computed[i]) {
-      finalMatrices[i] = computeMeshTransform(m, i, glm::mat4(1.0f));
+      finalMatrices[i] = computeMeshTransform(m, i, m.motion_matrix);
     }
   }
 
-  // Draw all imported meshes
+  // ---- Draw ----
   for (int i = 0; i < num_meshes; ++i) {
-    Mesh mesh = m.meshes[i];
-    mesh.popup = false;
-    if (m.popup_bumpers && (i == 18 || i == 19))
-      mesh.popup = true;
-    if (m.popup_triggers && (i == 3 || i == 4))
-      mesh.popup = true;
-    if (m.popup_paddles && (i >= 25 && i <= 28))
-      mesh.popup = true;
+    Mesh &mesh = m.meshes[i]; // use reference so we can modify temporarily
 
-    if (i == highlight_mesh_index) {
-      mesh.material.color[0] = 0.0f;
-      mesh.material.color[1] = 1.0f;
-      mesh.material.color[2] = 0.0f;
+    // ---- Touch point glow (fading trail effect) ----
+    if (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
+        mesh.assignedPart == 33 || mesh.assignedPart == 34) {
+      if (mesh.glow_intensity > 0.001f) {
+        // Force white material so the glow texture colour shows
+        mesh.material.color[0] = 1.0f;
+        mesh.material.color[1] = 1.0f;
+        mesh.material.color[2] = 1.0f;
+        // Alpha controls the glow brightness
+        mesh.material.alpha = mesh.glow_intensity;
+        mesh.visible = true;
+      } else {
+        mesh.visible = false;
+      }
     }
-    drawMesh(mesh, finalMatrices[i], shader);
+
+    // ---- Compute effective press color ----
+    glm::vec3 pressCol;
+    if (mesh.press_color[0] != 0.0f || mesh.press_color[1] != 0.0f ||
+        mesh.press_color[2] != 0.0f) {
+      pressCol = glm::vec3(mesh.press_color[0], mesh.press_color[1],
+                           mesh.press_color[2]);
+    } else {
+      pressCol = globalPressColor;
+    }
+
+    // ---- Draw the mesh ----
+    drawMesh(mesh, finalMatrices[i], shader, pressCol);
   }
 }
 
@@ -904,7 +928,7 @@ void applyMeshMapping(Model &m) {
   // For each imported mesh that has an assigned part, replace the corresponding
   // mesh in m.meshes
   for (auto &imported : m.imported_meshes) {
-    if (imported.assigned_part < 0 || imported.assigned_part >= 32)
+    if (imported.assigned_part < 0 || imported.assigned_part >= 35)
       continue;
 
     // Build vertex_data from imported data
@@ -992,6 +1016,19 @@ void convertImportedToMeshes(Model &m) {
       vertex_data.push_back(imported.texcoords[i].y);
     }
 
+    // Compute bounding box from imported positions
+    mesh.hasBBox = true;
+    mesh.bboxMin = glm::vec3(FLT_MAX);
+    mesh.bboxMax = glm::vec3(-FLT_MAX);
+    for (const auto &pos : imported.positions) {
+      mesh.bboxMin.x = std::min(mesh.bboxMin.x, pos.x);
+      mesh.bboxMin.y = std::min(mesh.bboxMin.y, pos.y);
+      mesh.bboxMin.z = std::min(mesh.bboxMin.z, pos.z);
+      mesh.bboxMax.x = std::max(mesh.bboxMax.x, pos.x);
+      mesh.bboxMax.y = std::max(mesh.bboxMax.y, pos.y);
+      mesh.bboxMax.z = std::max(mesh.bboxMax.z, pos.z);
+    }
+
     glGenVertexArrays(1, &mesh.vao);
     glGenBuffers(1, &mesh.vbo);
     glGenBuffers(1, &mesh.ebo);
@@ -1019,4 +1056,12 @@ void convertImportedToMeshes(Model &m) {
   }
 
   m.has_imported_meshes = true;
+
+  m.meshes.resize(35);
+}
+
+glm::vec3 computeMeshCenter(const Mesh &mesh) {
+  if (!mesh.hasBBox)
+    return glm::vec3(0.0f);
+  return (mesh.bboxMin + mesh.bboxMax) * 0.5f;
 }

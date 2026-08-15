@@ -20,6 +20,7 @@
 #include "settings.h"
 #include "settings_window.h"
 #include <fstream>
+#include "model.h"
 
 extern std::vector<controller_window> windows;
 extern std::string button_names[21];
@@ -94,38 +95,33 @@ std::string getBindingDescription(const std::string &binding) {
 }
 
 // Display names for mesh parts (used in UI)
-std::string mesh_names[33] = {
-    "top shell",     "bottom shell", "extra",         "left trigger",
-    "right trigger", "left stick",   "right stick",   "left ring",
-    "right ring",    "a button",     "b button",      "x button",
-    "y button",      "back button",  "guide button",  "start button",
-    "left cap",      "right cap",    "left bumper",   "right bumper",
-    "d-pad up",      "d-pad down",   "d-pad left",    "d-pad right",
-    "misc",          "paddle 1",     "paddle 2",      "paddle 3",
-    "paddle 4",      "touchpad",     "touch point 1", "touch point 2",
-    "touch area"}; // new part for visualisation
+std::string mesh_names[35] = {
+    "top shell",     "bottom shell",  "extra",         "left trigger",
+    "right trigger", "left stick",    "right stick",   "left ring",
+    "right ring",    "a button",      "b button",      "x button",
+    "y button",      "back button",   "guide button",  "start button",
+    "left cap",      "right cap",     "left bumper",   "right bumper",
+    "d-pad up",      "d-pad down",    "d-pad left",    "d-pad right",
+    "misc",          "paddle 1",      "paddle 2",      "paddle 3",
+    "paddle 4",      "touchpad",      "touch point 1", "touch point 2",
+    "touchpad 2",    "touch point 3", "touch point 4"};
 
 std::string shell_names[3] = {"top shell", "bottom shell", "extra"};
 
 // Actual filenames of OBJ meshes (used for file I/O)
-std::string mesh_filenames[33] = {
-    "top_shell.obj",     "bottom_shell.obj",
-    "extra.obj",         "left_trigger.obj",
-    "right_trigger.obj", "left_stick.obj",
-    "right_stick.obj",   "left_ring.obj",
-    "right_ring.obj",    "a_button.obj",
-    "b_button.obj",      "x_button.obj",
-    "y_button.obj",      "back_button.obj",
-    "guide_button.obj",  "start_button.obj",
-    "left_cap.obj",      "right_cap.obj",
-    "left_bumper.obj",   "right_bumper.obj",
-    "dpad_up.obj",       "dpad_down.obj",
-    "dpad_left.obj",     "dpad_right.obj",
-    "misc.obj",          "paddle1.obj",
-    "paddle2.obj",       "paddle3.obj",
-    "paddle4.obj",       "touchpad.obj",
-    "touch_point1.obj",  "touch_point2.obj",
-    "touch_area.obj"}; // new dummy file (we won't actually load it from disk)
+std::string mesh_filenames[35] = {
+    "top_shell.obj",    "bottom_shell.obj",  "extra.obj",
+    "left_trigger.obj", "right_trigger.obj", "left_stick.obj",
+    "right_stick.obj",  "left_ring.obj",     "right_ring.obj",
+    "a_button.obj",     "b_button.obj",      "x_button.obj",
+    "y_button.obj",     "back_button.obj",   "guide_button.obj",
+    "start_button.obj", "left_cap.obj",      "right_cap.obj",
+    "left_bumper.obj",  "right_bumper.obj",  "dpad_up.obj",
+    "dpad_down.obj",    "dpad_left.obj",     "dpad_right.obj",
+    "misc.obj",         "paddle1.obj",       "paddle2.obj",
+    "paddle3.obj",      "paddle4.obj",       "touchpad.obj",
+    "touch_point1.obj", "touch_point2.obj",  "touchpad2.obj",
+    "touch_point3.obj", "touch_point4.obj"};
 
 std::string invalid_characters = "\\/:*?\"<>|";
 
@@ -411,6 +407,17 @@ void drawSettingsWindow() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::Begin("Settings Window", nullptr, window_flags);
 
+  // ---- Draw Import Preview controls if any preview window exists ----
+  for (auto &w : windows) {
+    if (w.is_import_preview && w.import_preview.is_open) {
+      if (ImGui::CollapsingHeader("Import Preview",
+                                  ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawImportPreviewControls(w);
+      }
+      break;
+    }
+  }
+
   bool new_controller_window = false;
   int new_tab_number = 1;
   std::string new_tab_title = "Controller ";
@@ -665,7 +672,7 @@ void drawSettingsWindow() {
               }
             }
             // Reset axis and hat history
-            for (int i = 0; i < 32; ++i)
+            for (int i = 0; i < 35; ++i)
               current_window->last_axis_values[i] = 0.0f;
             for (int i = 0; i < 16; ++i)
               current_window->last_hat_values[i] = SDL_HAT_CENTERED;
@@ -706,21 +713,27 @@ void drawSettingsWindow() {
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Animate paddles when pressed.");
         ImGui::NewLine();
-        ImGui::SliderInt(
-            "L-Stick Highlight Deadzone",
-            &current_window->model.meshes[7].ring_highlight_deadzone, 0, 100);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Deadzone for left stick highlight ring.");
-        ImGui::SliderInt(
-            "R-Stick Highlight Deadzone",
-            &current_window->model.meshes[8].ring_highlight_deadzone, 0, 100);
+        if (current_window->model.meshes.size() > 7) {
+          ImGui::SliderInt(
+              "L-Stick Highlight Deadzone",
+              &current_window->model.meshes[7].ring_highlight_deadzone, 0, 100);
+        }
+        if (current_window->model.meshes.size() > 8) {
+          ImGui::SliderInt(
+              "R-Stick Highlight Deadzone",
+              &current_window->model.meshes[8].ring_highlight_deadzone, 0, 100);
+        }
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Deadzone for right stick highlight ring.");
         ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
+        ImGui::ColorEdit3("Press Color", current_window->global_press_color);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip(
+              "Color used when a button is pressed (if no per‑mesh override).");
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip(
               "Colour used for highlights on buttons and sticks.");
-        for (int i = 3; i < 32; i++) {
+        for (int i = 3; i < (int)current_window->model.meshes.size(); i++) {
           if (i != 5 && i != 6) {
             current_window->model.meshes[i].material.highlight[0] =
                 current_window->highlight_color[0];
@@ -729,311 +742,6 @@ void drawSettingsWindow() {
             current_window->model.meshes[i].material.highlight[2] =
                 current_window->highlight_color[2];
           }
-        }
-        ImGui::TreePop();
-      }
-
-      if (ImGui::TreeNode("Materials")) {
-        static std::string mesh_name = mesh_names[selected_mesh].c_str();
-        if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
-          for (int i = 0; i < IM_ARRAYSIZE(mesh_names); i++) {
-            if (ImGui::Selectable(mesh_names[i].c_str())) {
-              mesh_name = mesh_names[i].c_str();
-              material_mesh = i;
-            }
-          }
-          ImGui::EndCombo();
-        }
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Select a mesh to edit its material.");
-        ImGui::NewLine();
-        ImGui::SliderFloat(
-            "Ambient",
-            &current_window->model.meshes[material_mesh].material.ambient, 0,
-            1);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Ambient light reflection.");
-        ImGui::SliderFloat(
-            "Diffuse",
-            &current_window->model.meshes[material_mesh].material.diffuse, 0,
-            1);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Diffuse light reflection.");
-        ImGui::SliderFloat(
-            "Specular",
-            &current_window->model.meshes[material_mesh].material.specular, 0,
-            1);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Specular (shininess) intensity.");
-        ImGui::SliderFloat(
-            "Shininess",
-            &current_window->model.meshes[material_mesh].material.shininess, 1,
-            256);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Specular exponent (higher = sharper highlights).");
-        ImGui::ColorEdit3(
-            "Color",
-            current_window->model.meshes[material_mesh].material.color);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Base colour of the mesh.");
-        ImGui::TreePop();
-      }
-
-      if (ImGui::TreeNode("Textures")) {
-        static std::string mesh_name = mesh_names[selected_mesh].c_str();
-        if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
-          for (int i = 0; i < IM_ARRAYSIZE(mesh_names); i++) {
-            if (ImGui::Selectable(mesh_names[i].c_str())) {
-              mesh_name = mesh_names[i].c_str();
-              texture_mesh = i;
-            }
-          }
-          ImGui::EndCombo();
-        }
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Select a mesh to manage its textures.");
-        ImGui::NewLine();
-        static size_t current_texture = 0;
-        if (ImGui::BeginListBox("Textures")) {
-          for (size_t n = 0;
-               n < current_window->model.meshes[texture_mesh].textures.size();
-               n++) {
-            const bool is_selected = (current_texture == n);
-            if (ImGui::Selectable(current_window->model.meshes[texture_mesh]
-                                      .textures[n]
-                                      .name.c_str(),
-                                  is_selected)) {
-              current_texture = n;
-            }
-          }
-          ImGui::EndListBox();
-        }
-        if (current_window->model.meshes[texture_mesh].textures.size() < 16) {
-          if (ImGui::Button("New Texture")) {
-            texture_dialog.Open();
-            current_texture =
-                current_window->model.meshes[texture_mesh].textures.size();
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Add a new texture to the selected mesh.");
-        }
-        if (current_window->model.meshes[texture_mesh].textures.size() > 0) {
-          if (current_window->model.meshes[texture_mesh].textures.size() < 16) {
-            ImGui::SameLine();
-          }
-          if (ImGui::Button("Delete Texture")) {
-            glfwMakeContextCurrent(current_window->glfw_window);
-            deleteTexture(current_window->model.meshes[texture_mesh]
-                              .textures[current_texture]
-                              .id);
-            current_window->model.meshes[texture_mesh].textures.erase(
-                current_window->model.meshes[texture_mesh].textures.begin() +
-                current_texture);
-            glfwMakeContextCurrent(glfw_settings_window);
-            current_texture = 0;
-            for (size_t i = 0;
-                 i < current_window->model.meshes[texture_mesh].textures.size();
-                 i++) {
-              Texture *t =
-                  &current_window->model.meshes[texture_mesh].textures[i];
-              t->name = std::to_string(i + 1) + ": " + t->path;
-            }
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Remove the selected texture.");
-          ImGui::SameLine();
-          if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
-            if (current_texture > 0) {
-              Texture temp = current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture - 1];
-              current_window->model.meshes[texture_mesh]
-                  .textures[current_texture - 1] =
-                  current_window->model.meshes[texture_mesh]
-                      .textures[current_texture];
-              current_window->model.meshes[texture_mesh]
-                  .textures[current_texture] = temp;
-              current_texture--;
-            }
-            for (size_t i = 0;
-                 i < current_window->model.meshes[texture_mesh].textures.size();
-                 i++) {
-              Texture *t =
-                  &current_window->model.meshes[texture_mesh].textures[i];
-              t->name = std::to_string(i + 1) + ": " + t->path;
-            }
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move selected texture up.");
-          ImGui::SameLine();
-          if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
-            if (current_texture <
-                current_window->model.meshes[texture_mesh].textures.size() -
-                    1) {
-              Texture temp = current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture + 1];
-              current_window->model.meshes[texture_mesh]
-                  .textures[current_texture + 1] =
-                  current_window->model.meshes[texture_mesh]
-                      .textures[current_texture];
-              current_window->model.meshes[texture_mesh]
-                  .textures[current_texture] = temp;
-              current_texture++;
-            }
-            for (size_t i = 0;
-                 i < current_window->model.meshes[texture_mesh].textures.size();
-                 i++) {
-              Texture *t =
-                  &current_window->model.meshes[texture_mesh].textures[i];
-              t->name = std::to_string(i + 1) + ": " + t->path;
-            }
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move selected texture down.");
-
-          Texture *t = &current_window->model.meshes[texture_mesh]
-                            .textures[current_texture];
-          ImGui::NewLine();
-          enum Type { diffuse, specular, emission, type_count };
-          const char *type_names[type_count] = {"Diffuse", "Specular",
-                                                "Emissive"};
-          const char *type_name = (t->type >= 0 && t->type < type_count)
-                                      ? type_names[t->type]
-                                      : "Unknown";
-          ImGui::SliderInt("Type", &t->type, 0, type_count - 1, type_name);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Texture type: diffuse, specular, or emissive.");
-          enum Wrap {
-            repeat,
-            mirror_repeat,
-            clamp_edge,
-            clamp_border,
-            wrap_count
-          };
-          const char *wrap_names[wrap_count] = {
-              "Repeat", "Mirrored Repeat", "Clamp to Edge", "Clamp to Border"};
-          const char *wrap_name_x = (t->wrapX >= 0 && t->wrapX < wrap_count)
-                                        ? wrap_names[t->wrapX]
-                                        : "Unknown";
-          if (ImGui::SliderInt("X Wrap", &t->wrapX, 0, wrap_count - 1,
-                               wrap_name_x)) {
-            glfwMakeContextCurrent(current_window->glfw_window);
-            glBindTexture(GL_TEXTURE_2D,
-                          current_window->model.meshes[texture_mesh]
-                              .textures[current_texture]
-                              .id);
-            switch (t->wrapX) {
-            case repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-              break;
-            case mirror_repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_MIRRORED_REPEAT);
-              break;
-            case clamp_edge:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_CLAMP_TO_EDGE);
-              break;
-            case clamp_border:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_CLAMP_TO_BORDER);
-              glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
-                               current_window->model.meshes[texture_mesh]
-                                   .textures[current_texture]
-                                   .border);
-              break;
-            }
-            glfwMakeContextCurrent(glfw_settings_window);
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Horizontal texture wrapping mode.");
-          const char *wrap_name_y = (t->wrapY >= 0 && t->wrapY < wrap_count)
-                                        ? wrap_names[t->wrapY]
-                                        : "Unknown";
-          if (ImGui::SliderInt("Y Wrap", &t->wrapY, 0, wrap_count - 1,
-                               wrap_name_y)) {
-            glfwMakeContextCurrent(current_window->glfw_window);
-            glBindTexture(GL_TEXTURE_2D,
-                          current_window->model.meshes[texture_mesh]
-                              .textures[current_texture]
-                              .id);
-            switch (t->wrapY) {
-            case repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-              break;
-            case mirror_repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_MIRRORED_REPEAT);
-              break;
-            case clamp_edge:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_CLAMP_TO_EDGE);
-              break;
-            case clamp_border:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_CLAMP_TO_BORDER);
-              glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
-                               current_window->model.meshes[texture_mesh]
-                                   .textures[current_texture]
-                                   .border);
-              break;
-            }
-            glfwMakeContextCurrent(glfw_settings_window);
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Vertical texture wrapping mode.");
-          if (ImGui::ColorEdit3("Border Color",
-                                current_window->model.meshes[texture_mesh]
-                                    .textures[current_texture]
-                                    .border)) {
-            glfwMakeContextCurrent(current_window->glfw_window);
-            glBindTexture(GL_TEXTURE_2D,
-                          current_window->model.meshes[texture_mesh]
-                              .textures[current_texture]
-                              .id);
-            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
-                             current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture]
-                                 .border);
-            glfwMakeContextCurrent(glfw_settings_window);
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Border color used when clamp‑to‑border is selected.");
-          ImGui::InputFloat("Offset X",
-                            &current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture]
-                                 .offsetX,
-                            0.01f, 1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Horizontal texture offset.");
-          ImGui::InputFloat("Offset Y",
-                            &current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture]
-                                 .offsetY,
-                            0.01f, 1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Vertical texture offset.");
-          ImGui::InputFloat("Scale X",
-                            &current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture]
-                                 .scaleX,
-                            0.01f, 1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Horizontal texture scale.");
-          ImGui::InputFloat("Scale Y",
-                            &current_window->model.meshes[texture_mesh]
-                                 .textures[current_texture]
-                                 .scaleY,
-                            0.01f, 1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Vertical texture scale.");
-          ImGui::SliderAngle("Rotation",
-                             &current_window->model.meshes[texture_mesh]
-                                  .textures[current_texture]
-                                  .rotation,
-                             -180.0f, 180.0f);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Texture rotation angle.");
         }
         ImGui::TreePop();
       }
@@ -1046,6 +754,21 @@ void drawSettingsWindow() {
     static int mesh_to_delete = -1; // for per‑row delete confirmation
 
     if (ImGui::CollapsingHeader("Model")) {
+      // ---- Clamp all mesh indices to valid range ----
+      size_t meshCount = current_window->model.meshes.size();
+      if (meshCount == 0) {
+        selected_mesh = 0;
+        material_mesh = 0;
+        texture_mesh = 0;
+      } else {
+        if (selected_mesh >= meshCount)
+          selected_mesh = meshCount - 1;
+        if (material_mesh >= meshCount)
+          material_mesh = meshCount - 1;
+        if (texture_mesh >= meshCount)
+          texture_mesh = meshCount - 1;
+      }
+
       // ---- Model selection combo ----
       if (ImGui::BeginCombo("Models", current_window->model_name.c_str(), 0)) {
         std::string dir_path = SDL_GetBasePath();
@@ -1067,16 +790,9 @@ void drawSettingsWindow() {
                 current_window->model_name = model_dir;
                 std::string model_path("models/");
                 model_path.append(model_dir);
-                writeInfo(current_window->model, current_window->model.path);
                 glfwMakeContextCurrent(current_window->glfw_window);
                 loadModel(current_window->model, model_path);
-
-                // Ensure touch area mesh exists
-                if (current_window->model.meshes.size() < 33) {
-                  current_window->model.meshes.resize(33);
-                }
-                generateTouchAreaMesh(*current_window);
-
+                // Update mesh_count
                 glfwMakeContextCurrent(glfw_settings_window);
               }
             }
@@ -1089,6 +805,15 @@ void drawSettingsWindow() {
       }
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Select a controller model.");
+
+      // ---- Source URL ----
+      char source[256];
+      strncpy(source, current_window->model.source.c_str(), 255);
+      if (ImGui::InputText("Source URL", source, 256)) {
+        current_window->model.source = source;
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Optional URL where the model was obtained.");
 
       if (ImGui::Button("New Model")) {
         ImGui::OpenPopup("new");
@@ -1110,12 +835,24 @@ void drawSettingsWindow() {
             std::filesystem::path new_path(new_model_path);
             path /= new_path;
             std::filesystem::create_directory(path);
-            writeInfo(current_window->model, current_window->model.path);
-            glfwMakeContextCurrent(current_window->glfw_window);
-            loadModel(current_window->model, new_model_path);
-            glfwMakeContextCurrent(glfw_settings_window);
-            current_window->model_name =
-                get_top_folder(current_window->model.path);
+            // Create a model with 35 default mesh slots (so the user can import
+            // OBJs into each)
+            current_window->model.meshes.resize(35);
+            for (int i = 0; i < 35; ++i) {
+              Mesh &m = current_window->model.meshes[i];
+              m.name = mesh_names[i];
+              m.filename = mesh_filenames[i];
+              m.assignedPart = i; // each slot corresponds to a controller part
+              m.parentIndex = -1;
+              m.elements = 0; // empty geometry
+              m.vao = m.vbo = m.ebo = 0;
+              m.visible = true;
+              // all other fields (position, travel, etc.) remain
+              // zero-initialised
+            }
+            current_window->model.path = new_model_path;
+            current_window->model_name = name;
+            writeJson(current_window->model, new_model_path + "/info.json");
             ImGui::CloseCurrentPopup();
           } else {
             std::cout << "Name contains invalid characters "
@@ -1165,13 +902,12 @@ void drawSettingsWindow() {
         ImGui::EndPopup();
       }
       ImGui::SameLine();
-      if (ImGui::Button("Import Model as New...")) {
+      if (ImGui::Button("Import New Model")) {
         import_model_dialog.Open();
       }
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Import a 3D model file and map its meshes.");
 
-      // ---- Description text ----
       ImGui::TextWrapped(
           "Import a 3D model (FBX, glTF, OBJ, etc.) and map its meshes "
           "to controller parts. After importing, a preview window will "
@@ -1180,26 +916,31 @@ void drawSettingsWindow() {
       ImGui::NewLine();
       ImGui::Separator();
 
-      // ---- Mesh table ----
-      ImGui::Text("Mesh List (click a row to edit)");
-      if (ImGui::BeginTable("MeshTable", 8,
+      // ---- Dynamic mesh table ----
+      ImGui::Text("Mesh List (%zu meshes)",
+                  current_window->model.meshes.size());
+      if (ImGui::BeginTable("MeshTable", 11,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Assigned Part",
+                                ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Joystick",
+                                ImGuiTableColumnFlags_WidthFixed); // NEW
         ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Pivot", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Touch W", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Touch H", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableHeadersRow();
 
-        for (int i = 0; i < 32; ++i) {
+        for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
           Mesh &mesh = current_window->model.meshes[i];
           bool hasMesh = (mesh.elements > 0);
           ImGui::TableNextRow();
-          // ---- Highlight selected row ----
           if (selected_mesh == i) {
             ImGui::TableSetBgColor(
                 ImGuiTableBgTarget_RowBg0,
@@ -1209,58 +950,156 @@ void drawSettingsWindow() {
           ImGui::Text("%d", i);
           ImGui::TableSetColumnIndex(1);
           if (hasMesh) {
-            // Use a button that fills the cell, styled as a transparent label
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                                   ImVec4(0.3f, 0.1f, 0.4f, 0.3f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,
                                   ImVec4(0.2f, 0.05f, 0.3f, 0.5f));
             ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
-                                ImVec2(0.0f, 0.5f)); // left-align
-            if (ImGui::Button(mesh_names[i].c_str(), ImVec2(-1, 0))) {
+                                ImVec2(0.0f, 0.5f));
+            if (ImGui::Button(mesh.name.c_str(), ImVec2(-1, 0))) {
               selected_mesh = i;
             }
             ImGui::PopStyleVar();
             ImGui::PopStyleColor(3);
           } else {
-            ImGui::TextDisabled("%s (empty)", mesh_names[i].c_str());
+            ImGui::TextDisabled("%s (empty)", mesh.name.c_str());
           }
+
+          // ---- Assigned Part Column ----
           ImGui::TableSetColumnIndex(2);
+          if (hasMesh) {
+            int current_assignment =
+                mesh.assignedPart + 1; // +1 for "Unassigned"
+            const char *part_names[36];
+            part_names[0] = "Unassigned";
+            for (int j = 0; j < 35; ++j)
+              part_names[j + 1] = mesh_names[j].c_str();
+            ImGui::PushID(i + 1000);
+            if (ImGui::Combo("##assign", &current_assignment, part_names, 36)) {
+              mesh.assignedPart = current_assignment - 1;
+              // After setting mesh.assignedPart, propagate touch dimensions if
+              // applicable
+              if (mesh.assignedPart == 29) {
+                // Copy to touch_point1 (30) and touch_point2 (31)
+                for (auto &m : current_window->model.meshes) {
+                  if (m.assignedPart == 30 || m.assignedPart == 31) {
+                    m.touch_width = mesh.touch_width;
+                    m.touch_height = mesh.touch_height;
+                  }
+                }
+              } else if (mesh.assignedPart == 32) {
+                // Copy to touch_point3 (33) and touch_point4 (34)
+                for (auto &m : current_window->model.meshes) {
+                  if (m.assignedPart == 33 || m.assignedPart == 34) {
+                    m.touch_width = mesh.touch_width;
+                    m.touch_height = mesh.touch_height;
+                  }
+                }
+              }
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Assign this mesh to a controller part.");
+            ImGui::PopID();
+
+            // Show default binding (if any)
+            int part = mesh.assignedPart;
+            if (part >= 9 && part <= 34) {
+              ImGui::SameLine();
+              ImGui::TextDisabled("(b%d)", part - 9);
+            }
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Parent Column ----
+          ImGui::TableSetColumnIndex(3);
+          if (hasMesh) {
+            int current_parent = mesh.parentIndex + 1; // +1 for "None"
+            const char *parent_names[36];
+            parent_names[0] = "None";
+            for (int j = 0; j < 35; ++j)
+              parent_names[j + 1] = mesh_names[j].c_str();
+            ImGui::PushID(i + 2000);
+            if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
+              mesh.parentIndex = current_parent - 1;
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Attach this mesh to a parent part (e.g., stick).");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Visible Column ----
+          ImGui::TableSetColumnIndex(4);
+          if (hasMesh) {
+            ImGui::PushID(i + 3000);
+            ImGui::Checkbox("##visible", &mesh.visible);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Show/hide this mesh in the 3D view.");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+
+          // ---- Joystick Column ----
+          ImGui::TableSetColumnIndex(5);
+          if (hasMesh) {
+            ImGui::PushID(i + 4000);
+            ImGui::Checkbox("##joystick", &mesh.useJoystick);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Use raw joystick input (not gamecontroller) for this mesh.");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+
+          // ---- Position Column ----
+          ImGui::TableSetColumnIndex(6);
           if (hasMesh) {
             ImGui::Text("%.2f, %.2f, %.2f", mesh.position[0], mesh.position[1],
                         mesh.position[2]);
           } else {
             ImGui::TextDisabled("N/A");
           }
-          ImGui::TableSetColumnIndex(3);
+
+          // ---- Pivot Column ----
+          ImGui::TableSetColumnIndex(7);
           if (hasMesh) {
             ImGui::Text("%.2f, %.2f, %.2f", mesh.pivot_offset[0],
                         mesh.pivot_offset[1], mesh.pivot_offset[2]);
           } else {
             ImGui::TextDisabled("N/A");
           }
-          ImGui::TableSetColumnIndex(4);
-          bool isTouch = (i == 29 || i == 30 || i == 31);
+
+          // ---- Touch Width Column ----
+          ImGui::TableSetColumnIndex(8);
+          bool isTouch = (mesh.assignedPart == 29 || mesh.assignedPart == 30 ||
+                          mesh.assignedPart == 31 || mesh.assignedPart == 32 ||
+                          mesh.assignedPart == 33 || mesh.assignedPart == 34);
           if (hasMesh && isTouch) {
             ImGui::Text("%.2f", mesh.touch_width);
           } else {
             ImGui::TextDisabled("N/A");
           }
-          ImGui::TableSetColumnIndex(5);
+
+          // ---- Touch Height Column ----
+          ImGui::TableSetColumnIndex(9);
           if (hasMesh && isTouch) {
             ImGui::Text("%.2f", mesh.touch_height);
           } else {
             ImGui::TextDisabled("N/A");
           }
-          ImGui::TableSetColumnIndex(6);
-          if (hasMesh) {
-            ImGui::SetNextItemAllowOverlap();
-            ImGui::Checkbox(("##vis" + std::to_string(i)).c_str(),
-                            &mesh.visible);
-          } else {
-            ImGui::TextDisabled(" ");
-          }
-          ImGui::TableSetColumnIndex(7);
+
+          // ---- Actions Column ----
+          ImGui::TableSetColumnIndex(10);
           if (hasMesh) {
             if (ImGui::Button(("Import##" + std::to_string(i)).c_str())) {
               model_dialog.Open();
@@ -1282,20 +1121,13 @@ void drawSettingsWindow() {
       if (ImGui::BeginPopup("delete_mesh_per_row")) {
         ImGui::Text("Delete this mesh?");
         if (ImGui::Button("Confirm")) {
-          if (mesh_to_delete >= 0 && mesh_to_delete < 32) {
-            std::string mesh_path = current_window->model.path;
-            mesh_path.append("/");
-            mesh_path.append(mesh_filenames[mesh_to_delete]);
-            std::cout << "mesh path : " << mesh_path.c_str() << std::endl;
-            if (std::remove(mesh_path.c_str()) == 0) {
-              std::cout << "file deleted successfully." << std::endl;
-            } else {
-              std::cout << "unable to delete file." << std::endl;
-            }
-            writeInfo(current_window->model, current_window->model.path);
-            glfwMakeContextCurrent(current_window->glfw_window);
-            loadModel(current_window->model, current_window->model.path);
-            glfwMakeContextCurrent(glfw_settings_window);
+          if (mesh_to_delete >= 0 &&
+              mesh_to_delete < (int)current_window->model.meshes.size()) {
+            // Erase from vector and rewrite JSON
+            current_window->model.meshes.erase(
+                current_window->model.meshes.begin() + mesh_to_delete);
+            writeJson(current_window->model,
+                      current_window->model.path + "/info.json");
             mesh_to_delete = -1;
             ImGui::CloseCurrentPopup();
           }
@@ -1311,323 +1143,571 @@ void drawSettingsWindow() {
       ImGui::Separator();
 
       // ---- Detailed controls for the selected mesh ----
-      Mesh &selectedMesh = current_window->model.meshes[selected_mesh];
-      if (selectedMesh.elements == 0) {
-        ImGui::TextDisabled("No mesh loaded for part %d (%s).", selected_mesh,
-                            mesh_names[selected_mesh].c_str());
-      } else {
-        // ---- Highlight variables (must be in scope for Save Model) ----
-        static std::map<int, std::array<float, 3>> original_colors;
-        static bool highlight_selected = false;
-        static float highlight_color[3] = {1.0f, 0.0f, 0.0f}; // red default
-
-        ImGui::Text("Editing: %s", mesh_names[selected_mesh].c_str());
-
-        // ---- Position ----
-        ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f, 1.0f,
-                          "%.3f");
-        ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f, 1.0f,
-                          "%.3f");
-        ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f, 1.0f,
-                          "%.3f");
-
-        // ---- Pivot Offset ----
-        ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f, 1.0f,
-                          "%.3f");
-        ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f, 1.0f,
-                          "%.3f");
-        ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f, 1.0f,
-                          "%.3f");
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Offset from mesh origin to rotation pivot.");
-
-        // ---- Rotation (Euler angles in degrees) ----
-        ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f, 1.0f,
-                          "%.1f");
-        ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f, 1.0f,
-                          "%.1f");
-        ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f, 1.0f,
-                          "%.1f");
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Euler rotation in degrees (applied after pivot).");
-
-        // ---- Reset Transform ----
-        if (ImGui::Button("Reset Transform")) {
-          selectedMesh.position[0] = selectedMesh.position[1] =
-              selectedMesh.position[2] = 0.0f;
-          selectedMesh.pivot_offset[0] = selectedMesh.pivot_offset[1] =
-              selectedMesh.pivot_offset[2] = 0.0f;
-          selectedMesh.rotation[0] = selectedMesh.rotation[1] =
-              selectedMesh.rotation[2] = 0.0f;
-          selectedMesh.travel[0] = selectedMesh.travel[1] =
-              selectedMesh.travel[2] = 0.0f;
-          selectedMesh.popup_offset[0] = selectedMesh.popup_offset[1] =
-              selectedMesh.popup_offset[2] = 0.0f;
-          selectedMesh.popup_rotation[0] = selectedMesh.popup_rotation[1] =
-              selectedMesh.popup_rotation[2] = 0.0f;
-          selectedMesh.trigger_max = 0.0f;
-          selectedMesh.stick_max = 0.0f;
-          // keep touch_width/height and geometry unchanged
-        }
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Reset all transform values (position, pivot, "
-                            "rotation, travel, popup) to zero.");
-
-        ImGui::SameLine();
-        if (ImGui::Button("Save Model")) {
-          // Temporarily disable highlight to avoid saving the highlight colour
-          bool was_highlighted = current_window->highlight_enabled;
-          if (was_highlighted) {
-            // Restore original colours for all highlighted meshes
-            for (auto &pair : current_window->original_colors) {
-              int idx = pair.first;
-              Mesh &mesh = current_window->model.meshes[idx];
-              mesh.material.color[0] = pair.second[0];
-              mesh.material.color[1] = pair.second[1];
-              mesh.material.color[2] = pair.second[2];
-              mesh.highlight_value = 0.0f;
-            }
-          }
-          // Save the model
-          writeInfo(current_window->model, current_window->model.path);
-          spdlog::info("Model saved to {}", current_window->model.path);
-          // Re‑apply highlight if it was on
-          if (was_highlighted) {
-            for (auto &pair : current_window->original_colors) {
-              int idx = pair.first;
-              Mesh &mesh = current_window->model.meshes[idx];
-              mesh.material.color[0] = current_window->highlight_color[0];
-              mesh.material.color[1] = current_window->highlight_color[1];
-              mesh.material.color[2] = current_window->highlight_color[2];
-              mesh.highlight_value = 1.0f;
-            }
-          }
-        }
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Write current settings to info.txt.");
-
-        // ---- Edit Highlight ----
-        ImGui::Checkbox("Highlight", &current_window->highlight_enabled);
-        ImGui::SameLine();
-        ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(
-              "Temporarily colour the selected mesh for editing.");
-
-        if (current_window->highlight_enabled) {
-          // Store original color if not already stored for this mesh
-          if (current_window->original_colors.find(selected_mesh) ==
-              current_window->original_colors.end()) {
-            current_window->original_colors[selected_mesh] = {
-                selectedMesh.material.color[0], selectedMesh.material.color[1],
-                selectedMesh.material.color[2]};
-          }
-          // Override with highlight color
-          selectedMesh.material.color[0] = current_window->highlight_color[0];
-          selectedMesh.material.color[1] = current_window->highlight_color[1];
-          selectedMesh.material.color[2] = current_window->highlight_color[2];
-          selectedMesh.highlight_value = 0.0f; // <-- DISABLE shader mixing
+      if (selected_mesh >= 0 &&
+          selected_mesh < (int)current_window->model.meshes.size()) {
+        Mesh &selectedMesh = current_window->model.meshes[selected_mesh];
+        if (selectedMesh.elements == 0) {
+          ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
         } else {
-          // Restore original color if it was stored
-          auto it = current_window->original_colors.find(selected_mesh);
-          if (it != current_window->original_colors.end()) {
-            selectedMesh.material.color[0] = it->second[0];
-            selectedMesh.material.color[1] = it->second[1];
-            selectedMesh.material.color[2] = it->second[2];
-            selectedMesh.highlight_value = 0.0f;
-            current_window->original_colors.erase(it);
-          }
-        }
+          // ---- Highlight variables ----
+          static std::map<int, std::array<float, 3>> original_colors;
+          static bool highlight_selected = false;
+          static float highlight_color[3] = {1.0f, 0.0f, 0.0f}; // red default
 
-        // ---- Travel (for buttons/triggers) ----
-        if (selected_mesh > 8 && selected_mesh < 30) {
-          ImGui::NewLine();
-          ImGui::InputFloat("X Travel", &selectedMesh.travel[0], 0.01f, 1.0f,
-                            "%.3f");
-          ImGui::InputFloat("Y Travel", &selectedMesh.travel[1], 0.01f, 1.0f,
-                            "%.3f");
-          ImGui::InputFloat("Z Travel", &selectedMesh.travel[2], 0.01f, 1.0f,
-                            "%.3f");
-        }
+          ImGui::Text("Editing: %s", selectedMesh.name.c_str());
 
-        // ---- Popup offsets (for bumpers, paddles, triggers) ----
-        if ((selected_mesh == 18 || selected_mesh == 19) ||
-            (selected_mesh > 24 && selected_mesh < 29) ||
-            (selected_mesh == 3 || selected_mesh == 4)) {
-          ImGui::NewLine();
-          ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1], -180,
-                             180);
-          ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
-                             -180, 180);
-          ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
-                             -180, 180);
-        }
+          // ---- Position Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Position");
+          ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the X axis.");
+          ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the Y axis.");
+          ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the Z axis.");
 
-        // ---- Special controls for sticks ----
-        if (selected_mesh == 5 || selected_mesh == 6) {
-          ImGui::NewLine();
-          if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
-                                 45.0f)) {
-            if (selected_mesh == 5) {
-              current_window->model.meshes[7].stick_max =
-                  selectedMesh.stick_max;
-              current_window->model.meshes[16].stick_max =
-                  selectedMesh.stick_max;
-            } else if (selected_mesh == 6) {
-              current_window->model.meshes[8].stick_max =
-                  selectedMesh.stick_max;
-              current_window->model.meshes[17].stick_max =
-                  selectedMesh.stick_max;
+          // ---- Pivot Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f), "Pivot Point");
+          ImGui::TextWrapped(
+              "The pivot is the point around which the mesh rotates "
+              "(for sticks, triggers, buttons). The orange circle shows its "
+              "current position.");
+          ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (X).");
+          ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Y).");
+          ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Z).");
+
+          // ---- Auto-center buttons ----
+          if (selectedMesh.hasBBox) {
+            ImGui::Text("Auto‑set pivot:");
+            if (ImGui::Button("Center of Mass")) {
+              glm::vec3 center = computeMeshCenter(selectedMesh);
+              spdlog::info("Center of Mass: ({:.3f}, {:.3f}, {:.3f})", center.x,
+                           center.y, center.z);
+              selectedMesh.pivot_offset[0] = center.x;
+              selectedMesh.pivot_offset[1] = center.y;
+              selectedMesh.pivot_offset[2] = center.z;
             }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Sets the pivot to the geometric centre of the mesh.");
+            ImGui::SameLine();
+            if (selectedMesh.assignedPart == 5 ||
+                selectedMesh.assignedPart == 6) { // stick parts
+              if (ImGui::Button("Set Pivot to Stick Base")) {
+                float px =
+                    (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
+                float py = selectedMesh.bboxMin.y;
+                float pz =
+                    (selectedMesh.bboxMin.z + selectedMesh.bboxMax.z) * 0.5f;
+                selectedMesh.pivot_offset[0] = px;
+                selectedMesh.pivot_offset[1] = py;
+                selectedMesh.pivot_offset[2] = pz;
+              }
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Sets the pivot to the bottom‑centre of the stick mesh. "
+                    "This makes the stick rotate like a real joystick.");
+            }
+          } else {
+            ImGui::TextDisabled(
+                "Bounding box not available – auto‑center disabled.");
+          }
+
+          // ---- Rotation Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Rotation");
+          ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the X axis (degrees).");
+          ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the Y axis (degrees).");
+          ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
+
+          // ---- Reset Transform ----
+          ImGui::Separator();
+          if (ImGui::Button("Reset Transform")) {
+            selectedMesh.position[0] = selectedMesh.position[1] =
+                selectedMesh.position[2] = 0.0f;
+            selectedMesh.pivot_offset[0] = selectedMesh.pivot_offset[1] =
+                selectedMesh.pivot_offset[2] = 0.0f;
+            selectedMesh.rotation[0] = selectedMesh.rotation[1] =
+                selectedMesh.rotation[2] = 0.0f;
+            selectedMesh.travel[0] = selectedMesh.travel[1] =
+                selectedMesh.travel[2] = 0.0f;
+            selectedMesh.popup_offset[0] = selectedMesh.popup_offset[1] =
+                selectedMesh.popup_offset[2] = 0.0f;
+            selectedMesh.popup_rotation[0] = selectedMesh.popup_rotation[1] =
+                selectedMesh.popup_rotation[2] = 0.0f;
+            selectedMesh.trigger_max = 0.0f;
+            selectedMesh.stick_max = 0.0f;
           }
           if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Maximum deflection angle for the stick.");
-        }
+            ImGui::SetTooltip("Reset all transform values (position, pivot, "
+                              "rotation, travel, popup) to zero.");
 
-        // ---- Special controls for triggers ----
-        if (selected_mesh == 3 || selected_mesh == 4) {
-          ImGui::NewLine();
-          ImGui::SliderAngle("Max Angle", &selectedMesh.trigger_max, 0.0f,
-                             90.0f);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Maximum pull angle for the trigger.");
-        }
-
-        auto createTouchAreaRect = [&]() {
-          if (!current_window->touch_area_vao) {
-            // Create a simple 2D rectangle (wireframe) in the XY plane
-            float vertices[] = {-0.5f, -0.5f, 0.0f, 0.5f,  -0.5f, 0.0f,
-                                0.5f,  0.5f,  0.0f, -0.5f, 0.5f,  0.0f};
-            unsigned int indices[] = {0, 1, 2, 0, 2, 3, 0,
-                                      1, 1, 2, 2, 3, 3, 0}; // triangles + lines
-
-            glGenVertexArrays(1, &current_window->touch_area_vao);
-            glGenBuffers(1, &current_window->touch_area_vbo);
-            glGenBuffers(1, &current_window->touch_area_ebo);
-            glBindVertexArray(current_window->touch_area_vao);
-            glBindBuffer(GL_ARRAY_BUFFER, current_window->touch_area_vbo);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
-                         GL_STATIC_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
-            glEnableVertexAttribArray(0);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
-                         current_window->touch_area_ebo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices,
-                         GL_STATIC_DRAW);
-            current_window->touch_area_elements = 14; // 6 triangles + 8 lines
-            glBindVertexArray(0);
-          }
-        };
-
-        // ---- Touchpad area controls ----
-        if (selected_mesh == 29) {
-          ImGui::NewLine();
-          // Ensure the touchpad and touch points are visible
-          selectedMesh.visible = true;
-          current_window->model.meshes[30].visible = true;
-          current_window->model.meshes[31].visible = true;
-
-          if (ImGui::SliderFloat("Touch Area Width", &selectedMesh.touch_width,
-                                 0.01f, 5.0f, "%.2f")) {
-            // Propagate to touch points
-            current_window->model.meshes[30].touch_width =
-                selectedMesh.touch_width;
-            current_window->model.meshes[31].touch_width =
-                selectedMesh.touch_width;
-          }
-          if (ImGui::SliderFloat("Touch Area Height",
-                                 &selectedMesh.touch_height, 0.01f, 5.0f,
-                                 "%.2f")) {
-            current_window->model.meshes[30].touch_height =
-                selectedMesh.touch_height;
-            current_window->model.meshes[31].touch_height =
-                selectedMesh.touch_height;
+          ImGui::SameLine();
+          if (ImGui::Button("Save Model")) {
+            writeJson(current_window->model,
+                      current_window->model.path + "/info.json");
+            spdlog::info("Model saved to {}", current_window->model.path);
           }
           if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Width and height of the touch‑sensitive area. "
-                              "Touch points will move within this area.");
-        } else {
-          // If we are not editing the touchpad, ensure touch meshes have no
-          // highlight
-          current_window->model.meshes[29].highlight_value = 0.0f;
-          current_window->model.meshes[30].highlight_value = 0.0f;
-          current_window->model.meshes[31].highlight_value = 0.0f;
-        }
+            ImGui::SetTooltip("Write current settings to info.json.");
 
-        // ---- Touch Area Visualisation ----
-        if (selected_mesh == 29 || selected_mesh == 30 || selected_mesh == 31) {
-          ImGui::NewLine();
-          ImGui::Checkbox("Show Touch Area", &current_window->show_touch_area);
+          // ---- Edit Highlight ----
+          ImGui::Checkbox("Highlight", &current_window->highlight_enabled);
+          ImGui::SameLine();
+          ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip(
-                "Draws a magenta rectangle showing the touch area.");
+                "Temporarily colour the selected mesh for editing.");
 
-          if (current_window->show_touch_area) {
-            ImGui::SliderFloat("X Offset",
-                               &current_window->touch_area_offset[0], -2.0f,
-                               2.0f, "%.3f");
-            ImGui::SliderFloat("Y Offset",
-                               &current_window->touch_area_offset[1], -2.0f,
-                               2.0f, "%.3f");
-            ImGui::SliderFloat("Z Offset",
-                               &current_window->touch_area_offset[2], -2.0f,
-                               2.0f, "%.3f");
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Offset of the touch area rectangle from the "
-                                "touchpad's origin.");
-          }
-        }
-
-        // Delete popup for selected mesh
-        if (ImGui::BeginPopup("delete_mesh_selected")) {
-          ImGui::Text("Delete this mesh?");
-          if (ImGui::Button("Confirm")) {
-            std::string mesh_path = current_window->model.path;
-            mesh_path.append("/");
-            mesh_path.append(mesh_filenames[selected_mesh]);
-            std::cout << "mesh path : " << mesh_path.c_str() << std::endl;
-            if (std::remove(mesh_path.c_str()) == 0) {
-              std::cout << "file deleted successfully." << std::endl;
-            } else {
-              std::cout << "unable to delete file." << std::endl;
+          if (current_window->highlight_enabled) {
+            if (current_window->original_colors.find(selected_mesh) ==
+                current_window->original_colors.end()) {
+              current_window->original_colors[selected_mesh] = {
+                  selectedMesh.material.color[0],
+                  selectedMesh.material.color[1],
+                  selectedMesh.material.color[2]};
             }
-            writeInfo(current_window->model, current_window->model.path);
-            glfwMakeContextCurrent(current_window->glfw_window);
-            loadModel(current_window->model, current_window->model.path);
-            glfwMakeContextCurrent(glfw_settings_window);
-            ImGui::CloseCurrentPopup();
+            selectedMesh.material.color[0] = current_window->highlight_color[0];
+            selectedMesh.material.color[1] = current_window->highlight_color[1];
+            selectedMesh.material.color[2] = current_window->highlight_color[2];
+            selectedMesh.highlight_value = 0.0f;
+          } else {
+            auto it = current_window->original_colors.find(selected_mesh);
+            if (it != current_window->original_colors.end()) {
+              selectedMesh.material.color[0] = it->second[0];
+              selectedMesh.material.color[1] = it->second[1];
+              selectedMesh.material.color[2] = it->second[2];
+              selectedMesh.highlight_value = 0.0f;
+              current_window->original_colors.erase(it);
+            }
           }
-          ImGui::SameLine();
-          if (ImGui::Button("Cancel"))
-            ImGui::CloseCurrentPopup();
-          ImGui::EndPopup();
+
+          // ---- Travel (for buttons/triggers) ----
+          int part = selectedMesh.assignedPart;
+          if (part > 8 && part < 30) {
+            ImGui::Separator();
+            ImGui::Text("Travel (button press offset)");
+            ImGui::InputFloat("X Travel", &selectedMesh.travel[0], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Y Travel", &selectedMesh.travel[1], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Z Travel", &selectedMesh.travel[2], 0.01f, 1.0f,
+                              "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Movement when the button is pressed.");
+          }
+
+          // ---- Popup offsets ----
+          if ((part == 18 || part == 19) || (part > 24 && part < 29) ||
+              (part == 3 || part == 4)) {
+            ImGui::Separator();
+            ImGui::Text("Popup animation");
+            ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
+                               -180, 180);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Offset and rotation when the part 'pops up' (e.g. bumper).");
+          }
+
+          // ---- Stick max ----
+          if (part == 5 || part == 6) {
+            ImGui::Separator();
+            if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
+                                   45.0f)) {
+              // Propagate to ring and cap if they exist
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == 7 || m.assignedPart == 16 ||
+                    m.assignedPart == 8 || m.assignedPart == 17) {
+                  m.stick_max = selectedMesh.stick_max;
+                }
+              }
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum deflection angle for the stick.");
+          }
+
+          // ---- Trigger max ----
+          if (part == 3 || part == 4) {
+            ImGui::Separator();
+            ImGui::SliderAngle("Max Angle", &selectedMesh.trigger_max, 0.0f,
+                               90.0f);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum pull angle for the trigger.");
+          }
+
+          // ---- Touchpad dimensions ----
+          if (part == 29 || part == 32) {
+            ImGui::Separator();
+            ImGui::Text("Touchpad dimensions");
+            selectedMesh.visible = true;
+            // Find associated touch point meshes
+            int tp1, tp2;
+            if (part == 29) {
+              tp1 = 30;
+              tp2 = 31;
+            } else {
+              tp1 = 33;
+              tp2 = 34;
+            }
+            for (auto &m : current_window->model.meshes) {
+              if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                m.visible = true;
+                m.touch_width = selectedMesh.touch_width;
+                m.touch_height = selectedMesh.touch_height;
+              }
+            }
+            if (ImGui::SliderFloat("Touch Area Width",
+                                   &selectedMesh.touch_width, 0.01f, 5.0f,
+                                   "%.2f")) {
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                  m.touch_width = selectedMesh.touch_width;
+                }
+              }
+            }
+            if (ImGui::SliderFloat("Touch Area Height",
+                                   &selectedMesh.touch_height, 0.01f, 5.0f,
+                                   "%.2f")) {
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                  m.touch_height = selectedMesh.touch_height;
+                }
+              }
+            }
+          }
+
+          // ---- Touch Area Visualisation ----
+          if (part == 29 || part == 30 || part == 31 || part == 32 ||
+              part == 33 || part == 34) {
+            ImGui::Separator();
+            ImGui::Checkbox("Show Touch Area",
+                            &current_window->show_touch_area);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Draws a magenta rectangle showing the touch area.");
+
+            if (current_window->show_touch_area) {
+              ImGui::SliderFloat("X Offset",
+                                 &current_window->touch_area_offset[0], -2.0f,
+                                 2.0f, "%.3f");
+              ImGui::SliderFloat("Y Offset",
+                                 &current_window->touch_area_offset[1], -2.0f,
+                                 2.0f, "%.3f");
+              ImGui::SliderFloat("Z Offset",
+                                 &current_window->touch_area_offset[2], -2.0f,
+                                 2.0f, "%.3f");
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Offset of the touch area rectangle from the "
+                                  "touchpad's origin.");
+            }
+          }
+
+          // ---- Custom scale ----
+          if (selectedMesh.useCustomScale) {
+            ImGui::Separator();
+            ImGui::Text("Custom scale");
+            ImGui::InputFloat("Scale X", &selectedMesh.scale[0], 0.01f, 1.0f,
+                              "%.2f");
+            ImGui::InputFloat("Scale Y", &selectedMesh.scale[1], 0.01f, 1.0f,
+                              "%.2f");
+            ImGui::InputFloat("Scale Z", &selectedMesh.scale[2], 0.01f, 1.0f,
+                              "%.2f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Custom scale for this mesh.");
+          }
+
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                             "Changes are saved when you click 'Save Model' or "
+                             "switch models.");
         }
+      } else {
+        ImGui::TextDisabled(
+            "Select a mesh from the table above to edit its properties.");
       }
 
-      // ---- Custom scale (for touch area and other special meshes) ----
-      if (selectedMesh.useCustomScale) {
-        ImGui::NewLine();
-        ImGui::InputFloat("Scale X", &selectedMesh.scale[0], 0.01f, 1.0f,
-                          "%.2f");
-        ImGui::InputFloat("Scale Y", &selectedMesh.scale[1], 0.01f, 1.0f,
-                          "%.2f");
-        ImGui::InputFloat("Scale Z", &selectedMesh.scale[2], 0.01f, 1.0f,
-                          "%.2f");
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Custom scale for this mesh.");
-      }
+      // ---- Materials and Textures (properly guarded) ----
+      if (!current_window->model.meshes.empty()) {
+        if (ImGui::TreeNode("Materials")) {
+          static std::string mesh_name = mesh_names[material_mesh].c_str();
+          if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
+            for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
+              if (ImGui::Selectable(mesh_names[i].c_str())) {
+                mesh_name = mesh_names[i].c_str();
+                material_mesh = i;
+              }
+            }
+            ImGui::EndCombo();
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Select a mesh to edit its material.");
 
-      // ---- Auto‑save hint ----
-      ImGui::TextColored(
-          ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-          "Changes are saved when you switch models or close the app.");
-    }
+          // Ensure material_mesh is still valid
+          if (material_mesh >= current_window->model.meshes.size())
+            material_mesh = current_window->model.meshes.size() - 1;
+
+          Mesh &matMesh = current_window->model.meshes[material_mesh];
+          ImGui::NewLine();
+          ImGui::SliderFloat("Ambient", &matMesh.material.ambient, 0, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Ambient light reflection.");
+          ImGui::SliderFloat("Diffuse", &matMesh.material.diffuse, 0, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Diffuse light reflection.");
+          ImGui::SliderFloat("Specular", &matMesh.material.specular, 0, 1);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Specular (shininess) intensity.");
+          ImGui::SliderFloat("Shininess", &matMesh.material.shininess, 1, 256);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Specular exponent (higher = sharper highlights).");
+          ImGui::ColorEdit3("Color", matMesh.material.color);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Base colour of the mesh.");
+          ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Textures")) {
+          static std::string mesh_name = mesh_names[texture_mesh].c_str();
+          if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
+            for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
+              if (ImGui::Selectable(mesh_names[i].c_str())) {
+                mesh_name = mesh_names[i].c_str();
+                texture_mesh = i;
+              }
+            }
+            ImGui::EndCombo();
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Select a mesh to manage its textures.");
+
+          // Ensure texture_mesh is valid
+          if (texture_mesh >= current_window->model.meshes.size())
+            texture_mesh = current_window->model.meshes.size() - 1;
+
+          Mesh &texMesh = current_window->model.meshes[texture_mesh];
+          ImGui::NewLine();
+          static size_t current_texture = 0;
+          if (ImGui::BeginListBox("Textures")) {
+            for (size_t n = 0; n < texMesh.textures.size(); n++) {
+              const bool is_selected = (current_texture == n);
+              if (ImGui::Selectable(texMesh.textures[n].name.c_str(),
+                                    is_selected)) {
+                current_texture = n;
+              }
+            }
+            ImGui::EndListBox();
+          }
+          if (texMesh.textures.size() < 16) {
+            if (ImGui::Button("New Texture")) {
+              texture_dialog.Open();
+              current_texture = texMesh.textures.size();
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Add a new texture to the selected mesh.");
+          }
+          if (!texMesh.textures.empty()) {
+            if (texMesh.textures.size() < 16) {
+              ImGui::SameLine();
+            }
+            if (ImGui::Button("Delete Texture")) {
+              glfwMakeContextCurrent(current_window->glfw_window);
+              deleteTexture(texMesh.textures[current_texture].id);
+              texMesh.textures.erase(texMesh.textures.begin() +
+                                     current_texture);
+              glfwMakeContextCurrent(glfw_settings_window);
+              current_texture = 0;
+              for (size_t i = 0; i < texMesh.textures.size(); i++) {
+                texMesh.textures[i].name =
+                    std::to_string(i + 1) + ": " + texMesh.textures[i].path;
+              }
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Remove the selected texture.");
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
+              if (current_texture > 0) {
+                Texture temp = texMesh.textures[current_texture - 1];
+                texMesh.textures[current_texture - 1] =
+                    texMesh.textures[current_texture];
+                texMesh.textures[current_texture] = temp;
+                current_texture--;
+              }
+              for (size_t i = 0; i < texMesh.textures.size(); i++) {
+                texMesh.textures[i].name =
+                    std::to_string(i + 1) + ": " + texMesh.textures[i].path;
+              }
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Move selected texture up.");
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
+              if (current_texture < texMesh.textures.size() - 1) {
+                Texture temp = texMesh.textures[current_texture + 1];
+                texMesh.textures[current_texture + 1] =
+                    texMesh.textures[current_texture];
+                texMesh.textures[current_texture] = temp;
+                current_texture++;
+              }
+              for (size_t i = 0; i < texMesh.textures.size(); i++) {
+                texMesh.textures[i].name =
+                    std::to_string(i + 1) + ": " + texMesh.textures[i].path;
+              }
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Move selected texture down.");
+
+            Texture *t = &texMesh.textures[current_texture];
+            ImGui::NewLine();
+            enum Type { diffuse, specular, emission, type_count };
+            const char *type_names[type_count] = {"Diffuse", "Specular",
+                                                  "Emissive"};
+            const char *type_name = (t->type >= 0 && t->type < type_count)
+                                        ? type_names[t->type]
+                                        : "Unknown";
+            ImGui::SliderInt("Type", &t->type, 0, type_count - 1, type_name);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Texture type: diffuse, specular, or emissive.");
+            enum Wrap {
+              repeat,
+              mirror_repeat,
+              clamp_edge,
+              clamp_border,
+              wrap_count
+            };
+            const char *wrap_names[wrap_count] = {"Repeat", "Mirrored Repeat",
+                                                  "Clamp to Edge",
+                                                  "Clamp to Border"};
+            const char *wrap_name_x = (t->wrapX >= 0 && t->wrapX < wrap_count)
+                                          ? wrap_names[t->wrapX]
+                                          : "Unknown";
+            if (ImGui::SliderInt("X Wrap", &t->wrapX, 0, wrap_count - 1,
+                                 wrap_name_x)) {
+              glfwMakeContextCurrent(current_window->glfw_window);
+              glBindTexture(GL_TEXTURE_2D, t->id);
+              switch (t->wrapX) {
+              case repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                break;
+              case mirror_repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                GL_MIRRORED_REPEAT);
+                break;
+              case clamp_edge:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                GL_CLAMP_TO_EDGE);
+                break;
+              case clamp_border:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                GL_CLAMP_TO_BORDER);
+                glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
+                                 t->border);
+                break;
+              }
+              glfwMakeContextCurrent(glfw_settings_window);
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Horizontal texture wrapping mode.");
+            const char *wrap_name_y = (t->wrapY >= 0 && t->wrapY < wrap_count)
+                                          ? wrap_names[t->wrapY]
+                                          : "Unknown";
+            if (ImGui::SliderInt("Y Wrap", &t->wrapY, 0, wrap_count - 1,
+                                 wrap_name_y)) {
+              glfwMakeContextCurrent(current_window->glfw_window);
+              glBindTexture(GL_TEXTURE_2D, t->id);
+              switch (t->wrapY) {
+              case repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                break;
+              case mirror_repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                GL_MIRRORED_REPEAT);
+                break;
+              case clamp_edge:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                GL_CLAMP_TO_EDGE);
+                break;
+              case clamp_border:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                GL_CLAMP_TO_BORDER);
+                glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
+                                 t->border);
+                break;
+              }
+              glfwMakeContextCurrent(glfw_settings_window);
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Vertical texture wrapping mode.");
+            if (ImGui::ColorEdit3("Border Color", t->border)) {
+              glfwMakeContextCurrent(current_window->glfw_window);
+              glBindTexture(GL_TEXTURE_2D, t->id);
+              glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR,
+                               t->border);
+              glfwMakeContextCurrent(glfw_settings_window);
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Border color used when clamp‑to‑border is selected.");
+            ImGui::InputFloat("Offset X", &t->offsetX, 0.01f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Horizontal texture offset.");
+            ImGui::InputFloat("Offset Y", &t->offsetY, 0.01f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Vertical texture offset.");
+            ImGui::InputFloat("Scale X", &t->scaleX, 0.01f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Horizontal texture scale.");
+            ImGui::InputFloat("Scale Y", &t->scaleY, 0.01f, 1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Vertical texture scale.");
+            ImGui::SliderAngle("Rotation", &t->rotation, -180.0f, 180.0f);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Texture rotation angle.");
+          }
+          ImGui::TreePop();
+        }
+      } else {
+        // No meshes – show a message and skip Materials/Textures
+        ImGui::TextDisabled("No meshes in this model – Materials and Textures "
+                            "are not available.");
+      }
+    } // end Model
 
     // ============================================================
     // GYRO
@@ -2117,39 +2197,25 @@ void drawSettingsWindow() {
                              ? "(default)"
                              : g_loaded_mapping_name.c_str());
 
-      // current_window is guaranteed to be non‑null here,
-      // so we can safely remove the check.
-
+      // Build the list of available bindings for the current controller
       std::vector<std::string> allBindings;
-
-      // Use is_gamecontroller to decide type, not the pointer (union aliases)
       if (current_window->is_gamecontroller && current_window->sdl_controller) {
         SDL_Joystick *joy =
             SDL_GameControllerGetJoystick(current_window->sdl_controller);
         if (joy) {
-          // ---- Buttons (all that the joystick reports) ----
           int numButtons = SDL_JoystickNumButtons(joy);
-          for (int i = 0; i < numButtons; ++i) {
+          for (int i = 0; i < numButtons; ++i)
             allBindings.push_back("b" + std::to_string(i));
-          }
-
-          // ---- Axes (with + and - directions) ----
           int numAxes = SDL_JoystickNumAxes(joy);
           for (int i = 0; i < numAxes; ++i) {
             allBindings.push_back("a" + std::to_string(i) + "+");
             allBindings.push_back("a" + std::to_string(i) + "-");
           }
-
-          // ---- Hats (only if they exist) ----
           int numHats = SDL_JoystickNumHats(joy);
-          for (int h = 0; h < numHats; ++h) {
-            for (int d = 0; d < 8; ++d) {
+          for (int h = 0; h < numHats; ++h)
+            for (int d = 0; d < 8; ++d)
               allBindings.push_back("h" + std::to_string(h) + "." +
                                     std::to_string(d));
-            }
-          }
-
-          // ---- Touchpad axes (only if present) ----
           int numTouchpads =
               SDL_GameControllerGetNumTouchpads(current_window->sdl_controller);
           for (int t = 0; t < numTouchpads; ++t) {
@@ -2162,23 +2228,13 @@ void drawSettingsWindow() {
                                     std::to_string(f) + "_y");
             }
           }
-
-          // Always include "unbound" as an option
           allBindings.push_back("unbound");
         }
       } else if (!current_window->is_gamecontroller &&
                  current_window->sdl_joystick) {
-        // ---- Generic joystick (already correct) ----
         int numAxes = SDL_JoystickNumAxes(current_window->sdl_joystick);
         int numButtons = SDL_JoystickNumButtons(current_window->sdl_joystick);
         int numHats = SDL_JoystickNumHats(current_window->sdl_joystick);
-
-        if (current_window->joystick_index != last_logged_device_index) {
-          spdlog::info("Joystick: axes={}, buttons={}, hats={}", numAxes,
-                       numButtons, numHats);
-          last_logged_device_index = current_window->joystick_index;
-        }
-
         allBindings.push_back("unbound");
         for (int i = 0; i < numButtons; ++i)
           allBindings.push_back("b" + std::to_string(i));
@@ -2187,54 +2243,35 @@ void drawSettingsWindow() {
           allBindings.push_back("a" + std::to_string(i) + "+");
           allBindings.push_back("a" + std::to_string(i) + "-");
         }
-        for (int h = 0; h < numHats; ++h) {
+        for (int h = 0; h < numHats; ++h)
           for (int d = 0; d < 8; ++d)
             allBindings.push_back("h" + std::to_string(h) + "." +
                                   std::to_string(d));
-        }
       } else {
         ImGui::TextDisabled("No controller connected.");
         goto end_mapping;
       }
 
-      ImGui::Text("Available bindings: %zu", allBindings.size());
-      // no tooltip for this line
-
-      // --- mapping table ---
       if (ImGui::BeginTable("MappingTable", 3,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Invert", ImGuiTableColumnFlags_WidthFixed,
+                                40.0f);
         ImGui::TableSetupColumn("Binding", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
 
         for (int i = 0; i < 35; ++i) {
-          // Check if this input is available on the connected controller
-          bool available = true;
-          if (i >= 27) {
-            int touchpadIdx = 0;
-            int fingerIdx = 0;
-            if (i >= 27 && i <= 30) {
-              touchpadIdx = 0;
-              fingerIdx = (i == 27 || i == 28) ? 0 : 1;
-            } else if (i >= 31 && i <= 34) {
-              touchpadIdx = 1;
-              fingerIdx = (i == 31 || i == 32) ? 0 : 1;
-            }
-            available =
-                HasTouchpadFinger(current_window, touchpadIdx, fingerIdx);
-          }
-          if (!available)
-            continue; // skip this row entirely
-
           ImGui::TableNextRow();
           ImGui::TableSetColumnIndex(0);
-          ImGui::Text("%d", i);
-          ImGui::TableSetColumnIndex(1);
-          ImGui::Text("%s", input_names[i].c_str());
-          ImGui::TableSetColumnIndex(2);
+          ImGui::Text("%s", mesh_names[i].c_str());
 
+          ImGui::TableSetColumnIndex(1);
+          ImGui::PushID(i + 5000);
+          ImGui::Checkbox("##invert", &current_window->invert_mapping[i]);
+          ImGui::PopID();
+
+          ImGui::TableSetColumnIndex(2);
           std::string currentBinding = current_window->mapping[i];
           std::string displayLabel =
               currentBinding.empty()
@@ -2242,7 +2279,7 @@ void drawSettingsWindow() {
                   : currentBinding + " (" +
                         getBindingDescription(currentBinding) + ")";
 
-          std::string comboID = "##combo_" + std::to_string(i);
+          std::string comboID = "##combo_part_" + std::to_string(i);
           if (ImGui::BeginCombo(comboID.c_str(), displayLabel.c_str(),
                                 ImGuiComboFlags_HeightLargest)) {
             for (const std::string &bind : allBindings) {
@@ -2261,7 +2298,7 @@ void drawSettingsWindow() {
         ImGui::EndTable();
       }
 
-      // --- buttons ---
+      // ---- Action buttons ----
       if (ImGui::Button("Apply Mapping")) {
         spdlog::info("Mapping stored. It will be used in the input loop.");
         g_loaded_mapping_name = "(applied)";
@@ -2291,9 +2328,12 @@ void drawSettingsWindow() {
             path.append(name);
             open_ofstream(path);
             std::string mapping = "";
-            for (int i = 0; i < 27; ++i) {
+            for (int i = 0; i < 35; ++i) {
               if (!current_window->mapping[i].empty()) {
-                mapping.append(mapping_names[i]);
+                // Use mesh_names[i] as the key for compatibility with older
+                // mapping files? We'll use the part name (mesh_names[i]) as
+                // key.
+                mapping.append(mesh_names[i]);
                 mapping.append(":");
                 mapping.append(current_window->mapping[i]);
                 mapping.append(",");
@@ -2335,7 +2375,7 @@ void drawSettingsWindow() {
                 std::filesystem::path(mapping_path).filename().string();
             if (ImGui::Selectable(mapping_name.c_str(),
                                   g_loaded_mapping_name == mapping_name)) {
-              for (int i = 0; i < 27; ++i)
+              for (int i = 0; i < 35; ++i)
                 current_window->mapping[i] = "";
               open_ifstream(mapping_path);
               std::vector<std::string> lines;
@@ -2350,8 +2390,9 @@ void drawSettingsWindow() {
                     continue;
                   std::vector<std::string> kv = get_binding(item);
                   if (kv.size() == 2) {
-                    for (int i = 0; i < 27; ++i) {
-                      if (kv[0] == mapping_names[i]) {
+                    // kv[0] is the part name (mesh name), kv[1] is binding
+                    for (int i = 0; i < 35; ++i) {
+                      if (kv[0] == mesh_names[i]) {
                         current_window->mapping[i] = kv[1];
                         break;
                       }
@@ -2374,7 +2415,7 @@ void drawSettingsWindow() {
       ImGui::SameLine();
 
       if (ImGui::Button("Reset to Default")) {
-        for (int i = 0; i < 27; ++i)
+        for (int i = 0; i < 35; ++i)
           current_window->mapping[i] = "";
         g_loaded_mapping_name = "";
         spdlog::info("Mapping reset to default.");
@@ -2405,21 +2446,7 @@ void drawSettingsWindow() {
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Open the Discord invite link.");
     }
-
   } // end big if (tabs.size() > 0 && new_controller_window == false)
-
-  // ============================================================
-  // Import Preview Controls (outside the if)
-  // ============================================================
-  for (auto &w : windows) {
-    if (w.is_import_preview && w.import_preview.is_open) {
-      if (ImGui::CollapsingHeader("Import Preview",
-                                  ImGuiTreeNodeFlags_DefaultOpen)) {
-        DrawImportPreviewControls(w);
-      }
-      break;
-    }
-  }
 
   ImGui::End();
   ImGui::PopStyleVar();
@@ -2428,37 +2455,45 @@ void drawSettingsWindow() {
   model_dialog.Display();
 
   if (texture_dialog.HasSelected()) {
-    std::cout << "Selected filename : " << texture_dialog.GetSelected().string()
-              << std::endl;
-    glfwMakeContextCurrent(
-        getControllerWindow(tabs[selected_tab].ID)->glfw_window);
-    Texture t;
-    loadTexture(t.id, texture_dialog.GetSelected().string());
-    t.path = texture_dialog.GetSelected().string();
-    t.name = std::to_string(getControllerWindow(tabs[selected_tab].ID)
-                                ->model.meshes[texture_mesh]
-                                .textures.size() +
-                            1) +
-             ": " + t.path;
-    getControllerWindow(tabs[selected_tab].ID)
-        ->model.meshes[texture_mesh]
-        .textures.push_back(t);
-    glfwMakeContextCurrent(glfw_settings_window);
-    texture_dialog.ClearSelected();
+    controller_window *ctrl = getControllerWindow(tabs[selected_tab].ID);
+    if (!ctrl) {
+      spdlog::error("No controller window for texture import.");
+      texture_dialog.ClearSelected();
+    } else if (ctrl->model.meshes.empty()) {
+      spdlog::error("Cannot add texture: model has no meshes.");
+      texture_dialog.ClearSelected();
+    } else if (texture_mesh >= ctrl->model.meshes.size()) {
+      spdlog::error("Texture mesh index out of range.");
+      texture_dialog.ClearSelected();
+    } else {
+      std::cout << "Selected filename : "
+                << texture_dialog.GetSelected().string() << std::endl;
+      glfwMakeContextCurrent(ctrl->glfw_window);
+      Texture t;
+      loadTexture(t.id, texture_dialog.GetSelected().string());
+      t.path = texture_dialog.GetSelected().string();
+      t.name =
+          std::to_string(ctrl->model.meshes[texture_mesh].textures.size() + 1) +
+          ": " + t.path;
+      ctrl->model.meshes[texture_mesh].textures.push_back(t);
+      glfwMakeContextCurrent(glfw_settings_window);
+      texture_dialog.ClearSelected();
+    }
   }
 
   if (model_dialog.HasSelected()) {
-    std::cout << "Selected filename : " << model_dialog.GetSelected().string()
-              << std::endl;
-
     controller_window *ctrl_win = getControllerWindow(tabs[selected_tab].ID);
     if (!ctrl_win) {
       spdlog::error("No valid controller window for model import.");
       model_dialog.ClearSelected();
-    } else if (selected_mesh >= 32) {
+    } else if (selected_mesh < 0 ||
+               selected_mesh >= (int)ctrl_win->model.meshes.size()) {
       spdlog::error("Invalid mesh index: {}", selected_mesh);
       model_dialog.ClearSelected();
     } else {
+      std::cout << "Selected filename : " << model_dialog.GetSelected().string()
+                << std::endl;
+      // 1. Copy the OBJ file into the model folder with the correct name
       const auto copy_options =
           std::filesystem::copy_options::overwrite_existing;
       std::filesystem::path from_path = model_dialog.GetSelected();
@@ -2466,14 +2501,24 @@ void drawSettingsWindow() {
       to_path.append(ctrl_win->model.path);
       to_path.append(mesh_filenames[selected_mesh]);
       std::filesystem::copy(from_path, to_path, copy_options);
-      writeInfo(ctrl_win->model, ctrl_win->model.path);
+
+      // 2. Load the OBJ into the selected mesh slot
       glfwMakeContextCurrent(ctrl_win->glfw_window);
-      loadModel(ctrl_win->model, ctrl_win->model.path);
+      loadMesh(ctrl_win->model.meshes[selected_mesh], to_path.string());
       glfwMakeContextCurrent(glfw_settings_window);
+
+      // 3. Save the updated model (including the newly loaded geometry)
+      writeJson(ctrl_win->model, ctrl_win->model.path + "/info.json");
+
+      // 4. (Optional) Reload the model to ensure everything is consistent
+      //    You can uncomment this if you want to refresh all meshes, but it's
+      //    not needed
+      // glfwMakeContextCurrent(ctrl_win->glfw_window);
+      // loadModel(ctrl_win->model, ctrl_win->model.path);
+      // glfwMakeContextCurrent(glfw_settings_window);
     }
     model_dialog.ClearSelected();
   }
-
   // --- Import Model Dialog ---
   import_model_dialog.Display();
   if (import_model_dialog.HasSelected()) {
@@ -2526,8 +2571,8 @@ void drawSettingsWindow() {
       tabs.back().ID = tabs_made;
       getLastWindow()->ID = tabs_made;
     } else {
-      spdlog::warn(
-          "No model folders found in 'models/'. Please create a model folder.");
+      spdlog::warn("No model folders found in 'models/'. Please create a "
+                   "model folder.");
       tabs.pop_back();
       tabs_made--;
     }
@@ -2542,13 +2587,21 @@ void DrawImportPreviewControls(controller_window &w) {
   ImGui::Text("Imported Model: %zu meshes",
               w.import_preview.imported_model.imported_meshes.size());
 
+  // Sort assignments alphabetically by mesh name
+  std::sort(w.import_preview.assignments.begin(),
+            w.import_preview.assignments.end(),
+            [](const ImportAssignment &a, const ImportAssignment &b) {
+              return a.mesh_name < b.mesh_name;
+            });
+
   // Update mesh colors and touch dimensions in real‑time
   for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
+    if (assign.assigned_part >= 0 && assign.assigned_part < 35) {
       Mesh &mesh = w.model.meshes[assign.assigned_part];
       bool isTouchPart =
           (assign.assigned_part == 29 || assign.assigned_part == 30 ||
-           assign.assigned_part == 31);
+           assign.assigned_part == 31 || assign.assigned_part == 32 ||
+           assign.assigned_part == 33 || assign.assigned_part == 34);
       if (isTouchPart) {
         mesh.material.color[0] = 1.0f;
         mesh.material.color[1] = 0.2f;
@@ -2571,7 +2624,7 @@ void DrawImportPreviewControls(controller_window &w) {
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_SizingStretchSame)) {
     ImGui::TableSetupColumn("Mesh Name", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("Assign to Part",
+    ImGui::TableSetupColumn("Controller Part",
                             ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("Max Angle", ImGuiTableColumnFlags_WidthFixed,
                             100.0f);
@@ -2591,19 +2644,20 @@ void DrawImportPreviewControls(controller_window &w) {
       // ---- Part assignment combo ----
       int current_part =
           assign.assigned_part + 1; // +1 because "Unassigned" is at index 0
-      const char *part_names[33];
+      const char *part_names[36];
       part_names[0] = "Unassigned";
-      for (int j = 0; j < 32; ++j)
+      for (int j = 0; j < 35; ++j)
         part_names[j + 1] = mesh_names[j].c_str();
 
       ImGui::PushID(i);
-      if (ImGui::Combo("##part", &current_part, part_names, 33)) {
+      if (ImGui::Combo("##part", &current_part, part_names, 36)) {
         // Update assignment
         assign.assigned_part = current_part - 1;
         assign.max_angle = 0.0f;
         assign.parent_part = -1;
         assign.touch_width = 1.0f;
         assign.touch_height = 1.0f;
+        w.import_preview.selected_mesh_index = -1;
         // Reset stick/trigger max on the mesh
         if (assign.assigned_part >= 0 &&
             assign.assigned_part < (int)w.model.meshes.size()) {
@@ -2650,14 +2704,14 @@ void DrawImportPreviewControls(controller_window &w) {
 
       // ---- Parent Part Column ----
       ImGui::TableSetColumnIndex(3);
-      if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
+      if (assign.assigned_part >= 0 && assign.assigned_part < 35) {
         int current_parent = assign.parent_part + 1;
-        const char *parent_names[33];
+        const char *parent_names[36];
         parent_names[0] = "None";
-        for (int j = 0; j < 32; ++j)
+        for (int j = 0; j < 35; ++j)
           parent_names[j + 1] = mesh_names[j].c_str();
         ImGui::PushID(i + 2000);
-        if (ImGui::Combo("##parent", &current_parent, parent_names, 33)) {
+        if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
           assign.parent_part = current_parent - 1;
         }
         if (ImGui::IsItemHovered()) {
@@ -2672,7 +2726,8 @@ void DrawImportPreviewControls(controller_window &w) {
       ImGui::TableSetColumnIndex(4);
       bool isTouchPart =
           (assign.assigned_part == 29 || assign.assigned_part == 30 ||
-           assign.assigned_part == 31);
+           assign.assigned_part == 31 || assign.assigned_part == 32 ||
+           assign.assigned_part == 33 || assign.assigned_part == 34);
       if (isTouchPart) {
         ImGui::PushID(i + 3000);
         if (ImGui::SliderFloat("##tw", &assign.touch_width, 0.01f, 5.0f,
@@ -2729,6 +2784,14 @@ void DrawImportPreviewControls(controller_window &w) {
       }
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Highlight this mesh in the 3D view.");
+      // Add a note about unassigned meshes
+      if (assign.assigned_part == -1) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Unassigned meshes are saved as separate OBJ files "
+                            "in the model folder.");
+      }
       ImGui::PopID();
     }
     ImGui::EndTable();
@@ -2756,6 +2819,79 @@ void DrawImportPreviewControls(controller_window &w) {
     ImGui::SetTooltip("Close the preview without saving.");
 }
 
+// Forward declaration of writeJson (defined in model.cpp)
+void writeJson(Model &m, const std::string &path);
+
+// Helper to build a Mesh from an ImportedMesh (no file I/O)
+void buildMeshFromImported(Mesh &mesh, const ImportedMesh &imported) {
+  // Clear any old GL resources
+  if (mesh.vao)
+    glDeleteVertexArrays(1, &mesh.vao);
+  if (mesh.vbo)
+    glDeleteBuffers(1, &mesh.vbo);
+  if (mesh.ebo)
+    glDeleteBuffers(1, &mesh.ebo);
+
+  // Build vertex data array (8 floats per vertex: pos, normal, texcoord)
+  std::vector<float> vertex_data;
+  vertex_data.reserve(imported.positions.size() * 8);
+  for (size_t i = 0; i < imported.positions.size(); ++i) {
+    vertex_data.push_back(imported.positions[i].x);
+    vertex_data.push_back(imported.positions[i].y);
+    vertex_data.push_back(imported.positions[i].z);
+    vertex_data.push_back(imported.normals[i].x);
+    vertex_data.push_back(imported.normals[i].y);
+    vertex_data.push_back(imported.normals[i].z);
+    vertex_data.push_back(imported.texcoords[i].x);
+    vertex_data.push_back(imported.texcoords[i].y);
+  }
+
+  glGenVertexArrays(1, &mesh.vao);
+  glGenBuffers(1, &mesh.vbo);
+  glGenBuffers(1, &mesh.ebo);
+
+  glBindVertexArray(mesh.vao);
+
+  glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+  glBufferData(GL_ARRAY_BUFFER, vertex_data.size() * sizeof(float),
+               vertex_data.data(), GL_STATIC_DRAW);
+
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float),
+                        (void *)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float),
+                        (void *)(6 * sizeof(float)));
+  glEnableVertexAttribArray(2);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+               imported.indices.size() * sizeof(unsigned int),
+               imported.indices.data(), GL_STATIC_DRAW);
+
+  mesh.elements = imported.indices.size();
+
+  // Compute bounding box
+  if (!imported.positions.empty()) {
+    mesh.hasBBox = true;
+    mesh.bboxMin = imported.positions[0];
+    mesh.bboxMax = imported.positions[0];
+    for (const auto &v : imported.positions) {
+      mesh.bboxMin.x = std::min(mesh.bboxMin.x, v.x);
+      mesh.bboxMin.y = std::min(mesh.bboxMin.y, v.y);
+      mesh.bboxMin.z = std::min(mesh.bboxMin.z, v.z);
+      mesh.bboxMax.x = std::max(mesh.bboxMax.x, v.x);
+      mesh.bboxMax.y = std::max(mesh.bboxMax.y, v.y);
+      mesh.bboxMax.z = std::max(mesh.bboxMax.z, v.z);
+    }
+  } else {
+    mesh.hasBBox = false;
+  }
+
+  glBindVertexArray(0);
+}
+
 void SaveImportedModel(controller_window &w) {
   std::string model_name = w.import_preview.save_name;
   if (model_name.empty()) {
@@ -2766,137 +2902,97 @@ void SaveImportedModel(controller_window &w) {
   std::string new_model_path =
       std::string(SDL_GetBasePath()) + "models/" + model_name;
   std::filesystem::create_directories(new_model_path);
+  spdlog::info("Saving imported model to: {}", new_model_path);
 
-  // Group imported meshes by assigned part
-  std::map<int, std::vector<ImportedMesh>> groups;
+  // Clear any existing meshes
+  w.model.meshes.clear();
+
+  // For each assignment, create a Mesh and upload geometry
   for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part < 0 || assign.assigned_part >= 32)
-      continue;
+    // Find the imported mesh data
     auto it =
         std::find_if(w.import_preview.imported_model.imported_meshes.begin(),
                      w.import_preview.imported_model.imported_meshes.end(),
                      [&](const ImportedMesh &mesh) {
                        return mesh.name == assign.mesh_name;
                      });
-    if (it != w.import_preview.imported_model.imported_meshes.end()) {
-      groups[assign.assigned_part].push_back(*it);
-    }
-  }
-
-  // Write each group to a single OBJ
-  for (auto &kv : groups) {
-    int part = kv.first;
-    auto &meshes = kv.second;
-    ImportedMesh merged;
-    merged.name = "merged";
-    size_t vertex_offset = 0;
-    for (auto &mesh : meshes) {
-      merged.positions.insert(merged.positions.end(), mesh.positions.begin(),
-                              mesh.positions.end());
-      merged.normals.insert(merged.normals.end(), mesh.normals.begin(),
-                            mesh.normals.end());
-      merged.texcoords.insert(merged.texcoords.end(), mesh.texcoords.begin(),
-                              mesh.texcoords.end());
-      for (auto idx : mesh.indices) {
-        merged.indices.push_back(idx + vertex_offset);
-      }
-      vertex_offset += mesh.positions.size();
-    }
-    std::string obj_path = new_model_path + "/" + mesh_filenames[part];
-    writeOBJ(obj_path, merged);
-    spdlog::info("Saved merged mesh for part {} with {} vertices", part,
-                 merged.positions.size());
-  }
-
-  // Build a map of part -> max_angle from assignments
-  std::map<int, float> max_angle_map;
-  for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
-      max_angle_map[assign.assigned_part] = assign.max_angle;
-    }
-  }
-
-  // Build parent map from assignments
-  std::map<int, int> parent_map;
-  for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
-      parent_map[assign.assigned_part] = assign.parent_part;
-    }
-  }
-
-  // Build maps for touch dimensions
-  std::map<int, float> touch_width_map, touch_height_map;
-  for (auto &assign : w.import_preview.assignments) {
-    if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
-      touch_width_map[assign.assigned_part] = assign.touch_width;
-      touch_height_map[assign.assigned_part] = assign.touch_height;
-    }
-  }
-
-  // Write info.txt with proper trigger_max and stick_max
-  std::string info_path = new_model_path + "/info.txt";
-  std::ofstream info_file(info_path);
-  if (info_file.is_open()) {
-    for (int i = 0; i < 32; ++i) {
-      info_file << mesh_filenames[i] << "\n";
-      for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n"; // position
-      for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n"; // travel
-      for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n"; // popup_offset
-      for (int j = 0; j < 3; ++j)
-        info_file << "0.0\n"; // popup_rotation
-
-      // trigger_max
-      if (i == 3 || i == 4) {
-        auto it = max_angle_map.find(i);
-        info_file << (it != max_angle_map.end() ? it->second : 0.0f) << "\n";
-      } else {
-        info_file << "0.0\n";
-      }
-      // stick_max
-      if (i == 5 || i == 6) {
-        auto it = max_angle_map.find(i);
-        info_file << (it != max_angle_map.end() ? it->second : 0.0f) << "\n";
-      } else {
-        info_file << "0.0\n";
-      }
-
-      // Build maps for touch dimensions
-      std::map<int, float> touch_width_map, touch_height_map;
-      for (auto &assign : w.import_preview.assignments) {
-        if (assign.assigned_part >= 0 && assign.assigned_part < 32) {
-          touch_width_map[assign.assigned_part] = assign.touch_width;
-          touch_height_map[assign.assigned_part] = assign.touch_height;
-        }
-      }
-
-      // touch_width
-      auto tw_it = touch_width_map.find(i);
-      info_file << (tw_it != touch_width_map.end() ? tw_it->second : 0.0f)
-                << "\n";
-      // touch_height
-      auto th_it = touch_height_map.find(i);
-      info_file << (th_it != touch_height_map.end() ? th_it->second : 0.0f)
-                << "\n";
-
-      // parent index
-      auto it_parent = parent_map.find(i);
-      info_file << (it_parent != parent_map.end() ? it_parent->second : -1)
-                << "\n";
+    if (it == w.import_preview.imported_model.imported_meshes.end()) {
+      spdlog::warn("Imported mesh '{}' not found, skipping.", assign.mesh_name);
+      continue;
     }
 
-    info_file.close();
+    // Generate a filename (safe)
+    std::string safe_name = assign.mesh_name;
+    for (char &c : safe_name) {
+      if (c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' ||
+          c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+        c = '_';
+    }
+    std::string obj_filename = safe_name + ".obj";
+    std::string full_path = new_model_path + "/" + obj_filename;
+
+    // Write the OBJ file
+    spdlog::debug("Writing OBJ: {}", full_path);
+    writeOBJ(full_path, *it);
+
+    // Check if the file was written
+    if (!std::filesystem::exists(full_path)) {
+      spdlog::error("Failed to write OBJ file: {}", full_path);
+      // Fallback: build mesh directly from imported data
+      Mesh mesh;
+      buildMeshFromImported(mesh, *it); // see below
+      mesh.filename = obj_filename;
+      mesh.name = assign.mesh_name;
+      mesh.assignedPart = assign.assigned_part;
+      mesh.parentIndex = assign.parent_part;
+      mesh.stick_max = assign.max_angle;
+      mesh.trigger_max = assign.max_angle;
+      mesh.touch_width = assign.touch_width;
+      mesh.touch_height = assign.touch_height;
+      w.model.meshes.push_back(std::move(mesh));
+      spdlog::info("Added mesh '{}' directly from imported data (no OBJ).",
+                   assign.mesh_name);
+      continue;
+    }
+
+    // Try to load the OBJ via the standard loader
+    Mesh mesh;
+    loadMesh(mesh, full_path);
+    if (mesh.elements == 0) {
+      spdlog::error("Failed to load OBJ: {}, falling back to direct import.",
+                    full_path);
+      // Fallback: build mesh directly from imported data
+      buildMeshFromImported(mesh, *it);
+    }
+
+    // Set properties from assignment
+    mesh.filename = obj_filename;
+    mesh.name = assign.mesh_name;
+    mesh.assignedPart = assign.assigned_part;
+    mesh.parentIndex = assign.parent_part;
+    mesh.stick_max = assign.max_angle;
+    mesh.trigger_max = assign.max_angle;
+    mesh.touch_width = assign.touch_width;
+    mesh.touch_height = assign.touch_height;
+
+    w.model.meshes.push_back(std::move(mesh));
+    spdlog::info("Added mesh '{}' with {} vertices.", assign.mesh_name,
+                 mesh.elements);
   }
 
-  spdlog::info("New model saved: {}", new_model_path);
+  // Write info.json
+  w.model.path = new_model_path;
+  writeJson(w.model, new_model_path + "/info.json");
 
-  // Close the preview window without manually removing the tab
+  spdlog::info("New model saved successfully: {} meshes.",
+               w.model.meshes.size());
+
+  // Close the preview window
   w.is_import_preview = false;
   w.import_preview.is_open = false;
   glfwSetWindowShouldClose(w.glfw_window, true);
 }
+
 void writeOBJ(const std::string &path, const ImportedMesh &mesh) {
   std::ofstream f(path);
   if (!f.is_open()) {
@@ -2947,15 +3043,15 @@ void saveTabs() {
     controller_window *w = getControllerWindow(t.ID);
     if (!w)
       continue;
-    writeInfo(w->model, w->model.path);
+    writeJson(w->model, w->model.path + "/info.json");
 
     // Write settings file (existing code, unchanged)
     std::string path = "settings/";
     path.append(t.title);
     open_ofstream(path);
     // ... (keep all the existing write_* calls exactly as they were) ...
-    // I'll include them below for completeness, but you can keep your existing
-    // ones.
+    // I'll include them below for completeness, but you can keep your
+    // existing ones.
     write_string(std::string("model path"), w->model.path);
     write_string(std::string("title"), t.title);
     write_int(std::string("always on top"), w->always_on_top);
@@ -2997,12 +3093,19 @@ void saveTabs() {
     write_int(std::string("popup triggers"), w->model.popup_triggers);
     write_int(std::string("popup paddles"), w->model.popup_paddles);
     write_int(std::string("left stick highlight deadzone"),
-              w->model.meshes[7].ring_highlight_deadzone);
+              (w->model.meshes.size() > 7)
+                  ? w->model.meshes[7].ring_highlight_deadzone
+                  : 0);
     write_int(std::string("right stick highlight deadzone"),
-              w->model.meshes[8].ring_highlight_deadzone);
+              (w->model.meshes.size() > 8)
+                  ? w->model.meshes[8].ring_highlight_deadzone
+                  : 0);
     write_float(std::string("highlight red"), w->highlight_color[0]);
     write_float(std::string("highlight green"), w->highlight_color[1]);
     write_float(std::string("highlight blue"), w->highlight_color[2]);
+    write_float(std::string("global press red"), w->global_press_color[0]);
+    write_float(std::string("global press green"), w->global_press_color[1]);
+    write_float(std::string("global press blue"), w->global_press_color[2]);
     write_float(std::string("touch area offset x"), w->touch_area_offset[0]);
     write_float(std::string("touch area offset y"), w->touch_area_offset[1]);
     write_float(std::string("touch area offset z"), w->touch_area_offset[2]);
@@ -3225,14 +3328,18 @@ void loadTabs() {
       if (line == "popup paddles")
         getControllerWindow(tabs.back().ID)->model.popup_paddles =
             std::stoi(lines[line_index + 1]);
-      if (line == "left stick highlight deadzone")
-        getControllerWindow(tabs.back().ID)
-            ->model.meshes[7]
-            .ring_highlight_deadzone = std::stoi(lines[line_index + 1]);
-      if (line == "right stick highlight deadzone")
-        getControllerWindow(tabs.back().ID)
-            ->model.meshes[8]
-            .ring_highlight_deadzone = std::stoi(lines[line_index + 1]);
+      if (line == "left stick highlight deadzone") {
+        controller_window *cw = getControllerWindow(tabs.back().ID);
+        if (cw && cw->model.meshes.size() > 7)
+          cw->model.meshes[7].ring_highlight_deadzone =
+              std::stoi(lines[line_index + 1]);
+      }
+      if (line == "right stick highlight deadzone") {
+        controller_window *cw = getControllerWindow(tabs.back().ID);
+        if (cw && cw->model.meshes.size() > 8)
+          cw->model.meshes[8].ring_highlight_deadzone =
+              std::stoi(lines[line_index + 1]);
+      }
       if (line == "highlight red")
         getControllerWindow(tabs.back().ID)->highlight_color[0] =
             std::stof(lines[line_index + 1]);
@@ -3242,22 +3349,30 @@ void loadTabs() {
       if (line == "highlight blue")
         getControllerWindow(tabs.back().ID)->highlight_color[2] =
             std::stof(lines[line_index + 1]);
-      for (int i = 3; i < 32; i++) {
-        if (i != 5 && i != 6) {
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[0] =
-              getControllerWindow(tabs.back().ID)->highlight_color[0];
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[1] =
-              getControllerWindow(tabs.back().ID)->highlight_color[1];
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[2] =
-              getControllerWindow(tabs.back().ID)->highlight_color[2];
+      {
+        controller_window *curWin = getControllerWindow(tabs.back().ID);
+        if (curWin) {
+          for (int i = 3; i < (int)curWin->model.meshes.size(); i++) {
+            if (i != 5 && i != 6) {
+              curWin->model.meshes[i].material.highlight[0] =
+                  curWin->highlight_color[0];
+              curWin->model.meshes[i].material.highlight[1] =
+                  curWin->highlight_color[1];
+              curWin->model.meshes[i].material.highlight[2] =
+                  curWin->highlight_color[2];
+            }
+          }
         }
       }
+      if (line == "global press red")
+        getControllerWindow(tabs.back().ID)->global_press_color[0] =
+            std::stof(lines[line_index + 1]);
+      if (line == "global press green")
+        getControllerWindow(tabs.back().ID)->global_press_color[1] =
+            std::stof(lines[line_index + 1]);
+      if (line == "global press blue")
+        getControllerWindow(tabs.back().ID)->global_press_color[2] =
+            std::stof(lines[line_index + 1]);
       if (line == "materials") {
         for (int i = 0;
              i < (int)getControllerWindow(tabs.back().ID)->model.meshes.size();

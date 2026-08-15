@@ -107,6 +107,14 @@ typedef struct mesh_struct {
   glm::vec3 bboxMin = glm::vec3(FLT_MAX);
   glm::vec3 bboxMax = glm::vec3(-FLT_MAX);
   bool hasBBox = false;
+
+  std::string name;      // mesh name from file (e.g., "left_stick")
+  int assignedPart = -1; // controller part index (0..34) or -1 if unassigned
+
+  std::string filename; // OBJ file name (e.g., "left_stick.obj")
+  bool useJoystick = false;
+  float glow_intensity = 0.0f;
+  float press_color[3] = {0.0f, 0.0f, 0.0f}; // zero means "use global"
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----
@@ -131,7 +139,10 @@ typedef struct model_struct {
   bool popup_triggers = false;
   bool popup_paddles = false;
 
-  // ----- NEW: imported mesh data -----
+  std::string source;
+
+  // ----- Temporary storage for imported meshes (used by importModelFile and
+  // preview) -----
   std::vector<ImportedMesh> imported_meshes;
   bool has_imported_meshes = false;
 } Model;
@@ -169,9 +180,11 @@ void loadTexture(GLuint &id, std::string path);
 
 void deleteTexture(GLuint &id);
 
-void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1);
+void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1,
+               const glm::vec3 &globalPressColor = glm::vec3(0.0f, 1.0f, 0.0f));
 
-void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader);
+void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
+              const glm::vec3 &pressColor);
 
 // ----- NEW: functions for custom mesh import and mapping -----
 void importModelFile(Model &m, const std::string &filepath);
@@ -181,5 +194,12 @@ void convertImportedToMeshes(Model &m);
 
 glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
                                const glm::mat4 &parentMatrix);
+
+glm::mat4 getMeshFinalMatrix(const Model &m, int idx,
+                             const glm::mat4 &parent = glm::mat4(1.0f));
+
+glm::vec3 computeMeshCenter(const Mesh &mesh);
+
+void writeJson(Model &m, const std::string &path);
 
 #endif
