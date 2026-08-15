@@ -193,6 +193,7 @@ const std::string fragment_shader_code =
     "    }\n"
     "\n"
     "    vec3 finalColor = mix(result, pressColor, pressValue);\n"
+    "    finalColor = mix(finalColor, highlight_color, highlight_value);\n"
     "FragColor = vec4(finalColor, material.alpha);\n "
     "}\n"
     "\n"

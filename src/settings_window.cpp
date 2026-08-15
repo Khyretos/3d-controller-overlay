@@ -8,19 +8,18 @@
 #else // some other operating system
 #endif
 
-#include <cstring>
-#include <filesystem>
-#include <spdlog/spdlog.h>
-#include <map>
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include <filesystem>
-#include <iostream>
-#include <stdio.h>
+#include "model.h"
 #include "settings.h"
 #include "settings_window.h"
+#include <cstring>
+#include <filesystem>
 #include <fstream>
-#include "model.h"
+#include <iostream>
+#include <map>
+#include <spdlog/spdlog.h>
+#include <stdio.h>
 
 extern std::vector<controller_window> windows;
 extern std::string button_names[21];
@@ -754,6 +753,10 @@ void drawSettingsWindow() {
     static int mesh_to_delete = -1; // for per‑row delete confirmation
 
     if (ImGui::CollapsingHeader("Model")) {
+
+      ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.2f, 1.0f), "Model Selection");
+      ImGui::Separator();
+
       // ---- Clamp all mesh indices to valid range ----
       size_t meshCount = current_window->model.meshes.size();
       if (meshCount == 0) {
@@ -792,7 +795,6 @@ void drawSettingsWindow() {
                 model_path.append(model_dir);
                 glfwMakeContextCurrent(current_window->glfw_window);
                 loadModel(current_window->model, model_path);
-                // Update mesh_count
                 glfwMakeContextCurrent(glfw_settings_window);
               }
             }
@@ -835,20 +837,16 @@ void drawSettingsWindow() {
             std::filesystem::path new_path(new_model_path);
             path /= new_path;
             std::filesystem::create_directory(path);
-            // Create a model with 35 default mesh slots (so the user can import
-            // OBJs into each)
             current_window->model.meshes.resize(35);
             for (int i = 0; i < 35; ++i) {
               Mesh &m = current_window->model.meshes[i];
               m.name = mesh_names[i];
               m.filename = mesh_filenames[i];
-              m.assignedPart = i; // each slot corresponds to a controller part
+              m.assignedPart = i;
               m.parentIndex = -1;
-              m.elements = 0; // empty geometry
+              m.elements = 0;
               m.vao = m.vbo = m.ebo = 0;
               m.visible = true;
-              // all other fields (position, travel, etc.) remain
-              // zero-initialised
             }
             current_window->model.path = new_model_path;
             current_window->model_name = name;
@@ -913,556 +911,16 @@ void drawSettingsWindow() {
           "to controller parts. After importing, a preview window will "
           "open where you can assign each mesh to a controller part.");
 
-      ImGui::NewLine();
-      ImGui::Separator();
-
-      // ---- Dynamic mesh table ----
-      ImGui::Text("Mesh List (%zu meshes)",
-                  current_window->model.meshes.size());
-      if (ImGui::BeginTable("MeshTable", 11,
-                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Assigned Part",
-                                ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Joystick",
-                                ImGuiTableColumnFlags_WidthFixed); // NEW
-        ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Pivot", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Touch W", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Touch H", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableHeadersRow();
-
-        for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
-          Mesh &mesh = current_window->model.meshes[i];
-          bool hasMesh = (mesh.elements > 0);
-          ImGui::TableNextRow();
-          if (selected_mesh == i) {
-            ImGui::TableSetBgColor(
-                ImGuiTableBgTarget_RowBg0,
-                ImGui::GetColorU32(ImVec4(0.35f, 0.15f, 0.45f, 1.0f)));
-          }
-          ImGui::TableSetColumnIndex(0);
-          ImGui::Text("%d", i);
-          ImGui::TableSetColumnIndex(1);
-          if (hasMesh) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                  ImVec4(0.3f, 0.1f, 0.4f, 0.3f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                  ImVec4(0.2f, 0.05f, 0.3f, 0.5f));
-            ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
-                                ImVec2(0.0f, 0.5f));
-            if (ImGui::Button(mesh.name.c_str(), ImVec2(-1, 0))) {
-              selected_mesh = i;
-            }
-            ImGui::PopStyleVar();
-            ImGui::PopStyleColor(3);
-          } else {
-            ImGui::TextDisabled("%s (empty)", mesh.name.c_str());
-          }
-
-          // ---- Assigned Part Column ----
-          ImGui::TableSetColumnIndex(2);
-          if (hasMesh) {
-            int current_assignment =
-                mesh.assignedPart + 1; // +1 for "Unassigned"
-            const char *part_names[36];
-            part_names[0] = "Unassigned";
-            for (int j = 0; j < 35; ++j)
-              part_names[j + 1] = mesh_names[j].c_str();
-            ImGui::PushID(i + 1000);
-            if (ImGui::Combo("##assign", &current_assignment, part_names, 36)) {
-              mesh.assignedPart = current_assignment - 1;
-              // After setting mesh.assignedPart, propagate touch dimensions if
-              // applicable
-              if (mesh.assignedPart == 29) {
-                // Copy to touch_point1 (30) and touch_point2 (31)
-                for (auto &m : current_window->model.meshes) {
-                  if (m.assignedPart == 30 || m.assignedPart == 31) {
-                    m.touch_width = mesh.touch_width;
-                    m.touch_height = mesh.touch_height;
-                  }
-                }
-              } else if (mesh.assignedPart == 32) {
-                // Copy to touch_point3 (33) and touch_point4 (34)
-                for (auto &m : current_window->model.meshes) {
-                  if (m.assignedPart == 33 || m.assignedPart == 34) {
-                    m.touch_width = mesh.touch_width;
-                    m.touch_height = mesh.touch_height;
-                  }
-                }
-              }
-              writeJson(current_window->model,
-                        current_window->model.path + "/info.json");
-            }
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Assign this mesh to a controller part.");
-            ImGui::PopID();
-
-            // Show default binding (if any)
-            int part = mesh.assignedPart;
-            if (part >= 9 && part <= 34) {
-              ImGui::SameLine();
-              ImGui::TextDisabled("(b%d)", part - 9);
-            }
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Parent Column ----
-          ImGui::TableSetColumnIndex(3);
-          if (hasMesh) {
-            int current_parent = mesh.parentIndex + 1; // +1 for "None"
-            const char *parent_names[36];
-            parent_names[0] = "None";
-            for (int j = 0; j < 35; ++j)
-              parent_names[j + 1] = mesh_names[j].c_str();
-            ImGui::PushID(i + 2000);
-            if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
-              mesh.parentIndex = current_parent - 1;
-              writeJson(current_window->model,
-                        current_window->model.path + "/info.json");
-            }
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Attach this mesh to a parent part (e.g., stick).");
-            ImGui::PopID();
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Visible Column ----
-          ImGui::TableSetColumnIndex(4);
-          if (hasMesh) {
-            ImGui::PushID(i + 3000);
-            ImGui::Checkbox("##visible", &mesh.visible);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Show/hide this mesh in the 3D view.");
-            ImGui::PopID();
-          } else {
-            ImGui::TextDisabled(" ");
-          }
-
-          // ---- Joystick Column ----
-          ImGui::TableSetColumnIndex(5);
-          if (hasMesh) {
-            ImGui::PushID(i + 4000);
-            ImGui::Checkbox("##joystick", &mesh.useJoystick);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Use raw joystick input (not gamecontroller) for this mesh.");
-            ImGui::PopID();
-          } else {
-            ImGui::TextDisabled(" ");
-          }
-
-          // ---- Position Column ----
-          ImGui::TableSetColumnIndex(6);
-          if (hasMesh) {
-            ImGui::Text("%.2f, %.2f, %.2f", mesh.position[0], mesh.position[1],
-                        mesh.position[2]);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Pivot Column ----
-          ImGui::TableSetColumnIndex(7);
-          if (hasMesh) {
-            ImGui::Text("%.2f, %.2f, %.2f", mesh.pivot_offset[0],
-                        mesh.pivot_offset[1], mesh.pivot_offset[2]);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Touch Width Column ----
-          ImGui::TableSetColumnIndex(8);
-          bool isTouch = (mesh.assignedPart == 29 || mesh.assignedPart == 30 ||
-                          mesh.assignedPart == 31 || mesh.assignedPart == 32 ||
-                          mesh.assignedPart == 33 || mesh.assignedPart == 34);
-          if (hasMesh && isTouch) {
-            ImGui::Text("%.2f", mesh.touch_width);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Touch Height Column ----
-          ImGui::TableSetColumnIndex(9);
-          if (hasMesh && isTouch) {
-            ImGui::Text("%.2f", mesh.touch_height);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Actions Column ----
-          ImGui::TableSetColumnIndex(10);
-          if (hasMesh) {
-            if (ImGui::Button(("Import##" + std::to_string(i)).c_str())) {
-              model_dialog.Open();
-              selected_mesh = i;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(("Del##" + std::to_string(i)).c_str())) {
-              mesh_to_delete = i;
-              ImGui::OpenPopup("delete_mesh_per_row");
-            }
-          } else {
-            ImGui::TextDisabled(" ");
-          }
-        }
-        ImGui::EndTable();
-      }
-
-      // ---- Per‑row delete popup ----
-      if (ImGui::BeginPopup("delete_mesh_per_row")) {
-        ImGui::Text("Delete this mesh?");
-        if (ImGui::Button("Confirm")) {
-          if (mesh_to_delete >= 0 &&
-              mesh_to_delete < (int)current_window->model.meshes.size()) {
-            // Erase from vector and rewrite JSON
-            current_window->model.meshes.erase(
-                current_window->model.meshes.begin() + mesh_to_delete);
-            writeJson(current_window->model,
-                      current_window->model.path + "/info.json");
-            mesh_to_delete = -1;
-            ImGui::CloseCurrentPopup();
-          }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
-          mesh_to_delete = -1;
-          ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-      }
-
-      ImGui::Separator();
-
-      // ---- Detailed controls for the selected mesh ----
-      if (selected_mesh >= 0 &&
-          selected_mesh < (int)current_window->model.meshes.size()) {
-        Mesh &selectedMesh = current_window->model.meshes[selected_mesh];
-        if (selectedMesh.elements == 0) {
-          ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
-        } else {
-          // ---- Highlight variables ----
-          static std::map<int, std::array<float, 3>> original_colors;
-          static bool highlight_selected = false;
-          static float highlight_color[3] = {1.0f, 0.0f, 0.0f}; // red default
-
-          ImGui::Text("Editing: %s", selectedMesh.name.c_str());
-
-          // ---- Position Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Position");
-          ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the X axis.");
-          ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the Y axis.");
-          ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the Z axis.");
-
-          // ---- Pivot Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f), "Pivot Point");
-          ImGui::TextWrapped(
-              "The pivot is the point around which the mesh rotates "
-              "(for sticks, triggers, buttons). The orange circle shows its "
-              "current position.");
-          ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (X).");
-          ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Y).");
-          ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Z).");
-
-          // ---- Auto-center buttons ----
-          if (selectedMesh.hasBBox) {
-            ImGui::Text("Auto‑set pivot:");
-            if (ImGui::Button("Center of Mass")) {
-              glm::vec3 center = computeMeshCenter(selectedMesh);
-              spdlog::info("Center of Mass: ({:.3f}, {:.3f}, {:.3f})", center.x,
-                           center.y, center.z);
-              selectedMesh.pivot_offset[0] = center.x;
-              selectedMesh.pivot_offset[1] = center.y;
-              selectedMesh.pivot_offset[2] = center.z;
-            }
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Sets the pivot to the geometric centre of the mesh.");
-            ImGui::SameLine();
-            if (selectedMesh.assignedPart == 5 ||
-                selectedMesh.assignedPart == 6) { // stick parts
-              if (ImGui::Button("Set Pivot to Stick Base")) {
-                float px =
-                    (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
-                float py = selectedMesh.bboxMin.y;
-                float pz =
-                    (selectedMesh.bboxMin.z + selectedMesh.bboxMax.z) * 0.5f;
-                selectedMesh.pivot_offset[0] = px;
-                selectedMesh.pivot_offset[1] = py;
-                selectedMesh.pivot_offset[2] = pz;
-              }
-              if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(
-                    "Sets the pivot to the bottom‑centre of the stick mesh. "
-                    "This makes the stick rotate like a real joystick.");
-            }
-          } else {
-            ImGui::TextDisabled(
-                "Bounding box not available – auto‑center disabled.");
-          }
-
-          // ---- Rotation Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Rotation");
-          ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the X axis (degrees).");
-          ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the Y axis (degrees).");
-          ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
-
-          // ---- Reset Transform ----
-          ImGui::Separator();
-          if (ImGui::Button("Reset Transform")) {
-            selectedMesh.position[0] = selectedMesh.position[1] =
-                selectedMesh.position[2] = 0.0f;
-            selectedMesh.pivot_offset[0] = selectedMesh.pivot_offset[1] =
-                selectedMesh.pivot_offset[2] = 0.0f;
-            selectedMesh.rotation[0] = selectedMesh.rotation[1] =
-                selectedMesh.rotation[2] = 0.0f;
-            selectedMesh.travel[0] = selectedMesh.travel[1] =
-                selectedMesh.travel[2] = 0.0f;
-            selectedMesh.popup_offset[0] = selectedMesh.popup_offset[1] =
-                selectedMesh.popup_offset[2] = 0.0f;
-            selectedMesh.popup_rotation[0] = selectedMesh.popup_rotation[1] =
-                selectedMesh.popup_rotation[2] = 0.0f;
-            selectedMesh.trigger_max = 0.0f;
-            selectedMesh.stick_max = 0.0f;
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Reset all transform values (position, pivot, "
-                              "rotation, travel, popup) to zero.");
-
-          ImGui::SameLine();
-          if (ImGui::Button("Save Model")) {
-            writeJson(current_window->model,
-                      current_window->model.path + "/info.json");
-            spdlog::info("Model saved to {}", current_window->model.path);
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Write current settings to info.json.");
-
-          // ---- Edit Highlight ----
-          ImGui::Checkbox("Highlight", &current_window->highlight_enabled);
-          ImGui::SameLine();
-          ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Temporarily colour the selected mesh for editing.");
-
-          if (current_window->highlight_enabled) {
-            if (current_window->original_colors.find(selected_mesh) ==
-                current_window->original_colors.end()) {
-              current_window->original_colors[selected_mesh] = {
-                  selectedMesh.material.color[0],
-                  selectedMesh.material.color[1],
-                  selectedMesh.material.color[2]};
-            }
-            selectedMesh.material.color[0] = current_window->highlight_color[0];
-            selectedMesh.material.color[1] = current_window->highlight_color[1];
-            selectedMesh.material.color[2] = current_window->highlight_color[2];
-            selectedMesh.highlight_value = 0.0f;
-          } else {
-            auto it = current_window->original_colors.find(selected_mesh);
-            if (it != current_window->original_colors.end()) {
-              selectedMesh.material.color[0] = it->second[0];
-              selectedMesh.material.color[1] = it->second[1];
-              selectedMesh.material.color[2] = it->second[2];
-              selectedMesh.highlight_value = 0.0f;
-              current_window->original_colors.erase(it);
-            }
-          }
-
-          // ---- Travel (for buttons/triggers) ----
-          int part = selectedMesh.assignedPart;
-          if (part > 8 && part < 30) {
-            ImGui::Separator();
-            ImGui::Text("Travel (button press offset)");
-            ImGui::InputFloat("X Travel", &selectedMesh.travel[0], 0.01f, 1.0f,
-                              "%.3f");
-            ImGui::InputFloat("Y Travel", &selectedMesh.travel[1], 0.01f, 1.0f,
-                              "%.3f");
-            ImGui::InputFloat("Z Travel", &selectedMesh.travel[2], 0.01f, 1.0f,
-                              "%.3f");
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Movement when the button is pressed.");
-          }
-
-          // ---- Popup offsets ----
-          if ((part == 18 || part == 19) || (part > 24 && part < 29) ||
-              (part == 3 || part == 4)) {
-            ImGui::Separator();
-            ImGui::Text("Popup animation");
-            ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1],
-                               -180, 180);
-            ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
-                               -180, 180);
-            ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
-                               -180, 180);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Offset and rotation when the part 'pops up' (e.g. bumper).");
-          }
-
-          // ---- Stick max ----
-          if (part == 5 || part == 6) {
-            ImGui::Separator();
-            if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
-                                   45.0f)) {
-              // Propagate to ring and cap if they exist
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == 7 || m.assignedPart == 16 ||
-                    m.assignedPart == 8 || m.assignedPart == 17) {
-                  m.stick_max = selectedMesh.stick_max;
-                }
-              }
-            }
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Maximum deflection angle for the stick.");
-          }
-
-          // ---- Trigger max ----
-          if (part == 3 || part == 4) {
-            ImGui::Separator();
-            ImGui::SliderAngle("Max Angle", &selectedMesh.trigger_max, 0.0f,
-                               90.0f);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Maximum pull angle for the trigger.");
-          }
-
-          // ---- Touchpad dimensions ----
-          if (part == 29 || part == 32) {
-            ImGui::Separator();
-            ImGui::Text("Touchpad dimensions");
-            selectedMesh.visible = true;
-            // Find associated touch point meshes
-            int tp1, tp2;
-            if (part == 29) {
-              tp1 = 30;
-              tp2 = 31;
-            } else {
-              tp1 = 33;
-              tp2 = 34;
-            }
-            for (auto &m : current_window->model.meshes) {
-              if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                m.visible = true;
-                m.touch_width = selectedMesh.touch_width;
-                m.touch_height = selectedMesh.touch_height;
-              }
-            }
-            if (ImGui::SliderFloat("Touch Area Width",
-                                   &selectedMesh.touch_width, 0.01f, 5.0f,
-                                   "%.2f")) {
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                  m.touch_width = selectedMesh.touch_width;
-                }
-              }
-            }
-            if (ImGui::SliderFloat("Touch Area Height",
-                                   &selectedMesh.touch_height, 0.01f, 5.0f,
-                                   "%.2f")) {
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                  m.touch_height = selectedMesh.touch_height;
-                }
-              }
-            }
-          }
-
-          // ---- Touch Area Visualisation ----
-          if (part == 29 || part == 30 || part == 31 || part == 32 ||
-              part == 33 || part == 34) {
-            ImGui::Separator();
-            ImGui::Checkbox("Show Touch Area",
-                            &current_window->show_touch_area);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Draws a magenta rectangle showing the touch area.");
-
-            if (current_window->show_touch_area) {
-              ImGui::SliderFloat("X Offset",
-                                 &current_window->touch_area_offset[0], -2.0f,
-                                 2.0f, "%.3f");
-              ImGui::SliderFloat("Y Offset",
-                                 &current_window->touch_area_offset[1], -2.0f,
-                                 2.0f, "%.3f");
-              ImGui::SliderFloat("Z Offset",
-                                 &current_window->touch_area_offset[2], -2.0f,
-                                 2.0f, "%.3f");
-              if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Offset of the touch area rectangle from the "
-                                  "touchpad's origin.");
-            }
-          }
-
-          // ---- Custom scale ----
-          if (selectedMesh.useCustomScale) {
-            ImGui::Separator();
-            ImGui::Text("Custom scale");
-            ImGui::InputFloat("Scale X", &selectedMesh.scale[0], 0.01f, 1.0f,
-                              "%.2f");
-            ImGui::InputFloat("Scale Y", &selectedMesh.scale[1], 0.01f, 1.0f,
-                              "%.2f");
-            ImGui::InputFloat("Scale Z", &selectedMesh.scale[2], 0.01f, 1.0f,
-                              "%.2f");
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Custom scale for this mesh.");
-          }
-
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-                             "Changes are saved when you click 'Save Model' or "
-                             "switch models.");
-        }
-      } else {
-        ImGui::TextDisabled(
-            "Select a mesh from the table above to edit its properties.");
-      }
-
-      // ---- Materials and Textures (properly guarded) ----
+      // ============================================================
+      //  MATERIALS & TEXTURES (moved to the top)
+      // ============================================================
       if (!current_window->model.meshes.empty()) {
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.8f, 1.0f),
+                           "Materials & Textures");
+        ImGui::Separator();
+
+        // ---- Materials ----
         if (ImGui::TreeNode("Materials")) {
           static std::string mesh_name = mesh_names[material_mesh].c_str();
           if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
@@ -1477,7 +935,6 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Select a mesh to edit its material.");
 
-          // Ensure material_mesh is still valid
           if (material_mesh >= current_window->model.meshes.size())
             material_mesh = current_window->model.meshes.size() - 1;
 
@@ -1502,6 +959,7 @@ void drawSettingsWindow() {
           ImGui::TreePop();
         }
 
+        // ---- Textures ----
         if (ImGui::TreeNode("Textures")) {
           static std::string mesh_name = mesh_names[texture_mesh].c_str();
           if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
@@ -1516,7 +974,6 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Select a mesh to manage its textures.");
 
-          // Ensure texture_mesh is valid
           if (texture_mesh >= current_window->model.meshes.size())
             texture_mesh = current_window->model.meshes.size() - 1;
 
@@ -1703,9 +1160,534 @@ void drawSettingsWindow() {
           ImGui::TreePop();
         }
       } else {
-        // No meshes – show a message and skip Materials/Textures
         ImGui::TextDisabled("No meshes in this model – Materials and Textures "
                             "are not available.");
+      }
+
+      // ============================================================
+      //  MESH LIST TABLE
+      // ============================================================
+      ImGui::Separator();
+      ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.0f, 1.0f), "Mesh List & Editing");
+      ImGui::Separator();
+
+      ImGui::Text("Mesh List (%zu meshes)",
+                  current_window->model.meshes.size());
+      if (ImGui::BeginTable("MeshTable", 11,
+                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Assigned Part",
+                                ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Joystick", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Pivot", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Touch W", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Touch H", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableHeadersRow();
+
+        for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
+          Mesh &mesh = current_window->model.meshes[i];
+          bool hasMesh = (mesh.elements > 0);
+          ImGui::TableNextRow();
+          if (selected_mesh == i) {
+            ImGui::TableSetBgColor(
+                ImGuiTableBgTarget_RowBg0,
+                ImGui::GetColorU32(ImVec4(0.35f, 0.15f, 0.45f, 1.0f)));
+          }
+          ImGui::TableSetColumnIndex(0);
+          ImGui::Text("%d", i);
+          ImGui::TableSetColumnIndex(1);
+          if (hasMesh) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                  ImVec4(0.3f, 0.1f, 0.4f, 0.3f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                                  ImVec4(0.2f, 0.05f, 0.3f, 0.5f));
+            ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
+                                ImVec2(0.0f, 0.5f));
+            if (ImGui::Button(mesh.name.c_str(), ImVec2(-1, 0))) {
+              selected_mesh = i;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(3);
+          } else {
+            ImGui::TextDisabled("%s (empty)", mesh.name.c_str());
+          }
+
+          // ---- Assigned Part Column ----
+          ImGui::TableSetColumnIndex(2);
+          if (hasMesh) {
+            int current_assignment = mesh.assignedPart + 1;
+            const char *part_names[36];
+            part_names[0] = "Unassigned";
+            for (int j = 0; j < 35; ++j)
+              part_names[j + 1] = mesh_names[j].c_str();
+            ImGui::PushID(i + 1000);
+            if (ImGui::Combo("##assign", &current_assignment, part_names, 36)) {
+              mesh.assignedPart = current_assignment - 1;
+              if (mesh.assignedPart == 29) {
+                for (auto &m : current_window->model.meshes) {
+                  if (m.assignedPart == 30 || m.assignedPart == 31) {
+                    m.touch_width = mesh.touch_width;
+                    m.touch_height = mesh.touch_height;
+                  }
+                }
+              } else if (mesh.assignedPart == 32) {
+                for (auto &m : current_window->model.meshes) {
+                  if (m.assignedPart == 33 || m.assignedPart == 34) {
+                    m.touch_width = mesh.touch_width;
+                    m.touch_height = mesh.touch_height;
+                  }
+                }
+              }
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Assign this mesh to a controller part.");
+            ImGui::PopID();
+
+            int part = mesh.assignedPart;
+            if (part >= 9 && part <= 34) {
+              ImGui::SameLine();
+              ImGui::TextDisabled("(b%d)", part - 9);
+            }
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Parent Column ----
+          ImGui::TableSetColumnIndex(3);
+          if (hasMesh) {
+            int current_parent = mesh.parentIndex + 1;
+            const char *parent_names[36];
+            parent_names[0] = "None";
+            for (int j = 0; j < 35; ++j)
+              parent_names[j + 1] = mesh_names[j].c_str();
+            ImGui::PushID(i + 2000);
+            if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
+              mesh.parentIndex = current_parent - 1;
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Attach this mesh to a parent part.");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Visible Column ----
+          ImGui::TableSetColumnIndex(4);
+          if (hasMesh) {
+            ImGui::PushID(i + 3000);
+            ImGui::Checkbox("##visible", &mesh.visible);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Show/hide this mesh in the 3D view.");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+
+          // ---- Joystick Column ----
+          ImGui::TableSetColumnIndex(5);
+          if (hasMesh) {
+            ImGui::PushID(i + 4000);
+            ImGui::Checkbox("##joystick", &mesh.useJoystick);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Use raw joystick input for this mesh.");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+
+          // ---- Position Column ----
+          ImGui::TableSetColumnIndex(6);
+          if (hasMesh) {
+            ImGui::Text("%.2f, %.2f, %.2f", mesh.position[0], mesh.position[1],
+                        mesh.position[2]);
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Pivot Column ----
+          ImGui::TableSetColumnIndex(7);
+          if (hasMesh) {
+            ImGui::Text("%.2f, %.2f, %.2f", mesh.pivot_offset[0],
+                        mesh.pivot_offset[1], mesh.pivot_offset[2]);
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Touch Width Column ----
+          ImGui::TableSetColumnIndex(8);
+          bool isTouch = (mesh.assignedPart == 29 || mesh.assignedPart == 30 ||
+                          mesh.assignedPart == 31 || mesh.assignedPart == 32 ||
+                          mesh.assignedPart == 33 || mesh.assignedPart == 34);
+          if (hasMesh && isTouch) {
+            ImGui::Text("%.2f", mesh.touch_width);
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Touch Height Column ----
+          ImGui::TableSetColumnIndex(9);
+          if (hasMesh && isTouch) {
+            ImGui::Text("%.2f", mesh.touch_height);
+          } else {
+            ImGui::TextDisabled("N/A");
+          }
+
+          // ---- Actions Column ----
+          ImGui::TableSetColumnIndex(10);
+          if (hasMesh) {
+            if (ImGui::Button(("Import##" + std::to_string(i)).c_str())) {
+              model_dialog.Open();
+              selected_mesh = i;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(("Del##" + std::to_string(i)).c_str())) {
+              mesh_to_delete = i;
+              ImGui::OpenPopup("delete_mesh_per_row");
+            }
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+        }
+        ImGui::EndTable();
+      }
+
+      // ---- Per‑row delete popup ----
+      if (ImGui::BeginPopup("delete_mesh_per_row")) {
+        ImGui::Text("Delete this mesh?");
+        if (ImGui::Button("Confirm")) {
+          if (mesh_to_delete >= 0 &&
+              mesh_to_delete < (int)current_window->model.meshes.size()) {
+            current_window->model.meshes.erase(
+                current_window->model.meshes.begin() + mesh_to_delete);
+            writeJson(current_window->model,
+                      current_window->model.path + "/info.json");
+            mesh_to_delete = -1;
+            ImGui::CloseCurrentPopup();
+          }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+          mesh_to_delete = -1;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+      }
+
+      ImGui::Separator();
+
+      // ---- Detailed controls for selected mesh ----
+      if (selected_mesh >= 0 &&
+          selected_mesh < (int)current_window->model.meshes.size()) {
+        Mesh &selectedMesh = current_window->model.meshes[selected_mesh];
+        if (selectedMesh.elements == 0) {
+          ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
+        } else {
+          ImGui::Text("Editing: %s", selectedMesh.name.c_str());
+
+          // ---- Position Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Position");
+          ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the X axis.");
+          ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the Y axis.");
+          ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Move the mesh along the Z axis.");
+
+          // ---- Pivot Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f), "Pivot Point");
+          ImGui::TextWrapped(
+              "The pivot is the point around which the mesh rotates "
+              "(for sticks, triggers, buttons). The orange circle shows its "
+              "current position.");
+          ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (X).");
+          ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Y).");
+          ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f,
+                            1.0f, "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Z).");
+
+          // ---- Auto-center buttons ----
+          if (selectedMesh.hasBBox) {
+            ImGui::Text("Auto‑set pivot:");
+            if (ImGui::Button("Center of Mass")) {
+              glm::vec3 center = computeMeshCenter(selectedMesh);
+              spdlog::info("Center of Mass: ({:.3f}, {:.3f}, {:.3f})", center.x,
+                           center.y, center.z);
+              selectedMesh.pivot_offset[0] = center.x;
+              selectedMesh.pivot_offset[1] = center.y;
+              selectedMesh.pivot_offset[2] = center.z;
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Sets the pivot to the geometric centre of the mesh.");
+            ImGui::SameLine();
+            if (selectedMesh.assignedPart == 5 ||
+                selectedMesh.assignedPart == 6) { // stick parts
+              if (ImGui::Button("Set Pivot to Stick Base")) {
+                float px =
+                    (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
+                float py = selectedMesh.bboxMin.y;
+                float pz =
+                    (selectedMesh.bboxMin.z + selectedMesh.bboxMax.z) * 0.5f;
+                selectedMesh.pivot_offset[0] = px;
+                selectedMesh.pivot_offset[1] = py;
+                selectedMesh.pivot_offset[2] = pz;
+              }
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Sets the pivot to the bottom‑centre of the stick mesh. "
+                    "This makes the stick rotate like a real joystick.");
+            }
+          } else {
+            ImGui::TextDisabled(
+                "Bounding box not available – auto‑center disabled.");
+          }
+
+          // ---- Rotation Section ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Rotation");
+          ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the X axis (degrees).");
+          ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the Y axis (degrees).");
+          ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f,
+                            1.0f, "%.1f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
+
+          // ---- Reset Transform ----
+          ImGui::Separator();
+          if (ImGui::Button("Reset Transform")) {
+            selectedMesh.position[0] = selectedMesh.position[1] =
+                selectedMesh.position[2] = 0.0f;
+            selectedMesh.pivot_offset[0] = selectedMesh.pivot_offset[1] =
+                selectedMesh.pivot_offset[2] = 0.0f;
+            selectedMesh.rotation[0] = selectedMesh.rotation[1] =
+                selectedMesh.rotation[2] = 0.0f;
+            selectedMesh.travel[0] = selectedMesh.travel[1] =
+                selectedMesh.travel[2] = 0.0f;
+            selectedMesh.popup_offset[0] = selectedMesh.popup_offset[1] =
+                selectedMesh.popup_offset[2] = 0.0f;
+            selectedMesh.popup_rotation[0] = selectedMesh.popup_rotation[1] =
+                selectedMesh.popup_rotation[2] = 0.0f;
+            selectedMesh.trigger_max = 0.0f;
+            selectedMesh.stick_max = 0.0f;
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Reset all transform values (position, pivot, "
+                              "rotation, travel, popup) to zero.");
+
+          ImGui::SameLine();
+          if (ImGui::Button("Save Model")) {
+            writeJson(current_window->model,
+                      current_window->model.path + "/info.json");
+            spdlog::info("Model saved to {}", current_window->model.path);
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Write current settings to info.json.");
+
+          // ---- Edit Highlight ----
+          ImGui::Checkbox("Highlight", &current_window->highlight_enabled);
+          ImGui::SameLine();
+          ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Temporarily overlay this color on the selected mesh.");
+
+          if (current_window->highlight_enabled) {
+            selectedMesh.highlight_value = 1.0f;
+            selectedMesh.material.highlight[0] =
+                current_window->highlight_color[0];
+            selectedMesh.material.highlight[1] =
+                current_window->highlight_color[1];
+            selectedMesh.material.highlight[2] =
+                current_window->highlight_color[2];
+          } else {
+            selectedMesh.highlight_value = 0.0f;
+            selectedMesh.material.highlight[0] = 0.0f;
+            selectedMesh.material.highlight[1] = 1.0f;
+            selectedMesh.material.highlight[2] = 0.0f;
+          }
+
+          // ---- Travel (for buttons/triggers) ----
+          int part = selectedMesh.assignedPart;
+          if (part > 8 && part < 30) {
+            ImGui::Separator();
+            ImGui::Text("Travel (button press offset)");
+            ImGui::InputFloat("X Travel", &selectedMesh.travel[0], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Y Travel", &selectedMesh.travel[1], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Z Travel", &selectedMesh.travel[2], 0.01f, 1.0f,
+                              "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Movement when the button is pressed.");
+          }
+
+          // ---- Popup offsets ----
+          if ((part == 18 || part == 19) || (part > 24 && part < 29) ||
+              (part == 3 || part == 4)) {
+            ImGui::Separator();
+            ImGui::Text("Popup animation");
+            ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
+                               -180, 180);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Offset and rotation when the part 'pops up' (e.g. bumper).");
+          }
+
+          // ---- Stick max ----
+          if (part == 5 || part == 6) {
+            ImGui::Separator();
+            if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
+                                   45.0f)) {
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == 7 || m.assignedPart == 16 ||
+                    m.assignedPart == 8 || m.assignedPart == 17) {
+                  m.stick_max = selectedMesh.stick_max;
+                }
+              }
+            }
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum deflection angle for the stick.");
+          }
+
+          // ---- Trigger max ----
+          if (part == 3 || part == 4) {
+            ImGui::Separator();
+            ImGui::SliderAngle("Max Angle", &selectedMesh.trigger_max, 0.0f,
+                               90.0f);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum pull angle for the trigger.");
+          }
+
+          // ---- Touchpad dimensions ----
+          if (part == 29 || part == 32) {
+            ImGui::Separator();
+            ImGui::Text("Touchpad dimensions");
+            selectedMesh.visible = true;
+            int tp1, tp2;
+            if (part == 29) {
+              tp1 = 30;
+              tp2 = 31;
+            } else {
+              tp1 = 33;
+              tp2 = 34;
+            }
+            for (auto &m : current_window->model.meshes) {
+              if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                m.visible = true;
+                m.touch_width = selectedMesh.touch_width;
+                m.touch_height = selectedMesh.touch_height;
+              }
+            }
+            if (ImGui::SliderFloat("Touch Area Width",
+                                   &selectedMesh.touch_width, 0.01f, 5.0f,
+                                   "%.2f")) {
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                  m.touch_width = selectedMesh.touch_width;
+                }
+              }
+            }
+            if (ImGui::SliderFloat("Touch Area Height",
+                                   &selectedMesh.touch_height, 0.01f, 5.0f,
+                                   "%.2f")) {
+              for (auto &m : current_window->model.meshes) {
+                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
+                  m.touch_height = selectedMesh.touch_height;
+                }
+              }
+            }
+          }
+
+          // ---- Touch Area Visualisation ----
+          if (part == 29 || part == 30 || part == 31 || part == 32 ||
+              part == 33 || part == 34) {
+            ImGui::Separator();
+            ImGui::Checkbox("Show Touch Area",
+                            &current_window->show_touch_area);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Draws a magenta rectangle showing the touch area.");
+
+            if (current_window->show_touch_area) {
+              ImGui::SliderFloat("X Offset",
+                                 &current_window->touch_area_offset[0], -2.0f,
+                                 2.0f, "%.3f");
+              ImGui::SliderFloat("Y Offset",
+                                 &current_window->touch_area_offset[1], -2.0f,
+                                 2.0f, "%.3f");
+              ImGui::SliderFloat("Z Offset",
+                                 &current_window->touch_area_offset[2], -2.0f,
+                                 2.0f, "%.3f");
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Offset of the touch area rectangle from the "
+                                  "touchpad's origin.");
+            }
+          }
+
+          // ---- Custom scale ----
+          if (selectedMesh.useCustomScale) {
+            ImGui::Separator();
+            ImGui::Text("Custom scale");
+            ImGui::InputFloat("Scale X", &selectedMesh.scale[0], 0.01f, 1.0f,
+                              "%.2f");
+            ImGui::InputFloat("Scale Y", &selectedMesh.scale[1], 0.01f, 1.0f,
+                              "%.2f");
+            ImGui::InputFloat("Scale Z", &selectedMesh.scale[2], 0.01f, 1.0f,
+                              "%.2f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Custom scale for this mesh.");
+          }
+
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                             "Changes are saved when you click 'Save Model' or "
+                             "switch models.");
+        }
+      } else {
+        ImGui::TextDisabled(
+            "Select a mesh from the table above to edit its properties.");
       }
     } // end Model
 
