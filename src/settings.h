@@ -1,8 +1,8 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
-#include <string>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 void write_int(std::string label, int value);
@@ -32,5 +32,7 @@ void read_file(std::vector<std::string> *lines);
 void close_ifstream();
 
 void close_ofstream();
+
+std::string get_models_root();
 
 #endif

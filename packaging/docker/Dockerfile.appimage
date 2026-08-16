@@ -3,9 +3,9 @@ FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build tools and system dependencies (development headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git wget pkg-config ca-certificates \
+    nlohmann-json3-dev \
     libgl1-mesa-dev libglu1-mesa-dev \
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
     libxkbcommon-dev libwayland-dev libxcb-*-dev libx11-xcb-dev \
@@ -35,23 +35,23 @@ RUN wget -q https://github.com/glfw/glfw/releases/download/3.3.8/glfw-3.3.8.zip 
     cd .. && rm -rf glfw-3.3.8*
 
 # Build spdlog statically
-RUN git clone https://github.com/gabime/spdlog.git && \
+RUN git clone --depth 1 --branch v1.14.1 https://github.com/gabime/spdlog.git && \
     cd spdlog && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DSPDLOG_BUILD_SHARED=OFF -DSPDLOG_FMT_EXTERNAL=OFF && \
     cmake --build build -j$(nproc) && \
     cmake --install build --prefix /usr && \
     cd .. && rm -rf spdlog
 
-# Build assimp statically
-RUN git clone https://github.com/assimp/assimp.git && \
+
+RUN git clone --depth 1 --branch v5.4.3 https://github.com/assimp/assimp.git && \
     cd assimp && \
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_BUILD_ASSIMP_TOOLS=OFF && \
     cmake --build build -j$(nproc) && \
     cmake --install build --prefix /usr && \
     cd .. && rm -rf assimp
 
 # Build fmt statically (needed by spdlog)
-RUN git clone https://github.com/fmtlib/fmt.git && \
+RUN git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git && \
     cd fmt && \
     cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DFMT_TEST=OFF && \
     cmake --build build -j$(nproc) && \
@@ -76,7 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget file patchelf libfuse2 ca-certificates squashfs-tools && \
     apt-get clean
 
-# Copy binary, icon, models
+# Copy binary, icon, models.
 COPY --from=builder /app/build/3dco+ /app/3dco+
 COPY --from=builder /app/assets/icon.png /app/icon.png
 COPY --from=builder /app/assets/models /app/models
@@ -86,10 +86,10 @@ RUN mkdir -p /app/AppDir/usr/bin && \
     cp /app/3dco+ /app/AppDir/usr/bin/ && \
     cp -r /app/models /app/AppDir/usr/bin/models/ && \
     mkdir -p /app/AppDir/usr/share/applications /app/AppDir/usr/share/icons/hicolor/256x256/apps && \
-    echo "[Desktop Entry]\nName=3D Controller Overlay\nComment=3D controller visualization overlay\nExec=3dco+\nIcon=3dco+\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco+.desktop && \
-    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco+.png && \
+    echo "[Desktop Entry]\nName=3D Controller Overlay +\nComment=3D controller visualization overlay\nExec=3dco+\nIcon=3dco+\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco+.desktop && \
+    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco.png && \
     cp /app/icon.png /app/AppDir/3dco+.png && \
-    ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco+.desktop
+    ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco.desktop
 
 # Copy only the system libraries that are absolutely required (GL, X11, etc.)
 RUN ldd /app/AppDir/usr/bin/3dco+ | grep "=> /" | awk '{print $3}' | while read lib; do \

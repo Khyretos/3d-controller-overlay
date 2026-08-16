@@ -7,44 +7,39 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(BUILD_STATIC "Build with static linking (when possible)" OFF)
 
-# Find packages – use pkg-config for dynamic libs, but we'll override with static if needed
 find_package(PkgConfig REQUIRED)
 
+
 if(BUILD_STATIC)
-    # For static libraries, we need to find them explicitly and add -static flag
     set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-    pkg_check_modules(ASSIMP REQUIRED assimp)
-    pkg_check_modules(GLFW REQUIRED glfw3)
-    pkg_check_modules(SPDLOG REQUIRED spdlog)
-    pkg_check_modules(FMT REQUIRED fmt)
-    pkg_check_modules(SDL2 REQUIRED sdl2)
-    # For OpenGL, we still use dynamic linking (system libraries)
-    find_package(OpenGL REQUIRED)
-    find_package(Threads REQUIRED)
-    # Add -static flag to linker
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
-else()
-    pkg_check_modules(ASSIMP REQUIRED assimp)
-    pkg_check_modules(GLFW REQUIRED glfw3)
-    pkg_check_modules(SPDLOG REQUIRED spdlog)
-    pkg_check_modules(FMT REQUIRED fmt)
-    pkg_check_modules(SDL2 REQUIRED sdl2)
-    find_package(OpenGL REQUIRED)
-    find_package(Threads REQUIRED)
 endif()
+
+pkg_check_modules(ASSIMP REQUIRED assimp)
+pkg_check_modules(GLFW REQUIRED glfw3)
+pkg_check_modules(SPDLOG REQUIRED spdlog)
+pkg_check_modules(FMT REQUIRED fmt)
+pkg_check_modules(SDL2 REQUIRED sdl2)
+pkg_check_modules(NLOHMANN_JSON REQUIRED nlohmann_json)
+find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Collect sources
 file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.c)
+# Unused/legacy SDL3 ImGui backend kept for reference only — excluded from
+# the build (it doesn't compile against the SDL2 headers this project uses).
 list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
 add_executable(3dco+ ${SRC_FILES})
+set_target_properties(3dco+ PROPERTIES OUTPUT_NAME "3dco+")
 
-# Force inclusion of preinclude.h
+# Force inclusion of preinclude.h — C++ sources only. (Applying this to the
+# vendored glad.c C file breaks the build: glad.c can't parse preinclude.h's
+# C++-only headers like <string>.)
 target_compile_options(3dco+ PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
 )
 
-# Include directories
 target_include_directories(3dco+ PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/imgui
@@ -54,11 +49,10 @@ target_include_directories(3dco+ PRIVATE
     ${ASSIMP_INCLUDE_DIRS}
     ${SPDLOG_INCLUDE_DIRS}
     ${FMT_INCLUDE_DIRS}
+    ${NLOHMANN_JSON_INCLUDE_DIRS}
 )
 
-# Link libraries
 if(BUILD_STATIC)
-    # For static linking, we need to link libraries in the right order and add dependencies
     target_link_libraries(3dco+
         PRIVATE
         ${GLFW_STATIC_LIBRARIES}
@@ -68,12 +62,6 @@ if(BUILD_STATIC)
         ${SPDLOG_STATIC_LIBRARIES}
         ${FMT_STATIC_LIBRARIES}
         Threads::Threads
-        # Additional static dependencies
-        -lz
-        -lminizip
-        -ldraco
-        -lrt
-        -lm
     )
 else()
     target_link_libraries(3dco+
@@ -92,8 +80,6 @@ endif()
 if(WIN32)
     target_link_libraries(3dco+ ws2_32 winmm)
 
-    # Drop the MinGW/SDL2 runtime DLLs next to the executable for dynamic
-    # (non-static) Windows builds, so 3dco+ .exe runs without extra setup.
     if(NOT BUILD_STATIC)
         file(GLOB WINDOWS_REDIST "${CMAKE_SOURCE_DIR}/packaging/windows/redist/*.dll")
         foreach(dll ${WINDOWS_REDIST})
@@ -105,14 +91,16 @@ if(WIN32)
     endif()
 endif()
 
-# Copy models next to the built executable
+# Copy models next to the built executable for local/dev runs (this is also
+# the "portable" layout get_models_root() checks first at runtime).
 add_custom_command(TARGET 3dco+ POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/assets/models
         ${CMAKE_BINARY_DIR}/models
 )
 
-# Install
+# Install (Linux `make install` — get_models_root() knows to look for this
+# specific layout: <prefix>/bin/3dco+ next to <prefix>/share/3dco+/models)
 install(TARGETS 3dco+ RUNTIME DESTINATION bin)
 install(FILES assets/icon.png DESTINATION share/icons/hicolor/256x256/apps)
 install(DIRECTORY assets/models/ DESTINATION share/3dco+/models)

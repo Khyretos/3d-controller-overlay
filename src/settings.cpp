@@ -5,12 +5,81 @@
 #include <string>
 #include <filesystem>
 #include <SDL2/SDL.h>
+#include <spdlog/spdlog.h>
 #include "settings.h"
 
 char* base_path = SDL_GetBasePath();
 std::filesystem::path file_path;
 std::ofstream ofs;
 std::ifstream ifs;	
+
+namespace {
+
+bool is_usable_dir(const std::filesystem::path &p) {
+  std::error_code ec;
+  return std::filesystem::exists(p, ec) &&
+         std::filesystem::is_directory(p, ec) &&
+         !std::filesystem::is_empty(p, ec);
+}
+
+} // namespace
+
+std::string get_models_root() {
+  namespace fs = std::filesystem;
+
+  fs::path exe_dir(base_path);
+  fs::path portable_models = exe_dir / "models";
+  if (is_usable_dir(portable_models)) {
+    return portable_models.string();
+  }
+
+  fs::path installed_models = exe_dir / ".." / "share" / "3dco" / "models";
+
+  char *pref = SDL_GetPrefPath("3dco", "3dco+");
+  if (pref) {
+    fs::path user_models = fs::path(pref) / "models";
+    SDL_free(pref);
+
+    if (is_usable_dir(user_models)) {
+      return user_models.string();
+    }
+
+    // First run: bootstrap the writable copy from whatever default is
+    // actually available (portable next to the exe, or a system install).
+    fs::path source;
+    std::error_code ec;
+    if (fs::exists(portable_models, ec) && fs::is_directory(portable_models, ec)) {
+      source = portable_models;
+    } else if (fs::exists(installed_models, ec) && fs::is_directory(installed_models, ec)) {
+      source = installed_models;
+    }
+
+    if (!source.empty()) {
+      try {
+        fs::create_directories(user_models);
+        fs::copy(source, user_models,
+                  fs::copy_options::recursive |
+                  fs::copy_options::overwrite_existing);
+        spdlog::info("First run: copied default models from '{}' to '{}'",
+                     source.string(), user_models.string());
+        return user_models.string();
+      } catch (const std::exception &e) {
+        spdlog::warn("Could not copy default models into '{}': {}",
+                     user_models.string(), e.what());
+      }
+    }
+
+    // Nothing to bootstrap from, but still give the caller a writable,
+    // guaranteed-to-exist directory to work with.
+    fs::create_directories(user_models);
+    return user_models.string();
+  }
+
+  // SDL_GetPrefPath failed (very unusual) — fall back to the portable
+  // path, creating it so callers can always assume it exists.
+  fs::create_directories(portable_models);
+  return portable_models.string();
+}
 	
 void write_int(std::string label, int value){
     ofs << label.append("\n").c_str();

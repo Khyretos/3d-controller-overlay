@@ -1,6 +1,5 @@
 FROM tpoechtrager/osxcross:latest AS builder
 
-# The image has osxcross installed in /osxcross.
 ENV PATH=/osxcross/target/bin:${PATH}
 ENV MACOSX_DEPLOYMENT_TARGET=11.0
 
@@ -25,10 +24,11 @@ RUN mkdir -p build-arm64 && cd build-arm64 && \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} && \
     make -j$(nproc)
 
-# Create universal binary and app bundle
+
 RUN mkdir -p 3dco+.app/Contents/MacOS && \
-    /osxcross/target/bin/lipo -create build-x86_64/3dco+ build-arm64/3dco+ -output 3dco+.app/Contents/MacOS/3dco+ && \
+    /osxcross/target/bin/lipo -create build-x86_64/3dco+ build-arm64/3dco+ -output 3dco.app/Contents/MacOS/3dco+ && \
     chmod +x 3dco+.app/Contents/MacOS/3dco+ && \
+    cp -r assets/models 3dco+.app/Contents/MacOS/models && \
     echo '<?xml version="1.0" encoding="UTF-8"?>\n\
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n\
     <plist version="1.0">\n\
@@ -36,9 +36,9 @@ RUN mkdir -p 3dco+.app/Contents/MacOS && \
     <key>CFBundleExecutable</key>\n\
     <string>3dco+</string>\n\
     <key>CFBundleIdentifier</key>\n\
-    <string>com.yourcompany.3dco+</string>\n\
+    <string>com.yourcompany.3dco-plus</string>\n\
     <key>CFBundleName</key>\n\
-    <string>3D Controller Overlay</string>\n\
+    <string>3D Controller Overlay +</string>\n\
     <key>CFBundlePackageType</key>\n\
     <string>APPL</string>\n\
     <key>CFBundleShortVersionString</key>\n\
@@ -48,4 +48,4 @@ RUN mkdir -p 3dco+.app/Contents/MacOS && \
     </dict>\n\
     </plist>' > 3dco+.app/Contents/Info.plist
 
-CMD cp -r /app/3dco+.app /dist/macos/
+CMD mkdir -p /dist/macos && cp -r /app/3dczo.app /dist/macos/

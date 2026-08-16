@@ -774,8 +774,9 @@ void drawSettingsWindow() {
 
       // ---- Model selection combo ----
       if (ImGui::BeginCombo("Models", current_window->model_name.c_str(), 0)) {
-        std::string dir_path = SDL_GetBasePath();
-        dir_path.append("models/");
+        std::string models_root = get_models_root();
+        std::string dir_path = models_root;
+        dir_path.append("/");
 
         if (std::filesystem::exists(dir_path) &&
             std::filesystem::is_directory(dir_path)) {
@@ -791,17 +792,19 @@ void drawSettingsWindow() {
               }
               if (ImGui::Selectable(model_dir.c_str())) {
                 current_window->model_name = model_dir;
-                std::string model_path("models/");
+                std::string model_path = models_root;
+                model_path.append("/");
                 model_path.append(model_dir);
                 glfwMakeContextCurrent(current_window->glfw_window);
                 loadModel(current_window->model, model_path);
+                // Update mesh_count
                 glfwMakeContextCurrent(glfw_settings_window);
               }
             }
           }
         } else {
-          ImGui::TextDisabled("No models directory found. Create 'models/' in "
-                              "the application folder.");
+          ImGui::TextDisabled("No models directory found at:\n%s",
+                              dir_path.c_str());
         }
         ImGui::EndCombo();
       }
@@ -831,22 +834,24 @@ void drawSettingsWindow() {
           bool valid = check_filename_valid(name);
           name_valid = valid;
           if (valid) {
-            std::string new_model_path = "models/";
-            new_model_path.append(name);
-            std::filesystem::path path(SDL_GetBasePath());
-            std::filesystem::path new_path(new_model_path);
-            path /= new_path;
+            std::filesystem::path path(get_models_root());
+            path /= name;
             std::filesystem::create_directory(path);
+            std::string new_model_path = path.string();
+            // Create a model with 35 default mesh slots (so the user can import
+            // OBJs into each)
             current_window->model.meshes.resize(35);
             for (int i = 0; i < 35; ++i) {
               Mesh &m = current_window->model.meshes[i];
               m.name = mesh_names[i];
               m.filename = mesh_filenames[i];
-              m.assignedPart = i;
+              m.assignedPart = i; // each slot corresponds to a controller part
               m.parentIndex = -1;
-              m.elements = 0;
+              m.elements = 0; // empty geometry
               m.vao = m.vbo = m.ebo = 0;
               m.visible = true;
+              // all other fields (position, travel, etc.) remain
+              // zero-initialised
             }
             current_window->model.path = new_model_path;
             current_window->model_name = name;
@@ -873,8 +878,8 @@ void drawSettingsWindow() {
         ImGui::Text("Delete this model?");
         if (ImGui::Button("Confirm")) {
           std::filesystem::remove_all(current_window->model.path);
-          std::string dir_path = SDL_GetBasePath();
-          dir_path.append("models/");
+          std::string dir_path = get_models_root();
+          dir_path.append("/");
           std::vector<std::string> model_folders;
           struct stat sb;
           for (const auto &entry :
@@ -1182,7 +1187,10 @@ void drawSettingsWindow() {
       ImGui::Separator();
       ImGui::TextColored(ImVec4(0.8f, 0.6f, 0.0f, 1.0f), "Mesh List & Editing");
       ImGui::Separator();
+      ImGui::NewLine();
+      ImGui::Separator();
 
+      // ---- Dynamic mesh table ----
       ImGui::Text("Mesh List (%zu meshes)",
                   current_window->model.meshes.size());
       if (ImGui::BeginTable("MeshTable", 11,
@@ -1234,7 +1242,8 @@ void drawSettingsWindow() {
           // ---- Assigned Part Column ----
           ImGui::TableSetColumnIndex(2);
           if (hasMesh) {
-            int current_assignment = mesh.assignedPart + 1;
+            int current_assignment =
+                mesh.assignedPart + 1; // +1 for "Unassigned"
             const char *part_names[36];
             part_names[0] = "Unassigned";
             for (int j = 0; j < 35; ++j)
@@ -1242,7 +1251,10 @@ void drawSettingsWindow() {
             ImGui::PushID(i + 1000);
             if (ImGui::Combo("##assign", &current_assignment, part_names, 36)) {
               mesh.assignedPart = current_assignment - 1;
+              // After setting mesh.assignedPart, propagate touch dimensions if
+              // applicable
               if (mesh.assignedPart == 29) {
+                // Copy to touch_point1 (30) and touch_point2 (31)
                 for (auto &m : current_window->model.meshes) {
                   if (m.assignedPart == 30 || m.assignedPart == 31) {
                     m.touch_width = mesh.touch_width;
@@ -1250,6 +1262,7 @@ void drawSettingsWindow() {
                   }
                 }
               } else if (mesh.assignedPart == 32) {
+                // Copy to touch_point3 (33) and touch_point4 (34)
                 for (auto &m : current_window->model.meshes) {
                   if (m.assignedPart == 33 || m.assignedPart == 34) {
                     m.touch_width = mesh.touch_width;
@@ -1264,6 +1277,7 @@ void drawSettingsWindow() {
               ImGui::SetTooltip("Assign this mesh to a controller part.");
             ImGui::PopID();
 
+            // Show default binding (if any)
             int part = mesh.assignedPart;
             if (part >= 9 && part <= 34) {
               ImGui::SameLine();
@@ -1276,7 +1290,7 @@ void drawSettingsWindow() {
           // ---- Parent Column ----
           ImGui::TableSetColumnIndex(3);
           if (hasMesh) {
-            int current_parent = mesh.parentIndex + 1;
+            int current_parent = mesh.parentIndex + 1; // +1 for "None"
             const char *parent_names[36];
             parent_names[0] = "None";
             for (int j = 0; j < 35; ++j)
@@ -1288,7 +1302,8 @@ void drawSettingsWindow() {
                         current_window->model.path + "/info.json");
             }
             if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Attach this mesh to a parent part.");
+              ImGui::SetTooltip(
+                  "Attach this mesh to a parent part (e.g., stick).");
             ImGui::PopID();
           } else {
             ImGui::TextDisabled("N/A");
@@ -1312,7 +1327,8 @@ void drawSettingsWindow() {
             ImGui::PushID(i + 4000);
             ImGui::Checkbox("##joystick", &mesh.useJoystick);
             if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Use raw joystick input for this mesh.");
+              ImGui::SetTooltip(
+                  "Use raw joystick input (not gamecontroller) for this mesh.");
             ImGui::PopID();
           } else {
             ImGui::TextDisabled(" ");
@@ -1380,6 +1396,7 @@ void drawSettingsWindow() {
         if (ImGui::Button("Confirm")) {
           if (mesh_to_delete >= 0 &&
               mesh_to_delete < (int)current_window->model.meshes.size()) {
+            // Erase from vector and rewrite JSON
             current_window->model.meshes.erase(
                 current_window->model.meshes.begin() + mesh_to_delete);
             writeJson(current_window->model,
@@ -1398,13 +1415,18 @@ void drawSettingsWindow() {
 
       ImGui::Separator();
 
-      // ---- Detailed controls for selected mesh ----
+      // ---- Detailed controls for the selected mesh ----
       if (selected_mesh >= 0 &&
           selected_mesh < (int)current_window->model.meshes.size()) {
         Mesh &selectedMesh = current_window->model.meshes[selected_mesh];
         if (selectedMesh.elements == 0) {
           ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
         } else {
+          // ---- Highlight variables ----
+          static std::map<int, std::array<float, 3>> original_colors;
+          static bool highlight_selected = false;
+          static float highlight_color[3] = {1.0f, 0.0f, 0.0f}; // red default
+
           ImGui::Text("Editing: %s", selectedMesh.name.c_str());
 
           // ---- Position Section ----
@@ -1533,21 +1555,29 @@ void drawSettingsWindow() {
           ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip(
-                "Temporarily overlay this color on the selected mesh.");
+                "Temporarily colour the selected mesh for editing.");
 
           if (current_window->highlight_enabled) {
-            selectedMesh.highlight_value = 1.0f;
-            selectedMesh.material.highlight[0] =
-                current_window->highlight_color[0];
-            selectedMesh.material.highlight[1] =
-                current_window->highlight_color[1];
-            selectedMesh.material.highlight[2] =
-                current_window->highlight_color[2];
-          } else {
+            if (current_window->original_colors.find(selected_mesh) ==
+                current_window->original_colors.end()) {
+              current_window->original_colors[selected_mesh] = {
+                  selectedMesh.material.color[0],
+                  selectedMesh.material.color[1],
+                  selectedMesh.material.color[2]};
+            }
+            selectedMesh.material.color[0] = current_window->highlight_color[0];
+            selectedMesh.material.color[1] = current_window->highlight_color[1];
+            selectedMesh.material.color[2] = current_window->highlight_color[2];
             selectedMesh.highlight_value = 0.0f;
-            selectedMesh.material.highlight[0] = 0.0f;
-            selectedMesh.material.highlight[1] = 1.0f;
-            selectedMesh.material.highlight[2] = 0.0f;
+          } else {
+            auto it = current_window->original_colors.find(selected_mesh);
+            if (it != current_window->original_colors.end()) {
+              selectedMesh.material.color[0] = it->second[0];
+              selectedMesh.material.color[1] = it->second[1];
+              selectedMesh.material.color[2] = it->second[2];
+              selectedMesh.highlight_value = 0.0f;
+              current_window->original_colors.erase(it);
+            }
           }
 
           // ---- Travel (for buttons/triggers) ----
@@ -1592,6 +1622,7 @@ void drawSettingsWindow() {
             ImGui::Separator();
             if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
                                    45.0f)) {
+              // Propagate to ring and cap if they exist
               for (auto &m : current_window->model.meshes) {
                 if (m.assignedPart == 7 || m.assignedPart == 16 ||
                     m.assignedPart == 8 || m.assignedPart == 17) {
@@ -1617,6 +1648,7 @@ void drawSettingsWindow() {
             ImGui::Separator();
             ImGui::Text("Touchpad dimensions");
             selectedMesh.visible = true;
+            // Find associated touch point meshes
             int tp1, tp2;
             if (part == 29) {
               tp1 = 30;
@@ -2491,7 +2523,7 @@ void drawSettingsWindow() {
       const auto copy_options =
           std::filesystem::copy_options::overwrite_existing;
       std::filesystem::path from_path = model_dialog.GetSelected();
-      std::filesystem::path to_path = SDL_GetBasePath();
+      std::filesystem::path to_path = get_models_root();
       to_path.append(ctrl_win->model.path);
       to_path.append(mesh_filenames[selected_mesh]);
       std::filesystem::copy(from_path, to_path, copy_options);
@@ -2565,8 +2597,9 @@ void drawSettingsWindow() {
       tabs.back().ID = tabs_made;
       getLastWindow()->ID = tabs_made;
     } else {
-      spdlog::warn("No model folders found in 'models/'. Please create a "
-                   "model folder.");
+      spdlog::warn("No model folders found in '{}'. Please create a "
+                   "model folder.",
+                   get_models_root());
       tabs.pop_back();
       tabs_made--;
     }
@@ -2893,8 +2926,7 @@ void SaveImportedModel(controller_window &w) {
     return;
   }
 
-  std::string new_model_path =
-      std::string(SDL_GetBasePath()) + "models/" + model_name;
+  std::string new_model_path = get_models_root() + "/" + model_name;
   std::filesystem::create_directories(new_model_path);
   spdlog::info("Saving imported model to: {}", new_model_path);
 
@@ -3661,12 +3693,11 @@ get_current_mapping(SDL_GameController *sdl_controller) {
 }
 
 std::string get_first_model() {
-  std::string dir_path = SDL_GetBasePath();
-  dir_path.append("models/");
-  if (!std::filesystem::exists(dir_path)) {
-    std::filesystem::create_directories(dir_path);
-    return "";
-  }
+  std::string dir_path = get_models_root();
+  dir_path.append("/");
+  // get_models_root() already guarantees the directory exists (creating
+  // and, on first run, seeding it from the bundled/installed defaults),
+  // so no separate exists()/create_directories() check is needed here.
   std::vector<std::string> model_folders;
   struct stat sb;
   for (const auto &entry : std::filesystem::directory_iterator(dir_path)) {

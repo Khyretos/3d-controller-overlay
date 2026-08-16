@@ -1,8 +1,5 @@
 FROM mxe/mxe:latest AS builder
 
-# The image already has the toolchain and libraries.
-# We only need to build our project.
-
 WORKDIR /app
 COPY . /app
 
@@ -14,4 +11,7 @@ RUN mkdir build && cd build && \
     -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" && \
     make -j$(nproc)
 
-CMD cp /app/build/3dco+.exe /dist/windows/
+
+CMD mkdir -p /dist/windows && \
+    cp /app/build/3dco+.exe /dist/windows/ && \
+    cp -r /app/assets/models /dist/windows/models
