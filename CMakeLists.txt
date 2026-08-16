@@ -36,13 +36,39 @@ else()
     set(THREAD_LIBRARY "")
 endif()
 
+# ------------------------------------------------------------------
+# Collect all source files (including ImGui, miniz, glad, etc.)
+# ------------------------------------------------------------------
 file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.c)
+# Exclude backup folder if any
 list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
-add_executable(3dco+ ${SRC_FILES})
-# Force inclusion of strings.cpp to resolve mesh_names
-target_sources(3dco+ PRIVATE src/strings.cpp)
-set_target_properties(3dco+ PROPERTIES OUTPUT_NAME "3dco+")
+# ------------------------------------------------------------------
+# Generate models_zip_data.h from assets/models folder
+# ------------------------------------------------------------------
+set(GEN_SCRIPT "${CMAKE_SOURCE_DIR}/tools/generate_models_zip.py")
+set(GEN_HEADER "${CMAKE_SOURCE_DIR}/src/models_zip_data.h")
+
+add_custom_command(
+    OUTPUT ${GEN_HEADER}
+    COMMAND python3 ${GEN_SCRIPT}
+    DEPENDS ${CMAKE_SOURCE_DIR}/assets/models
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Generating models_zip_data.h from assets/models"
+)
+
+# Mark header as generated
+set_source_files_properties(${GEN_HEADER} PROPERTIES GENERATED TRUE)
+
+# ------------------------------------------------------------------
+# Executable – uses the collected sources
+# ------------------------------------------------------------------
+add_executable(3dco+ ${SRC_FILES} ${GEN_HEADER})
+
+# Include the source directory (and optionally build dir if needed)
+target_include_directories(3dco+ PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"               # for models_zip_data.h
+)
 
 target_compile_options(3dco+ PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
@@ -133,12 +159,7 @@ if(WIN32)
     endif()
 endif()
 
-add_custom_command(TARGET 3dco+ POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets/models
-        ${CMAKE_BINARY_DIR}/models
-)
+# No need to copy assets/models – they are embedded in the zip and extracted at runtime.
 
 install(TARGETS 3dco+ RUNTIME DESTINATION bin)
 install(FILES assets/icon.png DESTINATION share/icons/hicolor/256x256/apps)
-install(DIRECTORY assets/models/ DESTINATION share/3dco+/models)

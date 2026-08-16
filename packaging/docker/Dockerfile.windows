@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
     ca-certificates \
+    python3 \
     && apt-get clean
 
 # The MXE sysroot for this image's target triple. $CROSS_ROOT/$MXE_TARGET are
@@ -67,4 +68,4 @@ RUN mkdir build && cd build && \
     -DBUILD_STATIC=ON && \
     make -j$(nproc)
 
-CMD ["sh", "-c", "mkdir -p /dist/windows && cp /app/build/3dco+.exe /dist/windows/ && cp -r /app/assets/models /dist/windows/"]
+CMD ["sh", "-c", "mkdir -p /dist/windows && cp /app/build/3dco+.exe /dist/windows/ "]

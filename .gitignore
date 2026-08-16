@@ -4,11 +4,11 @@ settings/
 imgui.ini
 *.dSYM
 mac_prog
-3dco
 3dco+
 build.bat
 packaging/macos-deps*
 .macos-deps-build
+assets/models.zip
 
 # Build directories (CMake out-of-source builds)
 build/
@@ -17,6 +17,7 @@ out/
 bin/
 lib/
 dist/
+src/models_zip_data.h
 
 # CMake generated files
 CMakeCache.txt

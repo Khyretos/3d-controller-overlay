@@ -135,7 +135,7 @@ cat > /out/3dco+.app/Contents/Info.plist <<PLIST
     <key>CFBundleIconFile</key>
     <string>icon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourcompany.3dco</string>
+    <string>com.yourcompany.3dco+</string>
     <key>CFBundleName</key>
     <string>3dco+</string>
     <key>CFBundlePackageType</key>

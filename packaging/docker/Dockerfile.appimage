@@ -88,9 +88,9 @@ RUN mkdir -p /app/AppDir/usr/bin && \
     cp -r /app/models /app/AppDir/usr/bin/models/ && \
     mkdir -p /app/AppDir/usr/share/applications /app/AppDir/usr/share/icons/hicolor/256x256/apps && \
     echo "[Desktop Entry]\nName=3D Controller Overlay +\nComment=3D controller visualization overlay\nExec=3dco+\nIcon=3dco+\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco+.desktop && \
-    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco.png && \
+    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco+.png && \
     cp /app/icon.png /app/AppDir/3dco+.png && \
-    ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco.desktop
+    ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco+.desktop
 
 
 # Create custom AppRun
@@ -109,4 +109,4 @@ RUN wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous
     rm /tmp/appimagetool
 
 # Build the AppImage
-ENTRYPOINT ["/appimagetool-root/AppRun", "/app/AppDir", "/dist/3dco+.AppImage"]
+ENTRYPOINT ["/appimagetool-root/AppRun", "/app/AppDir", "/dist/linux/3dco+.AppImage"]
