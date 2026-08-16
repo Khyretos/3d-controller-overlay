@@ -912,21 +912,27 @@ void drawSettingsWindow() {
           "open where you can assign each mesh to a controller part.");
 
       // ============================================================
-      //  MATERIALS & TEXTURES (moved to the top)
+      //  MATERIALS & TEXTURES
       // ============================================================
       if (!current_window->model.meshes.empty()) {
-        ImGui::Separator();
-        ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.8f, 1.0f),
-                           "Materials & Textures");
-        ImGui::Separator();
-
         // ---- Materials ----
         if (ImGui::TreeNode("Materials")) {
-          static std::string mesh_name = mesh_names[material_mesh].c_str();
-          if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
+          // Ensure material_mesh is valid
+          if (material_mesh >= (int)current_window->model.meshes.size())
+            material_mesh = (int)current_window->model.meshes.size() - 1;
+          // Get the actual mesh name for preview
+          std::string previewName =
+              (material_mesh >= 0 &&
+               material_mesh < (int)current_window->model.meshes.size())
+                  ? current_window->model.meshes[material_mesh].name
+                  : "";
+          if (ImGui::BeginCombo("Meshes", previewName.c_str(), 0)) {
             for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
-              if (ImGui::Selectable(mesh_names[i].c_str())) {
-                mesh_name = mesh_names[i].c_str();
+              const std::string &displayName =
+                  current_window->model.meshes[i].name.empty()
+                      ? ("Mesh " + std::to_string(i))
+                      : current_window->model.meshes[i].name;
+              if (ImGui::Selectable(displayName.c_str(), material_mesh == i)) {
                 material_mesh = i;
               }
             }
@@ -934,9 +940,6 @@ void drawSettingsWindow() {
           }
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Select a mesh to edit its material.");
-
-          if (material_mesh >= current_window->model.meshes.size())
-            material_mesh = current_window->model.meshes.size() - 1;
 
           Mesh &matMesh = current_window->model.meshes[material_mesh];
           ImGui::NewLine();
@@ -961,11 +964,20 @@ void drawSettingsWindow() {
 
         // ---- Textures ----
         if (ImGui::TreeNode("Textures")) {
-          static std::string mesh_name = mesh_names[texture_mesh].c_str();
-          if (ImGui::BeginCombo("Meshes", mesh_name.c_str(), 0)) {
+          if (texture_mesh >= (int)current_window->model.meshes.size())
+            texture_mesh = (int)current_window->model.meshes.size() - 1;
+          std::string previewName =
+              (texture_mesh >= 0 &&
+               texture_mesh < (int)current_window->model.meshes.size())
+                  ? current_window->model.meshes[texture_mesh].name
+                  : "";
+          if (ImGui::BeginCombo("Meshes", previewName.c_str(), 0)) {
             for (int i = 0; i < (int)current_window->model.meshes.size(); ++i) {
-              if (ImGui::Selectable(mesh_names[i].c_str())) {
-                mesh_name = mesh_names[i].c_str();
+              const std::string &displayName =
+                  current_window->model.meshes[i].name.empty()
+                      ? ("Mesh " + std::to_string(i))
+                      : current_window->model.meshes[i].name;
+              if (ImGui::Selectable(displayName.c_str(), texture_mesh == i)) {
                 texture_mesh = i;
               }
             }
@@ -973,9 +985,6 @@ void drawSettingsWindow() {
           }
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Select a mesh to manage its textures.");
-
-          if (texture_mesh >= current_window->model.meshes.size())
-            texture_mesh = current_window->model.meshes.size() - 1;
 
           Mesh &texMesh = current_window->model.meshes[texture_mesh];
           ImGui::NewLine();
@@ -1163,7 +1172,6 @@ void drawSettingsWindow() {
         ImGui::TextDisabled("No meshes in this model – Materials and Textures "
                             "are not available.");
       }
-
       // ============================================================
       //  MESH LIST TABLE
       // ============================================================
