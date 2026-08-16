@@ -1,51 +1,159 @@
-FROM tpoechtrager/osxcross:latest AS builder
+# syntax=docker/dockerfile:1
 
-ENV PATH=/osxcross/target/bin:${PATH}
+ARG OSXCROSS_VERSION=26.1-r0
+
+# ---------- OSXCross base ----------
+FROM crazymax/osxcross:${OSXCROSS_VERSION}-ubuntu AS osxcross
+
+# ---------- Build environment ----------
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    clang-20 clang++-20 \
+    cmake ninja-build pkg-config \
+    git curl ca-certificates \
+    unzip zip file xz-utils \
+    && ln -sf /usr/bin/clang-20 /usr/bin/clang \
+    && ln -sf /usr/bin/clang++-20 /usr/bin/clang++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=osxcross /osxcross /osxcross
+
+ENV PATH="/osxcross/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/osxcross/lib"
 ENV MACOSX_DEPLOYMENT_TARGET=11.0
 
-WORKDIR /app
-COPY . /app
+# ---------- Pre‑built dependencies ----------
+COPY packaging/macos-deps /deps
 
-# Build for x86_64
-RUN mkdir -p build-x86_64 && cd build-x86_64 && \
-    cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=/osxcross/target/share/osxcross/cmake/osxcross.cmake \
-    -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} && \
-    make -j$(nproc)
+# ---------- Source code ----------
+COPY . /src
+WORKDIR /src
 
-# Build for arm64
-RUN mkdir -p build-arm64 && cd build-arm64 && \
-    cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=/osxcross/target/share/osxcross/cmake/osxcross.cmake \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} && \
-    make -j$(nproc)
+# ---------- Build script (universal) ----------
+RUN cat > /usr/local/bin/build-app.sh <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
 
+# Find the SDK directory – there should be exactly one .sdk folder.
+SDK_DIR=$(ls -d /osxcross/SDK/*.sdk | head -n1)
+if [[ -z "${SDK_DIR}" ]]; then
+    echo "ERROR: No SDK found in /osxcross/SDK/"
+    exit 1
+fi
+echo "Using SDK: ${SDK_DIR}"
 
-RUN mkdir -p 3dco+.app/Contents/MacOS && \
-    /osxcross/target/bin/lipo -create build-x86_64/3dco+ build-arm64/3dco+ -output 3dco.app/Contents/MacOS/3dco+ && \
-    chmod +x 3dco+.app/Contents/MacOS/3dco+ && \
-    cp -r assets/models 3dco+.app/Contents/MacOS/models && \
-    echo '<?xml version="1.0" encoding="UTF-8"?>\n\
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n\
-    <plist version="1.0">\n\
-    <dict>\n\
-    <key>CFBundleExecutable</key>\n\
-    <string>3dco+</string>\n\
-    <key>CFBundleIdentifier</key>\n\
-    <string>com.yourcompany.3dco-plus</string>\n\
-    <key>CFBundleName</key>\n\
-    <string>3D Controller Overlay +</string>\n\
-    <key>CFBundlePackageType</key>\n\
-    <string>APPL</string>\n\
-    <key>CFBundleShortVersionString</key>\n\
-    <string>1.0</string>\n\
-    <key>LSMinimumSystemVersion</key>\n\
-    <string>11.0</string>\n\
-    </dict>\n\
-    </plist>' > 3dco+.app/Contents/Info.plist
+build_arch() {
+    local arch="$1"
+    local build_dir="/build-${arch}"
+    local install_dir="/install-${arch}"
+    local prefix="/deps/${arch}"
+    local compiler target
 
-CMD mkdir -p /dist/macos && cp -r /app/3dczo.app /dist/macos/
+    case "${arch}" in
+        x86_64)
+            compiler="o64-clang"
+            target="x86_64-apple-darwin25.1"
+            ;;
+        arm64)
+            compiler="oa64-clang"
+            target="arm64-apple-darwin25.1"
+            ;;
+        *)
+            echo "Unsupported arch: ${arch}"
+            exit 1
+            ;;
+    esac
+
+    export CC="${compiler}"
+    export CXX="${compiler}++"
+    export AR="/osxcross/bin/${target}-ar"
+    export RANLIB="/osxcross/bin/${target}-ranlib"
+    export NM="/osxcross/bin/${target}-nm"
+    export STRIP="/osxcross/bin/${target}-strip"
+
+    export PKG_CONFIG_PATH="${prefix}/lib/pkgconfig:${prefix}/share/pkgconfig"
+    export PKG_CONFIG_LIBDIR="${prefix}/lib/pkgconfig:${prefix}/share/pkgconfig"
+
+    echo "============================================================"
+    echo "Building for ${arch}"
+    echo "============================================================"
+
+    rm -rf "${build_dir}" "${install_dir}"
+    mkdir -p "${build_dir}"
+    cd "${build_dir}"
+
+    cmake -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SYSTEM_NAME=Darwin \
+        -DCMAKE_SYSTEM_PROCESSOR="${arch}" \
+        -DCMAKE_OSX_ARCHITECTURES="${arch}" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET}" \
+        -DCMAKE_OSX_SYSROOT="${SDK_DIR}" \
+        -DCMAKE_C_COMPILER="${CC}" \
+        -DCMAKE_CXX_COMPILER="${CXX}" \
+        -DCMAKE_AR="${AR}" \
+        -DCMAKE_RANLIB="${RANLIB}" \
+        -DCMAKE_INSTALL_PREFIX="${install_dir}" \
+        -DCMAKE_PREFIX_PATH="${prefix}" \
+        -DBUILD_STATIC=ON \
+        /src
+
+    cmake --build . --parallel
+    cmake --install .
+
+    cd /
+}
+
+build_arch x86_64
+build_arch arm64
+
+# ----- Lipo into universal binary -----
+mkdir -p /out/3dco+.app/Contents/MacOS
+lipo -create \
+    /install-x86_64/bin/3dco+ \
+    /install-arm64/bin/3dco+ \
+    -output /out/3dco+.app/Contents/MacOS/3dco+
+
+# ----- Copy resources -----
+mkdir -p /out/3dco+.app/Contents/Resources
+cp -r /src/assets/models /out/3dco+.app/Contents/Resources/
+cp /src/assets/icon.png /out/3dco+.app/Contents/Resources/
+
+# ----- Info.plist -----
+cat > /out/3dco+.app/Contents/Info.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>3dco+</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.yourcompany.3dco</string>
+    <key>CFBundleName</key>
+    <string>3dco+</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+</dict>
+</plist>
+PLIST
+
+# Copy final app to /dist (mounted volume)
+cp -r /out/3dco+.app /dist/
+echo "Universal app created at /dist/3dco+.app"
+SCRIPT
+
+RUN chmod +x /usr/local/bin/build-app.sh
+RUN /usr/local/bin/build-app.sh

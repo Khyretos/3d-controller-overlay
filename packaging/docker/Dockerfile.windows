@@ -6,35 +6,60 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && apt-get clean
 
-# ---------- Build Assimp from source with -Werror disabled ----------
+# The MXE sysroot for this image's target triple. $CROSS_ROOT/$MXE_TARGET are
+# NOT real exported environment variables — they only exist inside the
+# wrapper scripts (x86_64-w64-mingw32.static-cmake, etc). Hardcoding the
+# real path (confirmed from "Using MXE toolchain" in build logs).
+ARG MXE_SYSROOT=/usr/src/mxe/usr/x86_64-w64-mingw32.static
+
+# ---------- Build most dependencies via MXE's own package system ----------
+# The base dockcross image only ships the MXE toolchain itself, not
+# pre-built packages. GLFW, SDL2, fmt, and spdlog all have MXE recipes in
+# this image's pinned MXE checkout, so build them the normal MXE way.
+# (nlohmann-json is handled separately below — see next step.)
+RUN cd /usr/src/mxe && \
+    make glfw3 sdl2 fmt spdlog zlib -j$(nproc) MXE_TARGETS='x86_64-w64-mingw32.static'
+
+# ---------- nlohmann_json: header-only, no MXE recipe in this image ----------
+# This image's pinned MXE checkout predates nlohmann-json.mk upstream, so
+# `make nlohmann-json` doesn't exist here. It's header-only anyway — no
+# compilation needed — so just drop the single header in place and write
+# our own pkg-config file. Note: CMakeLists.txt looks for module name
+# "nlohmann_json" (underscore), so the .pc filename must match exactly.
+RUN mkdir -p ${MXE_SYSROOT}/include/nlohmann && \
+    wget -q https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp \
+    -O ${MXE_SYSROOT}/include/nlohmann/json.hpp && \
+    mkdir -p ${MXE_SYSROOT}/lib/pkgconfig && \
+    printf 'prefix=%s\nincludedir=${prefix}/include\n\nName: nlohmann_json\nDescription: JSON for Modern C++\nVersion: 3.11.3\nCflags: -I${includedir}\n' "${MXE_SYSROOT}" \
+    > ${MXE_SYSROOT}/lib/pkgconfig/nlohmann_json.pc
+
+# ---------- Build Assimp from source (no MXE recipe used, built manually) ----------
 WORKDIR /tmp
 RUN wget -q https://github.com/assimp/assimp/archive/refs/tags/v5.4.3.tar.gz && \
     tar xzf v5.4.3.tar.gz && \
     cd assimp-5.4.3 && \
-    # Patch: remove all -Werror flags from CMakeLists.txt
-    sed -i 's/ -Werror//g' CMakeLists.txt && \
-    sed -i 's/ -Wno-error//g' CMakeLists.txt && \
     mkdir build && cd build && \
     cmake .. \
-    -DCMAKE_INSTALL_PREFIX=$CROSS_ROOT/$MXE_TARGET \
+    -DCMAKE_INSTALL_PREFIX=${MXE_SYSROOT} \
     -DBUILD_SHARED_LIBS=OFF \
     -DASSIMP_BUILD_TESTS=OFF \
     -DASSIMP_BUILD_SAMPLES=OFF \
     -DASSIMP_BUILD_ASSIMP_TOOLS=OFF \
-    -DASSIMP_BUILD_BLENDER_IMPORTER=OFF && \
+    -DASSIMP_BUILD_BLENDER_IMPORTER=OFF \
+    -DASSIMP_WARNINGS_AS_ERRORS=OFF && \
     make -j$(nproc) && \
     make install && \
     cd ../.. && rm -rf assimp-5.4.3*
 
-# Verify
-RUN ls -l $CROSS_ROOT/$MXE_TARGET/include/assimp/scene.h && \
-    ls -l $CROSS_ROOT/$MXE_TARGET/lib/libassimp.a
+# Verify every dependency's pkg-config file actually landed where expected
+RUN for pc in assimp glfw3 sdl2 fmt spdlog nlohmann_json; do \
+    ls -l ${MXE_SYSROOT}/lib/pkgconfig/${pc}.pc || \
+    (echo "MISSING: ${pc}.pc" && find ${MXE_SYSROOT} -iname "${pc}*.pc"); \
+    done
 
 WORKDIR /app
 COPY . /app
 
-# Build: CMake will fetch SDL2, GLFW, fmt, spdlog, nlohmann_json from source.
-# Assimp is already in the sysroot.
 RUN mkdir build && cd build && \
     cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
@@ -42,6 +67,4 @@ RUN mkdir build && cd build && \
     -DBUILD_STATIC=ON && \
     make -j$(nproc)
 
-CMD mkdir -p /dist/windows && \
-    cp /app/build/3dco+.exe /dist/windows/ && \
-    cp -r /app/assets/models /dist/windows/
+CMD ["sh", "-c", "mkdir -p /dist/windows && cp /app/build/3dco+.exe /dist/windows/ && cp -r /app/assets/models /dist/windows/"]

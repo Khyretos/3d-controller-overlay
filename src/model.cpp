@@ -12,8 +12,7 @@
 using json = nlohmann::json;
 #include <iomanip> // for std::fixed, std::setprecision
 
-// mesh_names is defined in settings_window.cpp – we declare it extern here
-extern std::string mesh_names[35];
+#include "strings.h"
 
 static std::string escapeJson(const std::string &s) {
   std::string out;

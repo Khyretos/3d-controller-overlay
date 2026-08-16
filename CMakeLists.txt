@@ -9,10 +9,11 @@ option(BUILD_STATIC "Build with static linking (when possible)" OFF)
 
 find_package(PkgConfig REQUIRED)
 
-
 if(BUILD_STATIC)
     set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+    if(NOT APPLE)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+    endif()
 endif()
 
 pkg_check_modules(ASSIMP REQUIRED assimp)
@@ -21,24 +22,35 @@ pkg_check_modules(SPDLOG REQUIRED spdlog)
 pkg_check_modules(FMT REQUIRED fmt)
 pkg_check_modules(SDL2 REQUIRED sdl2)
 pkg_check_modules(NLOHMANN_JSON REQUIRED nlohmann_json)
-find_package(OpenGL REQUIRED)
-find_package(Threads REQUIRED)
 
-# Collect sources
+find_package(OpenGL REQUIRED)
+find_package(ZLIB REQUIRED)
+
+if(NOT APPLE)
+    find_package(Threads REQUIRED)
+    set(THREAD_LIBRARY Threads::Threads)
+else()
+    if(NOT TARGET Threads::Threads)
+        add_library(Threads::Threads INTERFACE IMPORTED)
+    endif()
+    set(THREAD_LIBRARY "")
+endif()
+
 file(GLOB_RECURSE SRC_FILES src/*.cpp src/*.c)
-# Unused/legacy SDL3 ImGui backend kept for reference only — excluded from
-# the build (it doesn't compile against the SDL2 headers this project uses).
 list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 
 add_executable(3dco+ ${SRC_FILES})
+# Force inclusion of strings.cpp to resolve mesh_names
+target_sources(3dco+ PRIVATE src/strings.cpp)
 set_target_properties(3dco+ PROPERTIES OUTPUT_NAME "3dco+")
 
-# Force inclusion of preinclude.h — C++ sources only. (Applying this to the
-# vendored glad.c C file breaks the build: glad.c can't parse preinclude.h's
-# C++-only headers like <string>.)
 target_compile_options(3dco+ PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
 )
+
+if(APPLE)
+    target_compile_options(3dco+ PRIVATE -pthread)
+endif()
 
 target_include_directories(3dco+ PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -61,7 +73,7 @@ if(BUILD_STATIC)
         ${ASSIMP_STATIC_LIBRARIES}
         ${SPDLOG_STATIC_LIBRARIES}
         ${FMT_STATIC_LIBRARIES}
-        Threads::Threads
+        ${THREAD_LIBRARY}
     )
 else()
     target_link_libraries(3dco+
@@ -72,14 +84,44 @@ else()
         ${ASSIMP_LIBRARIES}
         ${SPDLOG_LIBRARIES}
         ${FMT_LIBRARIES}
-        Threads::Threads
+        ${THREAD_LIBRARY}
     )
 endif()
 
-# Platform-specific
-if(WIN32)
-    target_link_libraries(3dco+ ws2_32 winmm)
+if(APPLE)
+    target_link_options(3dco+ PRIVATE -L${CMAKE_PREFIX_PATH}/lib)
 
+    target_link_libraries(3dco+ PRIVATE
+        ${BASE_LIBS}
+        "-framework OpenGL"
+        "-framework Cocoa"
+        "-framework IOKit"
+        "-framework CoreFoundation"
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework ForceFeedback"
+        "-framework CoreVideo"
+        "-framework CoreMedia"
+        "-framework GameController"
+        "-framework Metal"
+        "-framework QuartzCore"
+        "-framework Carbon"
+        "-framework CoreHaptics"
+        "-framework Foundation"
+        "-lobjc"
+        "-lresolv"
+        ZLIB::ZLIB
+    )
+else()
+    target_link_libraries(3dco+ PRIVATE
+        ${BASE_LIBS}
+        ${OPENGL_LIBRARIES}
+        ZLIB::ZLIB
+    )
+endif()
+
+if(WIN32)
+    target_link_libraries(3dco+ PRIVATE ws2_32 winmm)
     if(NOT BUILD_STATIC)
         file(GLOB WINDOWS_REDIST "${CMAKE_SOURCE_DIR}/packaging/windows/redist/*.dll")
         foreach(dll ${WINDOWS_REDIST})
@@ -91,16 +133,12 @@ if(WIN32)
     endif()
 endif()
 
-# Copy models next to the built executable for local/dev runs (this is also
-# the "portable" layout get_models_root() checks first at runtime).
 add_custom_command(TARGET 3dco+ POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/assets/models
         ${CMAKE_BINARY_DIR}/models
 )
 
-# Install (Linux `make install` — get_models_root() knows to look for this
-# specific layout: <prefix>/bin/3dco+ next to <prefix>/share/3dco+/models)
 install(TARGETS 3dco+ RUNTIME DESTINATION bin)
 install(FILES assets/icon.png DESTINATION share/icons/hicolor/256x256/apps)
 install(DIRECTORY assets/models/ DESTINATION share/3dco+/models)
