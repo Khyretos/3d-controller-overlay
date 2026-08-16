@@ -959,6 +959,10 @@ void drawSettingsWindow() {
           ImGui::ColorEdit3("Color", matMesh.material.color);
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Base colour of the mesh.");
+          matMesh.original_color[0] = matMesh.material.color[0];
+          matMesh.original_color[1] = matMesh.material.color[1];
+          matMesh.original_color[2] = matMesh.material.color[2];
+          matMesh.original_alpha = matMesh.material.alpha;
           ImGui::TreePop();
         }
 

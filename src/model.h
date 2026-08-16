@@ -115,6 +115,9 @@ typedef struct mesh_struct {
   bool useJoystick = false;
   float glow_intensity = 0.0f;
   float press_color[3] = {0.0f, 0.0f, 0.0f}; // zero means "use global"
+
+  float original_color[3] = {0.8f, 0.8f, 0.8f};
+  float original_alpha = 1.0f;
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----

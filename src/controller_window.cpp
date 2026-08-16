@@ -1,7 +1,7 @@
 #include "controller_window.h"
-#include "shader.h"
 #include "cube_info.h"
 #include "settings_window.h"
+#include "shader.h"
 #include "shaders.h"
 #include <algorithm>
 #include <cmath>
@@ -380,6 +380,11 @@ void createControllerWindow(std::string title, std::string model_path) {
   for (auto &mesh : w.model.meshes) {
     int part = mesh.assignedPart;
     if (part == 30 || part == 31 || part == 33 || part == 34) {
+      mesh.original_color[0] = mesh.material.color[0];
+      mesh.original_color[1] = mesh.material.color[1];
+      mesh.original_color[2] = mesh.material.color[2];
+      mesh.original_alpha = mesh.material.alpha;
+
       // Clear any existing textures
       mesh.textures.clear();
       // Add the glow texture
@@ -1515,16 +1520,35 @@ void drawControllerWindows() {
       }
       w.model.motion_matrix = w.gyro_matrix;
 
-      // Decay glow
+      // Decay glow for touch points, but only if they are not mapped
       float decay = 1.0f - w.deltaTime * 1.2f;
       if (decay < 0.0f)
         decay = 0.0f;
+
       for (auto &mesh : w.model.meshes) {
-        if (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-            mesh.assignedPart == 33 || mesh.assignedPart == 34) {
-          mesh.glow_intensity *= decay;
-          if (mesh.glow_intensity < 0.001f)
+        int part = mesh.assignedPart;
+        if (part == 30 || part == 31 || part == 33 || part == 34) {
+          if (w.mapping[part].empty()) {
+            // Real touch point – glow effect
+            mesh.glow_intensity *= decay;
+            if (mesh.glow_intensity < 0.001f)
+              mesh.glow_intensity = 0.0f;
+            // Force white glow material
+            mesh.material.color[0] = 1.0f;
+            mesh.material.color[1] = 1.0f;
+            mesh.material.color[2] = 1.0f;
+            mesh.material.alpha = mesh.glow_intensity;
+            mesh.visible = (mesh.glow_intensity > 0.001f);
+          } else {
+            // Mapped touch point – restore original material
+            mesh.material.color[0] = mesh.original_color[0];
+            mesh.material.color[1] = mesh.original_color[1];
+            mesh.material.color[2] = mesh.original_color[2];
+            mesh.material.alpha = mesh.original_alpha;
+            mesh.visible = true;
+            // glow_intensity is not used – we keep it zero
             mesh.glow_intensity = 0.0f;
+          }
         }
       }
 

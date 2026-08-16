@@ -6,9 +6,9 @@
 #include <assimp/scene.h>
 #include <fstream>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <sstream>
-#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #include <iomanip> // for std::fixed, std::setprecision
 
@@ -197,6 +197,12 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.press_color[0] = mesh.press_color[1] = mesh.press_color[2] = 0.0f;
     }
 
+    // After setting mesh.material.color (possibly from JSON)
+    mesh.original_color[0] = mesh.material.color[0];
+    mesh.original_color[1] = mesh.material.color[1];
+    mesh.original_color[2] = mesh.material.color[2];
+    mesh.original_alpha = mesh.material.alpha;
+
     m.meshes.push_back(std::move(mesh));
   }
 
@@ -284,6 +290,11 @@ void loadModel(Model &m, std::string path) {
       // Set assignedPart to the index (legacy: part index = mesh index)
       mesh.assignedPart = meshIdx;
       mesh.name = mesh_names[meshIdx]; // use the fixed name from arrays
+
+      mesh.original_color[0] = mesh.material.color[0];
+      mesh.original_color[1] = mesh.material.color[1];
+      mesh.original_color[2] = mesh.material.color[2];
+      mesh.original_alpha = mesh.material.alpha;
 
       meshIdx++;
     }
@@ -834,22 +845,6 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index,
   // ---- Draw ----
   for (int i = 0; i < num_meshes; ++i) {
     Mesh &mesh = m.meshes[i]; // use reference so we can modify temporarily
-
-    // ---- Touch point glow (fading trail effect) ----
-    if (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-        mesh.assignedPart == 33 || mesh.assignedPart == 34) {
-      if (mesh.glow_intensity > 0.001f) {
-        // Force white material so the glow texture colour shows
-        mesh.material.color[0] = 1.0f;
-        mesh.material.color[1] = 1.0f;
-        mesh.material.color[2] = 1.0f;
-        // Alpha controls the glow brightness
-        mesh.material.alpha = mesh.glow_intensity;
-        mesh.visible = true;
-      } else {
-        mesh.visible = false;
-      }
-    }
 
     // ---- Compute effective press color ----
     glm::vec3 pressCol;
