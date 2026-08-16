@@ -5,6 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git wget pkg-config ca-certificates \
+    unzip \
     nlohmann-json3-dev \
     libgl1-mesa-dev libglu1-mesa-dev \
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
@@ -91,14 +92,6 @@ RUN mkdir -p /app/AppDir/usr/bin && \
     cp /app/icon.png /app/AppDir/3dco+.png && \
     ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco.desktop
 
-# Copy only the system libraries that are absolutely required (GL, X11, etc.)
-RUN ldd /app/AppDir/usr/bin/3dco+ | grep "=> /" | awk '{print $3}' | while read lib; do \
-    if [ -f "$lib" ]; then \
-    mkdir -p /app/AppDir/usr/lib && \
-    cp -L "$lib" /app/AppDir/usr/lib/; \
-    fi; \
-    done && \
-    patchelf --set-rpath '$ORIGIN/../lib' /app/AppDir/usr/bin/3dco+
 
 # Create custom AppRun
 RUN echo '#!/bin/sh\n\

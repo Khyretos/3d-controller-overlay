@@ -7,6 +7,7 @@
 #else
 #endif
 
+#include "settings.h"
 #include "settings_window.h"
 #include <iostream>
 #include <spdlog/sinks/rotating_file_sink.h>
@@ -16,21 +17,37 @@
 bool gQuit = false;
 
 void InitializeProgram() {
-  // Set up logging: rotate at 5 MB, keep 3 files
+  // ---- 1. Get writable config directory FIRST ----
+  char *pref = SDL_GetPrefPath("", "3dco+");
+  if (pref) {
+    config_base_path = pref;
+    SDL_free(pref);
+  } else {
+    // Fallback – should rarely happen
+    config_base_path = SDL_GetBasePath();
+    if (!config_base_path.empty() && config_base_path.back() != '/')
+      config_base_path += '/';
+  }
+
+  // ---- 2. Create logs directory ----
+  std::filesystem::create_directories(config_base_path + "/logs");
+
+  // ---- 3. Set up logging: rotate at 5 MB, keep 3 files ----
   try {
+    std::string log_path = config_base_path + "/logs/3dco+.log";
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        "logs/3dco+.log", 5 * 1024 * 1024, 3);
+        log_path, 5 * 1024 * 1024, 3);
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     auto logger = std::make_shared<spdlog::logger>(
         "3dco+", spdlog::sinks_init_list{file_sink, console_sink});
     spdlog::set_default_logger(logger);
-    spdlog::set_level(spdlog::level::debug); // Change to 'info' for release
+    spdlog::set_level(spdlog::level::debug);
     spdlog::info("3D Controller Overlay starting...");
   } catch (const spdlog::spdlog_ex &ex) {
     std::cerr << "Log initialization failed: " << ex.what() << std::endl;
   }
 
-  // Init SDL with joystick, gamecontroller, and sensor subsystems
+  // ---- 4. Init SDL ----
   if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_SENSOR) <
       0) {
     spdlog::critical("SDL_Init failed: {}", SDL_GetError());
@@ -38,6 +55,7 @@ void InitializeProgram() {
   }
   spdlog::info("SDL initialized");
 
+  // ---- 5. Now create the settings window (which initialises ImGui) ----
   createSettingsWindow();
   loadTabs();
 }

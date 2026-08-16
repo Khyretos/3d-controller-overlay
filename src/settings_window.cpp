@@ -276,6 +276,13 @@ void createSettingsWindow() {
   io = &ImGui::GetIO();
   (void)io;
 
+  ImGui::CreateContext();
+  io = &ImGui::GetIO();
+
+  // ---- Redirect ImGui INI file to config_base_path ----
+  static std::string ini_path = config_base_path + "/imgui.ini";
+  io->IniFilename = ini_path.c_str();
+
   ImGui::StyleColorsDark();
   ImGui::StyleColorsDark();
   ImGui::StyleColorsDark();
@@ -545,6 +552,14 @@ void drawSettingsWindow() {
       ImGui::SliderInt("Swap Interval", &current_window->swap_interval, 0, 2);
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("V‑sync: 0 = off, 1 = on, 2 = adaptive.");
+
+      ImGui::NewLine();
+      if (ImGui::Button("Open Data Directory")) {
+        OsOpenInShell(config_base_path.c_str());
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "Open the folder where settings, models, and logs are stored.");
 
       ImGui::NewLine();
       ImGui::ColorEdit4("Background Color", current_window->bg_color);

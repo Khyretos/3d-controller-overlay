@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+extern std::string config_base_path;
+
 void write_int(std::string label, int value);
 
 void write_float(std::string label, float value);
