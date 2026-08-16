@@ -77,35 +77,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean
 
 # Copy binary, icon, models
-COPY --from=builder /app/build/3dco /app/3dco
+COPY --from=builder /app/build/3dco+ /app/3dco+
 COPY --from=builder /app/assets/icon.png /app/icon.png
 COPY --from=builder /app/assets/models /app/models
 
 # Create AppDir
 RUN mkdir -p /app/AppDir/usr/bin && \
-    cp /app/3dco /app/AppDir/usr/bin/ && \
+    cp /app/3dco+ /app/AppDir/usr/bin/ && \
     cp -r /app/models /app/AppDir/usr/bin/models/ && \
     mkdir -p /app/AppDir/usr/share/applications /app/AppDir/usr/share/icons/hicolor/256x256/apps && \
-    echo "[Desktop Entry]\nName=3D Controller Overlay\nComment=3D controller visualization overlay\nExec=3dco\nIcon=3dco\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco.desktop && \
-    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco.png && \
-    cp /app/icon.png /app/AppDir/3dco.png && \
-    ln -s usr/share/applications/3dco.desktop /app/AppDir/3dco.desktop
+    echo "[Desktop Entry]\nName=3D Controller Overlay\nComment=3D controller visualization overlay\nExec=3dco+\nIcon=3dco+\nTerminal=false\nType=Application\nCategories=Utility;Graphics;" > /app/AppDir/usr/share/applications/3dco+.desktop && \
+    cp /app/icon.png /app/AppDir/usr/share/icons/hicolor/256x256/apps/3dco+.png && \
+    cp /app/icon.png /app/AppDir/3dco+.png && \
+    ln -s usr/share/applications/3dco+.desktop /app/AppDir/3dco+.desktop
 
 # Copy only the system libraries that are absolutely required (GL, X11, etc.)
-RUN ldd /app/AppDir/usr/bin/3dco | grep "=> /" | awk '{print $3}' | while read lib; do \
+RUN ldd /app/AppDir/usr/bin/3dco+ | grep "=> /" | awk '{print $3}' | while read lib; do \
     if [ -f "$lib" ]; then \
     mkdir -p /app/AppDir/usr/lib && \
     cp -L "$lib" /app/AppDir/usr/lib/; \
     fi; \
     done && \
-    patchelf --set-rpath '$ORIGIN/../lib' /app/AppDir/usr/bin/3dco
+    patchelf --set-rpath '$ORIGIN/../lib' /app/AppDir/usr/bin/3dco+
 
 # Create custom AppRun
 RUN echo '#!/bin/sh\n\
     SELF=$(readlink -f "$0")\n\
     HERE="${SELF%/*}"\n\
     export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"\n\
-    exec "${HERE}/usr/bin/3dco" "$@"' > /app/AppDir/AppRun && \
+    exec "${HERE}/usr/bin/3dco+" "$@"' > /app/AppDir/AppRun && \
     chmod +x /app/AppDir/AppRun
 
 # Download and extract appimagetool
@@ -116,4 +116,4 @@ RUN wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous
     rm /tmp/appimagetool
 
 # Build the AppImage
-ENTRYPOINT ["/appimagetool-root/AppRun", "/app/AppDir", "/dist/3dco.AppImage"]
+ENTRYPOINT ["/appimagetool-root/AppRun", "/app/AppDir", "/dist/3dco+.AppImage"]

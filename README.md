@@ -54,7 +54,7 @@ Comparing the two codebases side by side, the `+` fork roughly **doubles to trip
 
 - **Logging via spdlog**, including rotating log files — the original had no structured logging.
 - **CMake-based build system** (`CMakeLists.txt`) replacing the original's platform-specific shell/batch scripts, plus convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) and Docker-based cross-build files (`Dockerfile.appimage`, `Dockerfile.macos`, `Dockerfile.windows`) for reproducible builds/packaging.
-- **AppImage & `.desktop` integration** on Linux (`3dco.desktop.in`) for proper application-menu installation.
+- **AppImage & `.desktop` integration** on Linux (`3dco+.desktop.in`) for proper application-menu installation.
 - New dependencies pulled in to support the above: **Assimp** (model import) and **spdlog/fmt** (logging), alongside the original GLFW/SDL2/GLM/stb stack.
 
 ## How it works

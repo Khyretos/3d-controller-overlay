@@ -200,7 +200,7 @@ bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
 void createControllerWindow(std::string title, std::string model_path) {
   controller_window w;
   w.gyro_sensitivity = 5.0f;
-  w.logger = spdlog::get("3dco"); // reuse global logger
+  w.logger = spdlog::get("3dco+"); // reuse global logger
 
   glfwWindowHint(GLFW_SAMPLES, 4);
   w.glfw_window =

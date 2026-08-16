@@ -5,6 +5,7 @@ imgui.ini
 *.dSYM
 mac_prog
 3dco
+3dco+
 build.bat
 
 # Build directories (CMake out-of-source builds)

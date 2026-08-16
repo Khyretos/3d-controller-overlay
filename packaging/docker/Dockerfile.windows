@@ -14,4 +14,4 @@ RUN mkdir build && cd build && \
     -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" && \
     make -j$(nproc)
 
-CMD cp /app/build/3dco.exe /dist/windows/
+CMD cp /app/build/3dco+.exe /dist/windows/
