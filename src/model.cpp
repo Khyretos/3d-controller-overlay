@@ -100,8 +100,9 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"parent\": " << mesh.parentIndex << ",\n";
     json << "      \"press_color\": [" << mesh.press_color[0] << ", "
          << mesh.press_color[1] << ", " << mesh.press_color[2] << "],\n";
-    json << "      \"use_joystick\": " << (mesh.useJoystick ? "true" : "false")
-         << ",\n";
+    json << "      \"input_type\": " << mesh.inputType << ",\n";
+    json << "      \"input_binding\": \"" << escapeJson(mesh.inputBinding)
+         << "\",\n";
     json << "      \"material\": {\n";
     json << "        \"ambient\": " << mesh.material.ambient << ",\n";
     json << "        \"diffuse\": " << mesh.material.diffuse << ",\n";
@@ -200,8 +201,15 @@ void readInfoJson(Model &m, const std::string &path) {
     }
     if (p.contains("parent"))
       mesh.parentIndex = p["parent"].get<int>();
-    if (p.contains("use_joystick"))
-      mesh.useJoystick = p["use_joystick"].get<bool>();
+    if (p.contains("input_type")) {
+      mesh.inputType = p["input_type"].get<int>();
+    } else if (p.contains("use_joystick")) {
+      // Legacy: map use_joystick to inputType
+      bool useRaw = p["use_joystick"].get<bool>();
+      mesh.inputType = useRaw ? INPUT_JOYSTICK : INPUT_GAMEPAD;
+    } else {
+      mesh.inputType = INPUT_GAMEPAD; // default
+    }
     if (p.contains("assigned_part"))
       mesh.assignedPart = p["assigned_part"].get<int>();
     mesh.name = p.value("name", filename);
@@ -1099,4 +1107,39 @@ glm::vec3 computeMeshCenter(const Mesh &mesh) {
   if (!mesh.hasBBox)
     return glm::vec3(0.0f);
   return (mesh.bboxMin + mesh.bboxMax) * 0.5f;
+}
+
+// Compute the world matrix of a mesh, ignoring the global gyro matrix
+glm::mat4 getModelMatrixWithoutGyro(const Model &m, int meshIdx) {
+  if (meshIdx < 0 || meshIdx >= (int)m.meshes.size())
+    return glm::mat4(1.0f);
+  const Mesh &mesh = m.meshes[meshIdx];
+  if (mesh.parentIndex != -1) {
+    glm::mat4 parentMat = getModelMatrixWithoutGyro(m, mesh.parentIndex);
+    return computeMeshTransform(m, meshIdx, parentMat);
+  } else {
+    // Root: use identity instead of m.motion_matrix
+    return computeMeshTransform(m, meshIdx, glm::mat4(1.0f));
+  }
+}
+
+// Compute the world position of a mesh, ignoring gyro
+glm::vec3 getModelWorldPositionWithoutGyro(const Model &m, int meshIdx) {
+  glm::mat4 worldMat = getModelMatrixWithoutGyro(m, meshIdx);
+  return glm::vec3(worldMat[3]);
+}
+
+bool wouldCreateCycle(const Model &m, int childIdx, int parentIdx) {
+  if (childIdx < 0 || childIdx >= (int)m.meshes.size())
+    return false;
+  if (parentIdx < 0)
+    return false; // no parent, so no cycle
+  int current = childIdx;
+  while (current != -1) {
+    if (current == parentIdx)
+      return true;
+    const Mesh &mesh = m.meshes[current];
+    current = mesh.parentIndex;
+  }
+  return false;
 }

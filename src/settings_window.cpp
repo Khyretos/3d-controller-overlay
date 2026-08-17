@@ -1217,28 +1217,31 @@ void drawSettingsWindow() {
         }
       }
       ImGui::SameLine();
-      if (ImGui::Button("Toggle All Joystick")) {
+      static int set_all_type = 0;
+      const char *type_names[] = {"Gamepad", "Joystick", "Keyboard", "Mouse"};
+      if (ImGui::Combo("Set All Type", &set_all_type, type_names,
+                       IM_ARRAYSIZE(type_names))) {
         for (auto &mesh : current_window->model.meshes) {
           if (mesh.elements > 0)
-            mesh.useJoystick = !mesh.useJoystick;
+            mesh.inputType = set_all_type;
         }
       }
       ImGui::NewLine();
 
-      if (ImGui::BeginTable("MeshTable", 11,
+      // ---- Logging toggle ----
+      ImGui::Checkbox("Log Button Presses", &g_log_buttons);
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Log controller inputs to console.");
+      ImGui::NewLine();
+
+      if (ImGui::BeginTable("MeshTable", 6,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Assigned Part",
-                                ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Joystick", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Pivot", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Touch W", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupColumn("Touch H", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableHeadersRow();
 
@@ -1251,8 +1254,12 @@ void drawSettingsWindow() {
                 ImGuiTableBgTarget_RowBg0,
                 ImGui::GetColorU32(ImVec4(0.35f, 0.15f, 0.45f, 1.0f)));
           }
+
+          // Column 0: #
           ImGui::TableSetColumnIndex(0);
           ImGui::Text("%d", i);
+
+          // Column 1: Name
           ImGui::TableSetColumnIndex(1);
           if (hasMesh) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -1271,55 +1278,225 @@ void drawSettingsWindow() {
             ImGui::TextDisabled("%s (empty)", mesh.name.c_str());
           }
 
-          // ---- Assigned Part Column ----
+          // Column 2: Input (type + binding)
           ImGui::TableSetColumnIndex(2);
           if (hasMesh) {
-            int current_assignment =
-                mesh.assignedPart + 1; // +1 for "Unassigned"
-            const char *part_names[36];
-            part_names[0] = "Unassigned";
-            for (int j = 0; j < 35; ++j)
-              part_names[j + 1] = mesh_names[j].c_str();
-            ImGui::PushID(i + 1000);
-            if (ImGui::Combo("##assign", &current_assignment, part_names, 36)) {
-              mesh.assignedPart = current_assignment - 1;
-              // After setting mesh.assignedPart, propagate touch dimensions if
-              // applicable
-              if (mesh.assignedPart == 29) {
-                // Copy to touch_point1 (30) and touch_point2 (31)
-                for (auto &m : current_window->model.meshes) {
-                  if (m.assignedPart == 30 || m.assignedPart == 31) {
-                    m.touch_width = mesh.touch_width;
-                    m.touch_height = mesh.touch_height;
+            ImGui::PushID(i + 5000);
+
+            // ---- Helper: friendly label for input binding ----
+            auto getFriendlyInputLabel =
+                [](const std::string &type,
+                   const std::string &raw) -> std::string {
+              if ((type == "gamepad" || type == "joystick") &&
+                  raw == "leftstick")
+                return "Left Stick (X/Y)";
+              if ((type == "gamepad" || type == "joystick") &&
+                  raw == "rightstick")
+                return "Right Stick (X/Y)";
+              if (type == "gamepad") {
+                if (raw[0] == 'b') {
+                  int num = 0;
+                  try {
+                    num = std::stoi(raw.substr(1));
+                  } catch (...) {
+                    return raw;
+                  }
+                  static const char *btnNames[] = {"A",
+                                                   "B",
+                                                   "X",
+                                                   "Y",
+                                                   "Back",
+                                                   "Guide",
+                                                   "Start",
+                                                   "Left Stick",
+                                                   "Right Stick",
+                                                   "Left Bumper",
+                                                   "Right Bumper",
+                                                   "D-Pad Up",
+                                                   "D-Pad Down",
+                                                   "D-Pad Left",
+                                                   "D-Pad Right",
+                                                   "Misc",
+                                                   "Paddle1",
+                                                   "Paddle2",
+                                                   "Paddle3",
+                                                   "Paddle4",
+                                                   "Touchpad"};
+                  if (num >= 0 && num < 21)
+                    return raw + " (" + btnNames[num] + ")";
+                } else if (raw[0] == 'a') {
+                  int num = 0;
+                  bool isDir = false;
+                  int dir = 0;
+                  if (raw.back() == '+' || raw.back() == '-') {
+                    isDir = true;
+                    dir = (raw.back() == '+') ? 1 : -1;
+                    try {
+                      num = std::stoi(raw.substr(1, raw.size() - 2));
+                    } catch (...) {
+                      return raw;
+                    }
+                  } else {
+                    try {
+                      num = std::stoi(raw.substr(1));
+                    } catch (...) {
+                      return raw;
+                    }
+                  }
+                  static const char *axisNames[] = {
+                      "Left X",  "Left Y",       "Right X",
+                      "Right Y", "Left Trigger", "Right Trigger"};
+                  std::string label;
+                  if (num >= 0 && num < 6) {
+                    label = axisNames[num];
+                  } else {
+                    label = "Axis " + std::to_string(num);
+                  }
+                  if (isDir) {
+                    std::string dirStr = (dir == 1) ? " +" : " -";
+                    return raw + " (" + label + dirStr + ")";
+                  } else {
+                    // Plain analog axis – show as "Axis Name (analog)"
+                    return raw + " (" + label + " analog)";
                   }
                 }
-              } else if (mesh.assignedPart == 32) {
-                // Copy to touch_point3 (33) and touch_point4 (34)
-                for (auto &m : current_window->model.meshes) {
-                  if (m.assignedPart == 33 || m.assignedPart == 34) {
-                    m.touch_width = mesh.touch_width;
-                    m.touch_height = mesh.touch_height;
+              } else if (type == "joystick") {
+                if (raw[0] == 'h') {
+                  size_t dot = raw.find('.');
+                  if (dot != std::string::npos) {
+                    int hatIdx = 0, dir = 0;
+                    try {
+                      hatIdx = std::stoi(raw.substr(1, dot - 1));
+                      dir = std::stoi(raw.substr(dot + 1));
+                    } catch (...) {
+                      return raw;
+                    }
+                    static const char *dirNames[] = {
+                        "Up",   "Right-Up",  "Right", "Right-Down",
+                        "Down", "Left-Down", "Left",  "Left-Up"};
+                    if (dir >= 0 && dir < 8)
+                      return raw + " (" + dirNames[dir] + ")";
                   }
                 }
               }
-              writeJson(current_window->model,
-                        current_window->model.path + "/info.json");
+              return raw; // fallback
+            };
+
+            // Parse current binding
+            std::string binding = mesh.inputBinding;
+            std::string currentType = "gamepad";
+            std::string currentValue = "";
+            size_t colon = binding.find(':');
+            if (colon != std::string::npos) {
+              currentType = binding.substr(0, colon);
+              currentValue = binding.substr(colon + 1);
+            }
+
+            // ---- Type drop-down ----
+            const char *type_names[] = {"gamepad", "joystick", "keyboard",
+                                        "mouse"};
+            int type_idx = 0;
+            for (int t = 0; t < 4; ++t) {
+              if (currentType == type_names[t]) {
+                type_idx = t;
+                break;
+              }
+            }
+            if (ImGui::BeginCombo("##type", type_names[type_idx])) {
+              for (int t = 0; t < 4; ++t) {
+                if (ImGui::Selectable(type_names[t], type_idx == t)) {
+                  type_idx = t;
+                  currentType = type_names[t];
+                  currentValue = "";
+                  mesh.inputBinding = currentType + ":";
+                }
+              }
+              ImGui::EndCombo();
+            }
+
+            ImGui::SameLine();
+
+            // ---- Specific input drop-down with friendly names ----
+            std::vector<std::string> inputOptions;
+            if (currentType == "gamepad" || currentType == "joystick") {
+              // Special stick entries (full X/Y)
+              inputOptions.push_back("leftstick");
+              inputOptions.push_back("rightstick");
+              for (int b = 0; b < 32; ++b)
+                inputOptions.push_back("b" + std::to_string(b));
+              for (int a = 0; a < 8; ++a) {
+                inputOptions.push_back("a" + std::to_string(a)); // plain axis
+                inputOptions.push_back("a" + std::to_string(a) + "+");
+                inputOptions.push_back("a" + std::to_string(a) + "-");
+              }
+              if (currentType == "joystick") {
+                for (int h = 0; h < 4; ++h) {
+                  for (int d = 0; d < 8; ++d)
+                    inputOptions.push_back("h" + std::to_string(h) + "." +
+                                           std::to_string(d));
+                }
+              }
+            } else if (currentType == "keyboard") {
+              const char *keys[] = {
+                  "key_a",     "key_b",     "key_c",      "key_d",
+                  "key_e",     "key_f",     "key_g",      "key_h",
+                  "key_i",     "key_j",     "key_k",      "key_l",
+                  "key_m",     "key_n",     "key_o",      "key_p",
+                  "key_q",     "key_r",     "key_s",      "key_t",
+                  "key_u",     "key_v",     "key_w",      "key_x",
+                  "key_y",     "key_z",     "key_0",      "key_1",
+                  "key_2",     "key_3",     "key_4",      "key_5",
+                  "key_6",     "key_7",     "key_8",      "key_9",
+                  "key_space", "key_enter", "key_shift",  "key_ctrl",
+                  "key_alt",   "key_tab",   "key_escape", "key_up",
+                  "key_down",  "key_left",  "key_right",  "key_f1",
+                  "key_f2",    "key_f3",    "key_f4",     "key_f5",
+                  "key_f6",    "key_f7",    "key_f8",     "key_f9",
+                  "key_f10",   "key_f11",   "key_f12"};
+              for (auto k : keys)
+                inputOptions.push_back(k);
+            } else if (currentType == "mouse") {
+              inputOptions.push_back("mouse_left");
+              inputOptions.push_back("mouse_right");
+              inputOptions.push_back("mouse_middle");
+              inputOptions.push_back("mouse_x");
+              inputOptions.push_back("mouse_y");
+            }
+
+            // Build friendly label for the selected binding
+            std::string selectedDisplay =
+                currentValue.empty()
+                    ? "unbound"
+                    : getFriendlyInputLabel(currentType, currentValue);
+
+            if (ImGui::BeginCombo("##input", selectedDisplay.c_str())) {
+              // "Unbound" option to clear binding
+              if (ImGui::Selectable("Unbound", currentValue.empty())) {
+                currentValue = "";
+                mesh.inputBinding = "";
+              }
+              ImGui::Separator();
+
+              for (const auto &opt : inputOptions) {
+                bool isSelected = (opt == currentValue);
+                std::string displayLabel =
+                    getFriendlyInputLabel(currentType, opt);
+                if (ImGui::Selectable(displayLabel.c_str(), isSelected)) {
+                  currentValue = opt;
+                  mesh.inputBinding = currentType + ":" + currentValue;
+                }
+              }
+              ImGui::EndCombo();
             }
             if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Assign this mesh to a controller part.");
-            ImGui::PopID();
+              ImGui::SetTooltip("Choose the input that triggers this mesh.");
 
-            // Show default binding (if any)
-            int part = mesh.assignedPart;
-            if (part >= 9 && part <= 34) {
-              ImGui::SameLine();
-              ImGui::TextDisabled("(b%d)", part - 9);
-            }
+            ImGui::PopID();
           } else {
-            ImGui::TextDisabled("N/A");
+            ImGui::TextDisabled(" ");
           }
 
-          // ---- Parent Column ----
+          // Column 3: Parent
           ImGui::TableSetColumnIndex(3);
           if (hasMesh) {
             int current_parent = mesh.parentIndex + 1; // +1 for "None"
@@ -1329,9 +1506,43 @@ void drawSettingsWindow() {
               parent_names[j + 1] = mesh_names[j].c_str();
             ImGui::PushID(i + 2000);
             if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
-              mesh.parentIndex = current_parent - 1;
-              writeJson(current_window->model,
-                        current_window->model.path + "/info.json");
+              int newParent = current_parent - 1; // -1 means "None"
+
+              // Prevent cycles
+              if (newParent != -1 &&
+                  wouldCreateCycle(current_window->model, i, newParent)) {
+                spdlog::warn("Cannot set parent: would create a cycle.");
+                // Do not update parent; leave current_parent unchanged.
+                // Revert the combo selection by setting it back to the old
+                // value.
+                current_parent = mesh.parentIndex + 1;
+              } else {
+                // Get current world position WITHOUT gyro
+                glm::vec3 worldPos =
+                    getModelWorldPositionWithoutGyro(current_window->model, i);
+
+                if (newParent == -1) {
+                  // Unparent: store world position directly
+                  mesh.position[0] = worldPos.x;
+                  mesh.position[1] = worldPos.y;
+                  mesh.position[2] = worldPos.z;
+                } else {
+                  // Compute parent's world matrix WITHOUT gyro
+                  glm::mat4 parentMat = getModelMatrixWithoutGyro(
+                      current_window->model, newParent);
+                  glm::mat4 invParentMat = glm::inverse(parentMat);
+                  glm::vec4 localPos = invParentMat * glm::vec4(worldPos, 1.0f);
+                  mesh.position[0] = localPos.x;
+                  mesh.position[1] = localPos.y;
+                  mesh.position[2] = localPos.z;
+                }
+
+                // Update parent index
+                mesh.parentIndex = newParent;
+                // Save changes
+                writeJson(current_window->model,
+                          current_window->model.path + "/info.json");
+              }
             }
             if (ImGui::IsItemHovered())
               ImGui::SetTooltip(
@@ -1341,7 +1552,7 @@ void drawSettingsWindow() {
             ImGui::TextDisabled("N/A");
           }
 
-          // ---- Visible Column ----
+          // Column 4: Visible
           ImGui::TableSetColumnIndex(4);
           if (hasMesh) {
             ImGui::PushID(i + 3000);
@@ -1353,58 +1564,8 @@ void drawSettingsWindow() {
             ImGui::TextDisabled(" ");
           }
 
-          // ---- Joystick Column ----
+          // Column 5: Actions
           ImGui::TableSetColumnIndex(5);
-          if (hasMesh) {
-            ImGui::PushID(i + 4000);
-            ImGui::Checkbox("##joystick", &mesh.useJoystick);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Use raw joystick input (not gamecontroller) for this mesh.");
-            ImGui::PopID();
-          } else {
-            ImGui::TextDisabled(" ");
-          }
-
-          // ---- Position Column ----
-          ImGui::TableSetColumnIndex(6);
-          if (hasMesh) {
-            ImGui::Text("%.2f, %.2f, %.2f", mesh.position[0], mesh.position[1],
-                        mesh.position[2]);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Pivot Column ----
-          ImGui::TableSetColumnIndex(7);
-          if (hasMesh) {
-            ImGui::Text("%.2f, %.2f, %.2f", mesh.pivot_offset[0],
-                        mesh.pivot_offset[1], mesh.pivot_offset[2]);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Touch Width Column ----
-          ImGui::TableSetColumnIndex(8);
-          bool isTouch = (mesh.assignedPart == 29 || mesh.assignedPart == 30 ||
-                          mesh.assignedPart == 31 || mesh.assignedPart == 32 ||
-                          mesh.assignedPart == 33 || mesh.assignedPart == 34);
-          if (hasMesh && isTouch) {
-            ImGui::Text("%.2f", mesh.touch_width);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Touch Height Column ----
-          ImGui::TableSetColumnIndex(9);
-          if (hasMesh && isTouch) {
-            ImGui::Text("%.2f", mesh.touch_height);
-          } else {
-            ImGui::TextDisabled("N/A");
-          }
-
-          // ---- Actions Column ----
-          ImGui::TableSetColumnIndex(10);
           if (hasMesh) {
             if (ImGui::Button(("Import##" + std::to_string(i)).c_str())) {
               model_dialog.Open();
@@ -2242,254 +2403,6 @@ void drawSettingsWindow() {
         ImGui::TreePop();
       }
     }
-    // ============================================================
-    // MAPPING
-    // ============================================================
-    if (ImGui::CollapsingHeader("Mapping")) {
-      ImGui::Checkbox("Log Button Presses", &g_log_buttons);
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Log controller inputs to console.");
-      ImGui::SameLine();
-      ImGui::TextColored(ImVec4(1, 1, 0, 1), "Loaded: %s",
-                         g_loaded_mapping_name.empty()
-                             ? "(default)"
-                             : g_loaded_mapping_name.c_str());
-
-      // Build the list of available bindings for the current controller
-      std::vector<std::string> allBindings;
-      if (current_window->is_gamecontroller && current_window->sdl_controller) {
-        SDL_Joystick *joy =
-            SDL_GameControllerGetJoystick(current_window->sdl_controller);
-        if (joy) {
-          int numButtons = SDL_JoystickNumButtons(joy);
-          for (int i = 0; i < numButtons; ++i)
-            allBindings.push_back("b" + std::to_string(i));
-          int numAxes = SDL_JoystickNumAxes(joy);
-          for (int i = 0; i < numAxes; ++i) {
-            allBindings.push_back("a" + std::to_string(i) + "+");
-            allBindings.push_back("a" + std::to_string(i) + "-");
-          }
-          int numHats = SDL_JoystickNumHats(joy);
-          for (int h = 0; h < numHats; ++h)
-            for (int d = 0; d < 8; ++d)
-              allBindings.push_back("h" + std::to_string(h) + "." +
-                                    std::to_string(d));
-          int numTouchpads =
-              SDL_GameControllerGetNumTouchpads(current_window->sdl_controller);
-          for (int t = 0; t < numTouchpads; ++t) {
-            int numFingers = SDL_GameControllerGetNumTouchpadFingers(
-                current_window->sdl_controller, t);
-            for (int f = 0; f < numFingers; ++f) {
-              allBindings.push_back("t" + std::to_string(t) + "_f" +
-                                    std::to_string(f) + "_x");
-              allBindings.push_back("t" + std::to_string(t) + "_f" +
-                                    std::to_string(f) + "_y");
-            }
-          }
-          allBindings.push_back("unbound");
-        }
-      } else if (!current_window->is_gamecontroller &&
-                 current_window->sdl_joystick) {
-        int numAxes = SDL_JoystickNumAxes(current_window->sdl_joystick);
-        int numButtons = SDL_JoystickNumButtons(current_window->sdl_joystick);
-        int numHats = SDL_JoystickNumHats(current_window->sdl_joystick);
-        allBindings.push_back("unbound");
-        for (int i = 0; i < numButtons; ++i)
-          allBindings.push_back("b" + std::to_string(i));
-        for (int i = 0; i < numAxes; ++i) {
-          allBindings.push_back("a" + std::to_string(i));
-          allBindings.push_back("a" + std::to_string(i) + "+");
-          allBindings.push_back("a" + std::to_string(i) + "-");
-        }
-        for (int h = 0; h < numHats; ++h)
-          for (int d = 0; d < 8; ++d)
-            allBindings.push_back("h" + std::to_string(h) + "." +
-                                  std::to_string(d));
-      } else {
-        ImGui::TextDisabled("No controller connected.");
-        goto end_mapping;
-      }
-
-      if (ImGui::BeginTable("MappingTable", 3,
-                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("Part", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Invert", ImGuiTableColumnFlags_WidthFixed,
-                                40.0f);
-        ImGui::TableSetupColumn("Binding", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
-
-        for (int i = 0; i < 35; ++i) {
-          ImGui::TableNextRow();
-          ImGui::TableSetColumnIndex(0);
-          ImGui::Text("%s", mesh_names[i].c_str());
-
-          ImGui::TableSetColumnIndex(1);
-          ImGui::PushID(i + 5000);
-          ImGui::Checkbox("##invert", &current_window->invert_mapping[i]);
-          ImGui::PopID();
-
-          ImGui::TableSetColumnIndex(2);
-          std::string currentBinding = current_window->mapping[i];
-          std::string displayLabel =
-              currentBinding.empty()
-                  ? "unbound"
-                  : currentBinding + " (" +
-                        getBindingDescription(currentBinding) + ")";
-
-          std::string comboID = "##combo_part_" + std::to_string(i);
-          if (ImGui::BeginCombo(comboID.c_str(), displayLabel.c_str(),
-                                ImGuiComboFlags_HeightLargest)) {
-            for (const std::string &bind : allBindings) {
-              std::string display =
-                  bind + " (" + getBindingDescription(bind) + ")";
-              bool isSelected = (bind == currentBinding);
-              if (ImGui::Selectable(display.c_str(), isSelected)) {
-                current_window->mapping[i] = (bind == "unbound") ? "" : bind;
-              }
-            }
-            ImGui::EndCombo();
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Assign a controller input to this part.");
-        }
-        ImGui::EndTable();
-      }
-
-      // ---- Action buttons ----
-      if (ImGui::Button("Apply Mapping")) {
-        spdlog::info("Mapping stored. It will be used in the input loop.");
-        g_loaded_mapping_name = "(applied)";
-      }
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Apply current mapping to the model.");
-
-      ImGui::SameLine();
-
-      if (ImGui::Button("Save Mapping")) {
-        ImGui::OpenPopup("save_mapping_popup");
-      }
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Save current mapping to a file.");
-
-      if (ImGui::BeginPopup("save_mapping_popup")) {
-        static char name[32] = {};
-        static bool name_valid = true;
-        static bool set_default = false;
-        if (ImGui::InputText("Mapping Name", name, IM_ARRAYSIZE(name),
-                             ImGuiInputTextFlags_EnterReturnsTrue)) {
-          bool valid = check_filename_valid(name);
-          name_valid = valid;
-          if (valid) {
-            std::filesystem::path path(config_base_path); // updated path
-            path.append("mapping/");
-            std::filesystem::create_directory(path);
-            path.append(name);
-            open_ofstream(path);
-            std::string mapping = "";
-            for (int i = 0; i < 35; ++i) {
-              if (!current_window->mapping[i].empty()) {
-                mapping.append(mesh_names[i]);
-                mapping.append(":");
-                mapping.append(current_window->mapping[i]);
-                mapping.append(",");
-              }
-            }
-            write_line(mapping);
-            close_ofstream();
-            g_loaded_mapping_name = name;
-            spdlog::info("Saved mapping to {}", name);
-            // If set as default, update model default_mapping and save JSON
-            if (set_default) {
-              current_window->model.default_mapping = name;
-              writeJson(current_window->model,
-                        current_window->model.path + "/info.json");
-              spdlog::info("Set '{}' as default mapping for model '{}'", name,
-                           current_window->model_name);
-            }
-            ImGui::CloseCurrentPopup();
-          } else {
-            ImGui::Text("Invalid characters in name.");
-          }
-        }
-        // New checkbox
-        ImGui::Checkbox("Set as default for this model", &set_default);
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("If checked, this mapping will be automatically "
-                            "loaded when this model is opened.");
-        if (!name_valid)
-          ImGui::Text("Name cannot include characters \\/:*?\"<>|");
-        ImGui::EndPopup();
-      }
-
-      ImGui::SameLine();
-
-      if (ImGui::Button("Load Mapping")) {
-        ImGui::OpenPopup("load_mapping_popup");
-      }
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Load a saved mapping from a file.");
-
-      if (ImGui::BeginPopup("load_mapping_popup")) {
-        if (ImGui::BeginListBox("Mappings", ImVec2(-1, 150))) {
-          std::string dir_path = config_base_path;
-          dir_path.append("mapping/");
-          std::filesystem::create_directory(dir_path);
-          for (const auto &entry :
-               std::filesystem::directory_iterator(dir_path)) {
-            std::string mapping_path = entry.path().string();
-            std::string mapping_name =
-                std::filesystem::path(mapping_path).filename().string();
-            if (ImGui::Selectable(mapping_name.c_str(),
-                                  g_loaded_mapping_name == mapping_name)) {
-              for (int i = 0; i < 35; ++i)
-                current_window->mapping[i] = "";
-              open_ifstream(mapping_path);
-              std::vector<std::string> lines;
-              read_file(&lines);
-              close_ifstream();
-              if (!lines.empty()) {
-                std::string mapStr = lines[0];
-                std::stringstream ss(mapStr);
-                std::string item;
-                while (std::getline(ss, item, ',')) {
-                  if (item.empty())
-                    continue;
-                  std::vector<std::string> kv = get_binding(item);
-                  if (kv.size() == 2) {
-                    // kv[0] is the part name (mesh name), kv[1] is binding
-                    for (int i = 0; i < 35; ++i) {
-                      if (kv[0] == mesh_names[i]) {
-                        current_window->mapping[i] = kv[1];
-                        break;
-                      }
-                    }
-                  }
-                }
-                g_loaded_mapping_name = mapping_name;
-                spdlog::info("Loaded mapping from {}", mapping_name);
-              }
-              ImGui::CloseCurrentPopup();
-            }
-          }
-          ImGui::EndListBox();
-        }
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Select a mapping file to load.");
-        ImGui::EndPopup();
-      }
-
-      ImGui::SameLine();
-
-      if (ImGui::Button("Reset to Default")) {
-        for (int i = 0; i < 35; ++i)
-          current_window->mapping[i] = "";
-        g_loaded_mapping_name = "";
-        spdlog::info("Mapping reset to default.");
-      }
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Clear all mappings.");
-    } // end Mapping
 
   end_mapping:; // empty statement (label needs a statement)
 

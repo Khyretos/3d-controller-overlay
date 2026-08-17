@@ -182,6 +182,7 @@ float get_axis_value(controller_window &w, int axis_idx) {
 // Helper: get button value with choice
 bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
   if (useRaw) {
+
     SDL_Joystick *joy = nullptr;
     if (w.is_gamecontroller && w.sdl_controller) {
       joy = SDL_GameControllerGetJoystick(w.sdl_controller);
@@ -201,6 +202,14 @@ bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
     }
     return false;
   }
+}
+
+// Helper: get hat value (raw joystick)
+static Uint8 getHatValue(controller_window &w, int hatIdx) {
+  if (w.sdl_joystick && hatIdx < SDL_JoystickNumHats(w.sdl_joystick)) {
+    return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
+  }
+  return SDL_HAT_CENTERED;
 }
 
 // Load a mapping file into the controller_window's mapping array
@@ -514,163 +523,152 @@ void createControllerWindow(std::string title, std::string model_path) {
 }
 
 void applyMappingToMeshes(controller_window &w) {
-  // Helper to read axis values with choice
-  auto getAxisValue = [&](int axisIdx, bool useRaw) -> float {
-    return get_axis_value_choice(w, axisIdx, useRaw);
-  };
-
-  auto getButtonValue = [&](int btnIdx, bool useRaw) -> bool {
-    return get_button_value_choice(w, btnIdx, useRaw);
-  };
-
-  auto getHatValue = [&](int hatIdx) -> Uint8 {
-    if (w.sdl_joystick) {
-      return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
-    }
-    return SDL_HAT_CENTERED;
-  };
-
-  // Default binding for all parts (if user hasn't set one)
-  auto defaultBindingForPart = [](int part) -> std::string {
-    if (part >= 9 && part <= 34) {
-      return "b" + std::to_string(part - 9);
-    }
-    if (part == 21)
-      return "a0";
-    if (part == 22)
-      return "a1";
-    if (part == 23)
-      return "a2";
-    if (part == 24)
-      return "a3";
-    if (part == 25)
-      return "a4";
-    if (part == 26)
-      return "a5";
-    return "";
-  };
-
-  for (int part = 0; part < 35; ++part) {
-    Mesh *targetMesh = nullptr;
-    for (auto &mesh : w.model.meshes) {
-      if (mesh.assignedPart == part) {
-        targetMesh = &mesh;
-        break;
-      }
-    }
-    if (!targetMesh)
+  for (auto &mesh : w.model.meshes) {
+    if (mesh.inputBinding.empty())
       continue;
 
-    std::string binding = w.mapping[part];
-    if (binding.empty()) {
-      binding = defaultBindingForPart(part);
-    }
-    if (binding.empty())
+    // Parse type:value
+    size_t colon = mesh.inputBinding.find(':');
+    if (colon == std::string::npos)
       continue;
+    std::string type = mesh.inputBinding.substr(0, colon);
+    std::string value = mesh.inputBinding.substr(colon + 1);
 
-    char type = binding[0];
-    int num = 0;
-    int hatDir = -1;
-    bool isDirection = false;
-    int dir = 0;
+    // Reset press/highlight for this mesh
+    mesh.press = 0.0f;
+    mesh.highlight_value = 0.0f;
+    mesh.pull = 0.0f;
 
-    if (type == 'b') {
-      num = std::stoi(binding.substr(1));
-    } else if (type == 'a') {
-      if (binding.back() == '+') {
-        isDirection = true;
-        dir = 1;
-        num = std::stoi(binding.substr(1, binding.size() - 2));
-      } else if (binding.back() == '-') {
-        isDirection = true;
-        dir = -1;
-        num = std::stoi(binding.substr(1, binding.size() - 2));
-      } else {
-        num = std::stoi(binding.substr(1));
-      }
-    } else if (type == 'h') {
-      size_t dot = binding.find('.');
-      if (dot != std::string::npos) {
-        num = std::stoi(binding.substr(1, dot - 1));
-        hatDir = std::stoi(binding.substr(dot + 1));
-      } else {
+    if (type == "gamepad" || type == "joystick") {
+      // Use raw or gamecontroller based on type? Actually we need to know which
+      // API to use. For gamepad, use gamecontroller API; for joystick, use raw
+      // joystick.
+      bool useRaw = (type == "joystick");
+
+      // ---- Handle full stick bindings ----
+      if (value == "leftstick") {
+        float lx = get_axis_value_choice(w, 0, useRaw);
+        float ly = get_axis_value_choice(w, 1, useRaw);
+        mesh.stick_X = lx * 32767.0f;
+        mesh.stick_Y = ly * 32767.0f;
+        // Optional highlight when stick is moved
+        if (fabs(lx) > 0.1f || fabs(ly) > 0.1f)
+          mesh.highlight_value = std::max(fabs(lx), fabs(ly)) * 1.2f;
+        else
+          mesh.highlight_value = 0.0f;
+        continue; // skip button/axis parsing
+      } else if (value == "rightstick") {
+        float rx = get_axis_value_choice(w, 2, useRaw);
+        float ry = get_axis_value_choice(w, 3, useRaw);
+        mesh.stick_X = rx * 32767.0f;
+        mesh.stick_Y = ry * 32767.0f;
+        if (fabs(rx) > 0.1f || fabs(ry) > 0.1f)
+          mesh.highlight_value = std::max(fabs(rx), fabs(ry)) * 1.2f;
+        else
+          mesh.highlight_value = 0.0f;
         continue;
       }
-    } else if (type == 't') {
-      // Touchpad binding – skip (handled elsewhere)
-      continue;
-    } else {
-      continue;
-    }
 
-    bool isButton = (part >= 9 && part <= 29);
-    bool isStick = (part == 5 || part == 6);
-    bool isTrigger = (part == 3 || part == 4);
+      // Parse value: could be bX, aX+, aX-, hX.Y
+      char prefix = value[0];
+      int num = 0;
+      int hatDir = -1;
+      bool isDirection = false;
+      int dir = 0;
 
-    // Use the mesh's flag to decide API
-    bool useRaw = targetMesh->useJoystick;
-
-    if (type == 'b' || type == 'h' || (type == 'a' && isDirection)) {
-      bool pressed = false;
-      float axisVal = 0.0f;
-      if (type == 'b') {
-        pressed = getButtonValue(num, useRaw);
-      } else if (type == 'h') {
-        Uint8 hatVal = getHatValue(num);
-        Uint8 sdlDir = 0;
-        switch (hatDir) {
-        case 0:
-          sdlDir = SDL_HAT_UP;
-          break;
-        case 1:
-          sdlDir = SDL_HAT_RIGHTUP;
-          break;
-        case 2:
-          sdlDir = SDL_HAT_RIGHT;
-          break;
-        case 3:
-          sdlDir = SDL_HAT_RIGHTDOWN;
-          break;
-        case 4:
-          sdlDir = SDL_HAT_DOWN;
-          break;
-        case 5:
-          sdlDir = SDL_HAT_LEFTDOWN;
-          break;
-        case 6:
-          sdlDir = SDL_HAT_LEFT;
-          break;
-        case 7:
-          sdlDir = SDL_HAT_LEFTUP;
-          break;
+      if (prefix == 'b') {
+        num = std::stoi(value.substr(1));
+        bool pressed = get_button_value_choice(w, num, useRaw);
+        mesh.press = pressed ? 1.0f : 0.0f;
+        mesh.highlight_value = pressed ? 1.0f : 0.0f;
+      } else if (prefix == 'a') {
+        // Check for + or - at end
+        if (value.back() == '+') {
+          isDirection = true;
+          dir = 1;
+          num = std::stoi(value.substr(1, value.size() - 2));
+        } else if (value.back() == '-') {
+          isDirection = true;
+          dir = -1;
+          num = std::stoi(value.substr(1, value.size() - 2));
+        } else {
+          // Plain analog axis (no + or -)
+          num = std::stoi(value.substr(1));
         }
-        pressed = (hatVal & sdlDir) != 0;
-      } else if (type == 'a' && isDirection) {
-        float val = getAxisValue(num, useRaw);
-        float threshold = 0.5f;
-        pressed = (dir > 0) ? (val > threshold) : (val < -threshold);
-        axisVal = (dir > 0) ? val : -val;
+        float axisVal = get_axis_value_choice(w, num, useRaw);
+        if (isDirection) {
+          // Directional (button-like) axis: press if past threshold
+          bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
+          mesh.press = pressed ? 1.0f : 0.0f;
+          mesh.highlight_value = pressed ? 1.0f : 0.0f;
+        } else {
+          // Plain analog axis
+          if (type == "gamepad" && (num == 4 || num == 5)) {
+            // Gamepad triggers are already 0..1
+            float value = std::max(0.0f, std::min(1.0f, axisVal));
+            mesh.pull = value * 32767.0f;
+            mesh.press = value;
+            mesh.highlight_value = value;
+          } else {
+            // For centered axes (sticks, generic joystick) map -1..1 → 0..1
+            float value = (axisVal + 1.0f) * 0.5f;
+            mesh.pull = value * 32767.0f;
+            mesh.press = value;
+            mesh.highlight_value = value;
+          }
+        }
+      } else if (prefix == 'h') {
+        // Hat: hX.Y
+        size_t dot = value.find('.');
+        if (dot != std::string::npos) {
+          num = std::stoi(value.substr(1, dot - 1));
+          hatDir = std::stoi(value.substr(dot + 1));
+          Uint8 hatVal = getHatValue(w, num); // we need getHatValue
+          // Convert hatDir to SDL_HAT_* and check
+          Uint8 sdlDir = 0;
+          switch (hatDir) {
+          case 0:
+            sdlDir = SDL_HAT_UP;
+            break;
+          case 1:
+            sdlDir = SDL_HAT_RIGHTUP;
+            break;
+          case 2:
+            sdlDir = SDL_HAT_RIGHT;
+            break;
+          case 3:
+            sdlDir = SDL_HAT_RIGHTDOWN;
+            break;
+          case 4:
+            sdlDir = SDL_HAT_DOWN;
+            break;
+          case 5:
+            sdlDir = SDL_HAT_LEFTDOWN;
+            break;
+          case 6:
+            sdlDir = SDL_HAT_LEFT;
+            break;
+          case 7:
+            sdlDir = SDL_HAT_LEFTUP;
+            break;
+          }
+          bool pressed = (hatVal & sdlDir) != 0;
+          mesh.press = pressed ? 1.0f : 0.0f;
+          mesh.highlight_value = pressed ? 1.0f : 0.0f;
+        }
       }
-
-      // Apply press/highlight to any mesh that is not a stick or trigger
-      if (!isStick && !isTrigger) {
-        bool effective_pressed = w.invert_mapping[part] ? !pressed : pressed;
-        targetMesh->press = effective_pressed ? 1.0f : 0.0f;
-        targetMesh->highlight_value = effective_pressed ? 1.0f : 0.0f;
-      }
-    } else if (type == 'a' && !isDirection) {
-      float val = getAxisValue(num, useRaw);
-      if (isStick) {
-        // ignore (handled directly)
-      } else if (isTrigger) {
-        float triggerVal = (val > 0.0f) ? val : 0.0f;
-        targetMesh->pull = triggerVal * 32767.0f;
-        targetMesh->press = triggerVal;
-        targetMesh->highlight_value = triggerVal;
-      } else if (part == 21 || part == 23 || part == 22 || part == 24) {
-        // These are stick axis parts – we handle them in the main axis code.
-        // But we could optionally set them here if needed.
-      }
+    } else if (type == "keyboard") {
+      // Handle keyboard key
+      // We need SDL_GetKeyboardState to check key state
+      // We'll need to map key strings like "key_w" to SDL_SCANCODE_W, etc.
+      // This requires adding a lookup table.
+      // For now, we'll implement a simple mapping for common keys.
+      // We'll add a helper function later.
+      // For now, we'll just set press to 0.
+    } else if (type == "mouse") {
+      // Handle mouse button/axis
+      // Need to query mouse state via SDL_GetMouseState or similar.
+      // For now, set press to 0.
     }
   }
 }
@@ -946,80 +944,6 @@ void controller_window_input() {
           return nullptr;
         };
 
-        // Left stick and its ring/cap (parts 5,7,16)
-        // Get the flag from the stick mesh (part 5) if it exists.
-        bool leftUseRaw = false;
-        if (Mesh *m = findMeshByPart(5))
-          leftUseRaw = m->useJoystick;
-        float lx = get_axis_value_choice(w, 0, leftUseRaw);
-        float ly = get_axis_value_choice(w, 1, leftUseRaw);
-
-        if (Mesh *m = findMeshByPart(5)) {
-          m->stick_X = lx * 32767.0f;
-          m->stick_Y = ly * 32767.0f;
-        }
-        if (Mesh *m = findMeshByPart(7)) {
-          m->stick_X = lx * 32767.0f;
-          m->stick_Y = ly * 32767.0f;
-          if (fabs(lx) > m->ring_highlight_deadzone * 0.01f ||
-              fabs(ly) > m->ring_highlight_deadzone * 0.01f) {
-            m->highlight_value = std::max(fabs(lx), fabs(ly)) * 1.2f;
-          } else {
-            m->highlight_value = 0.0f;
-          }
-        }
-        if (Mesh *m = findMeshByPart(16)) {
-          m->stick_X = lx * 32767.0f;
-          m->stick_Y = ly * 32767.0f;
-        }
-
-        // Right stick and its ring/cap (parts 6,8,17)
-        bool rightUseRaw = false;
-        if (Mesh *m = findMeshByPart(6))
-          rightUseRaw = m->useJoystick;
-        float rx = get_axis_value_choice(w, 2, rightUseRaw);
-        float ry = get_axis_value_choice(w, 3, rightUseRaw);
-
-        if (Mesh *m = findMeshByPart(6)) {
-          m->stick_X = rx * 32767.0f;
-          m->stick_Y = ry * 32767.0f;
-        }
-        if (Mesh *m = findMeshByPart(8)) {
-          m->stick_X = rx * 32767.0f;
-          m->stick_Y = ry * 32767.0f;
-          if (fabs(rx) > m->ring_highlight_deadzone * 0.01f ||
-              fabs(ry) > m->ring_highlight_deadzone * 0.01f) {
-            m->highlight_value = std::max(fabs(rx), fabs(ry)) * 1.2f;
-          } else {
-            m->highlight_value = 0.0f;
-          }
-        }
-        if (Mesh *m = findMeshByPart(17)) {
-          m->stick_X = rx * 32767.0f;
-          m->stick_Y = ry * 32767.0f;
-        }
-
-        // Triggers (parts 3,4)
-        bool leftTriggerRaw = false;
-        if (Mesh *m = findMeshByPart(3))
-          leftTriggerRaw = m->useJoystick;
-        float lt = get_axis_value_choice(w, 4, leftTriggerRaw);
-        if (Mesh *m = findMeshByPart(3)) {
-          m->pull = lt * 32767.0f;
-          m->highlight_value = lt;
-          m->press = lt;
-        }
-
-        bool rightTriggerRaw = false;
-        if (Mesh *m = findMeshByPart(4))
-          rightTriggerRaw = m->useJoystick;
-        float rt = get_axis_value_choice(w, 5, rightTriggerRaw);
-        if (Mesh *m = findMeshByPart(4)) {
-          m->pull = rt * 32767.0f;
-          m->highlight_value = rt;
-          m->press = rt;
-        }
-
         // Remove the old button loop – it's now handled by applyMappingToMeshes
         // (We'll keep it commented out or delete it)
         // Touchpad data
@@ -1186,6 +1110,42 @@ void controller_window_input() {
 
           // --- APPLY CUSTOM MAPPING ---
           applyMappingToMeshes(w);
+        }
+
+        // ---- Propagate stick motion to children (rings, caps) ----
+        for (int stickPart : {5, 6}) {
+          Mesh *stickMesh = nullptr;
+          int stickIndex = -1;
+          for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+            if (w.model.meshes[i].assignedPart == stickPart) {
+              stickMesh = &w.model.meshes[i];
+              stickIndex = i;
+              break;
+            }
+          }
+          if (!stickMesh)
+            continue;
+
+          for (auto &child : w.model.meshes) {
+            if (child.parentIndex == stickIndex && child.inputBinding.empty()) {
+              // Copy stick deflection
+              child.stick_X = stickMesh->stick_X;
+              child.stick_Y = stickMesh->stick_Y;
+
+              // Update highlight for ring meshes (parts 7 and 8)
+              if (child.assignedPart == 7 || child.assignedPart == 8) {
+                // Generic highlight for any child of a stick
+                float threshold = child.ring_highlight_deadzone * 0.01f;
+                float dx = fabs(stickMesh->stick_X / 32767.0f);
+                float dy = fabs(stickMesh->stick_Y / 32767.0f);
+                if (dx > threshold || dy > threshold) {
+                  child.highlight_value = std::max(dx, dy) * 1.2f;
+                } else {
+                  child.highlight_value = 0.0f;
+                }
+              }
+            }
+          }
         }
       } // end if (!w.is_import_preview)
 

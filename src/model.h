@@ -65,6 +65,13 @@ typedef struct texture_struct {
   float border[4] = {0.8f, 0.8f, 0.8f, 1.0f};
 } Texture;
 
+enum InputType {
+  INPUT_GAMEPAD = 0,
+  INPUT_JOYSTICK = 1,
+  INPUT_KEYBOARD = 2,
+  INPUT_MOUSE = 3
+};
+
 typedef struct mesh_struct {
   GLuint vao = 0;
   GLuint vbo = 0;
@@ -112,12 +119,15 @@ typedef struct mesh_struct {
   int assignedPart = -1; // controller part index (0..34) or -1 if unassigned
 
   std::string filename; // OBJ file name (e.g., "left_stick.obj")
-  bool useJoystick = false;
+  // Input type: 0=Gamepad, 1=Joystick, 2=Keyboard, 3=Mouse
+  int inputType = 0; // default to Gamepad
   float glow_intensity = 0.0f;
   float press_color[3] = {0.0f, 0.0f, 0.0f}; // zero means "use global"
 
   float original_color[3] = {0.8f, 0.8f, 0.8f};
   float original_alpha = 1.0f;
+  std::string inputBinding; // e.g., "gamepad:b0", "joystick:a1+",
+                            // "keyboard:key_w", "mouse:mouse_left"
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----
@@ -206,4 +216,7 @@ glm::vec3 computeMeshCenter(const Mesh &mesh);
 
 void writeJson(Model &m, const std::string &path);
 
+glm::mat4 getModelMatrixWithoutGyro(const Model &m, int meshIdx);
+glm::vec3 getModelWorldPositionWithoutGyro(const Model &m, int meshIdx);
+bool wouldCreateCycle(const Model &m, int childIdx, int parentIdx);
 #endif
