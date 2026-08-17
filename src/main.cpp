@@ -1,12 +1,3 @@
-#if defined(__linux__)
-#elif __FreeBSD__
-#elif __ANDROID__
-#elif __APPLE__
-#elif _WIN32
-#define SDL_MAIN_HANDLED
-#else
-#endif
-
 #include "settings.h"
 #include "settings_window.h"
 #include <iostream>
@@ -94,9 +85,20 @@ void Cleanup() {
   spdlog::info("Shutdown complete.");
 }
 
-int main() {
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmain"
+#endif
+
+extern "C" int main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
   InitializeProgram();
   MainLoop();
   Cleanup();
   return 0;
 }
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif

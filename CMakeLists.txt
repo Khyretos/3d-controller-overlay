@@ -70,6 +70,25 @@ target_include_directories(3dco+ PRIVATE
     "${CMAKE_SOURCE_DIR}/src"               # for models_zip_data.h
 )
 
+# ------------------------------------------------------------------
+# IMPORTANT: pkg-config modules can carry required preprocessor
+# defines in their "CFLAGS_OTHER" output (e.g. spdlog.pc emits
+# -DSPDLOG_FMT_EXTERNAL when spdlog was built against an external
+# fmt instead of its bundled copy). These must be forwarded to the
+# actual compile command, or headers like <spdlog/spdlog.h> will
+# silently try to include the bundled fmt copy that was never
+# installed, causing:
+#   fatal error: 'spdlog/fmt/bundled/core.h' file not found
+# ------------------------------------------------------------------
+target_compile_options(3dco+ PRIVATE
+    ${ASSIMP_CFLAGS_OTHER}
+    ${GLFW_CFLAGS_OTHER}
+    ${SPDLOG_CFLAGS_OTHER}
+    ${FMT_CFLAGS_OTHER}
+    ${SDL2_CFLAGS_OTHER}
+    ${NLOHMANN_JSON_CFLAGS_OTHER}
+)
+
 target_compile_options(3dco+ PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_SOURCE_DIR}/src/preinclude.h>
 )

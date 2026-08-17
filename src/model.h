@@ -66,10 +66,10 @@ typedef struct texture_struct {
 } Texture;
 
 enum InputType {
-  INPUT_GAMEPAD = 0,
-  INPUT_JOYSTICK = 1,
-  INPUT_KEYBOARD = 2,
-  INPUT_MOUSE = 3
+  INPUT_TYPE_GAMEPAD = 0,
+  INPUT_TYPE_JOYSTICK = 1,
+  INPUT_TYPE_KEYBOARD = 2,
+  INPUT_TYPE_MOUSE = 3
 };
 
 typedef struct mesh_struct {

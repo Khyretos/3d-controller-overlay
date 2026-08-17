@@ -1,8 +1,39 @@
 # syntax=docker/dockerfile:1
+#
+# ============================================================================
+# Combined macOS dependency + app build.
+#
+# WHY THIS IS ONE FILE INSTEAD OF TWO (Dockerfile.macos-deps + Dockerfile.macos):
+#   The goal is to run `build-macos.sh` once and get a finished .app out
+#   the other end, instead of running a separate deps script first.
+#   Docker's layer cache makes this safe: as long as the
+#   dependency-building RUN steps below stay UNCHANGED and appear BEFORE
+#   `COPY . /src`, editing app source code and re-running this Dockerfile
+#   will NOT re-trigger the (slow) dependency builds - Docker reuses the
+#   cached layers. You only pay the full dependency-build cost:
+#     - the very first time you build, or
+#     - after `docker builder prune` / switching machines / cache eviction, or
+#     - if you edit anything in the "Build third-party dependencies" stage.
+#
+#   CAVEAT: unlike the old two-script setup, there is no longer a plain
+#   `packaging/macos-deps/` folder of .a files on disk that you can
+#   inspect, zip up, or cache independently of Docker (e.g. as a CI
+#   artifact). Everything now lives inside Docker's build cache instead.
+#   If you set up CI later and want fast rebuilds there, you'll need to
+#   either restore the two-script split, or configure Docker's registry/
+#   GHA build-cache export explicitly. For local development this doesn't
+#   matter - Docker's local cache does the same job transparently.
+#
+#   Dockerfile.macos-deps / build-macos-deps.sh are left untouched in the
+#   repo as an optional fallback for that CI scenario - they are no
+#   longer required for a normal local build.
+# ============================================================================
 
 ARG OSXCROSS_VERSION=26.1-r0
 
 # ---------- OSXCross base ----------
+# Pulled in as its own stage purely so `COPY --from=osxcross` below can
+# grab the toolchain without re-running its own build steps.
 FROM crazymax/osxcross:${OSXCROSS_VERSION}-ubuntu AS osxcross
 
 # ---------- Build environment ----------
@@ -10,12 +41,15 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Toolchain packages needed to build BOTH the third-party dependencies
+# and the app itself. Kept as one apt-get layer (rather than splitting
+# per-purpose) since it rarely changes and costs nothing extra to cache.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     clang-20 clang++-20 \
     cmake ninja-build pkg-config \
-    git curl ca-certificates \
+    git curl wget ca-certificates \
     unzip zip file xz-utils \
     && ln -sf /usr/bin/clang-20 /usr/bin/clang \
     && ln -sf /usr/bin/clang++-20 /usr/bin/clang++ \
@@ -23,23 +57,263 @@ RUN apt-get update && \
 
 COPY --from=osxcross /osxcross /osxcross
 
+RUN ln -sf \
+    /osxcross/bin/arm64-apple-darwin25.1-install_name_tool \
+    /usr/local/bin/install_name_tool \
+    && ln -sf \
+    /osxcross/bin/arm64-apple-darwin25.1-otool \
+    /usr/local/bin/otool
+
 ENV PATH="/osxcross/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/osxcross/lib"
 ENV MACOSX_DEPLOYMENT_TARGET=11.0
 
-# ---------- Pre‑built dependencies ----------
-COPY packaging/macos-deps /deps
+# ============================================================================
+# STAGE 1 of 2: Build third-party dependencies (zlib, GLFW, SDL2, fmt,
+# spdlog, nlohmann-json, Assimp) for both architectures into /deps.
+#
+# IMPORTANT: this block intentionally does NOT depend on `/src` (the app
+# source code) in any way - it only needs the toolchain set up above.
+# That is what lets Docker cache this whole stage independently of app
+# code changes. Do not reorder this above/below the `COPY . /src` line,
+# and do not reference anything under /src from within this script.
+# ============================================================================
 
-# ---------- Source code ----------
+RUN cat > /usr/local/bin/build-deps.sh <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+PREFIX_ROOT="/deps"
+WORK_ROOT="/tmp/deps-build"
+
+download()
+{
+    local url="$1"
+    local output="$2"
+    echo "Downloading:"
+    echo "  ${url}"
+    curl --fail --location --retry 3 "${url}" -o "${output}"
+}
+
+extract_tar()
+{
+    local archive="$1"
+    local destination="$2"
+    rm -rf "${destination}"
+    mkdir -p "${destination}"
+    tar -xzf "${archive}" -C "${destination}" --strip-components=1
+}
+
+# Builds every dependency for a single architecture into /deps/<arch>.
+# This mirrors what the old, standalone Dockerfile.macos-deps did per
+# architecture - it's copied in almost verbatim so behaviour that was
+# already verified to work is preserved exactly.
+build_deps_for_arch() {
+    local ARCH="$1"
+    local CC CXX TARGET
+    local SDK_DIR
+
+    case "${ARCH}" in
+        x86_64)
+            CC="o64-clang"
+            CXX="o64-clang++"
+            TARGET="x86_64-apple-darwin25.1"
+            ;;
+        arm64)
+            CC="oa64-clang"
+            CXX="oa64-clang++"
+            TARGET="arm64-apple-darwin25.1"
+            ;;
+        *)
+            echo "ERROR: Unsupported architecture: ${ARCH}"
+            exit 1
+            ;;
+    esac
+
+    # Same SDK auto-detection logic used by the app build step, so both
+    # stages always agree on which SDK they're compiling against.
+    SDK_DIR=$(ls -d /osxcross/SDK/*.sdk | head -n1)
+    if [[ -z "${SDK_DIR}" ]]; then
+        echo "ERROR: No SDK found in /osxcross/SDK/"
+        exit 1
+    fi
+
+    local PREFIX="${PREFIX_ROOT}/${ARCH}"
+    local WORK="${WORK_ROOT}/${ARCH}"
+
+    rm -rf "${PREFIX}" "${WORK}"
+    mkdir -p "${PREFIX}" "${WORK}"
+
+    export CC CXX
+    export AR="/osxcross/bin/${TARGET}-ar"
+    export RANLIB="/osxcross/bin/${TARGET}-ranlib"
+    export NM="/osxcross/bin/${TARGET}-nm"
+    export STRIP="/osxcross/bin/${TARGET}-strip"
+
+    export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig"
+    export PKG_CONFIG_LIBDIR="${PREFIX}/lib/pkgconfig:${PREFIX}/share/pkgconfig"
+
+    echo
+    echo "============================================================"
+    echo "Building dependencies for ${ARCH}"
+    echo "CC=${CC} CXX=${CXX} SDK=${SDK_DIR}"
+    echo "============================================================"
+
+    local COMMON_CMAKE=(
+        -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_SYSTEM_NAME=Darwin
+        -DCMAKE_SYSTEM_PROCESSOR="${ARCH}"
+        -DCMAKE_OSX_ARCHITECTURES="${ARCH}"
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET}"
+        -DCMAKE_OSX_SYSROOT="${SDK_DIR}"
+        -DCMAKE_C_COMPILER="${CC}"
+        -DCMAKE_CXX_COMPILER="${CXX}"
+        -DCMAKE_AR="${AR}"
+        -DCMAKE_RANLIB="${RANLIB}"
+        -DCMAKE_INSTALL_PREFIX="${PREFIX}"
+        -DCMAKE_PREFIX_PATH="${PREFIX}"
+        -DBUILD_SHARED_LIBS=OFF
+    )
+
+    refresh_archives() {
+        if [[ -d "${PREFIX}/lib" ]]; then
+            find "${PREFIX}/lib" -type f -name '*.a' -print0 \
+                | while IFS= read -r -d '' archive; do "${RANLIB}" "${archive}"; done
+        fi
+    }
+
+    # ---- zlib ----
+    echo "-- zlib --"
+    download "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz" "${WORK}/zlib.tar.gz"
+    extract_tar "${WORK}/zlib.tar.gz" "${WORK}/zlib"
+    cmake -S "${WORK}/zlib" -B "${WORK}/zlib/build" "${COMMON_CMAKE[@]}" -DZLIB_BUILD_TESTING=OFF
+    cmake --build "${WORK}/zlib/build" --parallel
+    cmake --install "${WORK}/zlib/build"
+    refresh_archives
+
+    # ---- GLFW ----
+    echo "-- GLFW --"
+    download "https://github.com/glfw/glfw/archive/refs/tags/3.3.9.zip" "${WORK}/glfw.zip"
+    rm -rf "${WORK}/glfw" "${WORK}/glfw-src"
+    mkdir -p "${WORK}/glfw-src"
+    unzip -q "${WORK}/glfw.zip" -d "${WORK}/glfw-src"
+    mv "${WORK}/glfw-src/glfw-3.3.9" "${WORK}/glfw"
+    cmake -S "${WORK}/glfw" -B "${WORK}/glfw/build" "${COMMON_CMAKE[@]}" \
+        -DGLFW_BUILD_DOCS=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_EXAMPLES=OFF
+    cmake --build "${WORK}/glfw/build" --parallel
+    cmake --install "${WORK}/glfw/build"
+    refresh_archives
+
+    # ---- SDL2 ----
+    # SDL_GAMECONTROLLER / SDL_HAPTIC are disabled because this app
+    # doesn't need them; note this does NOT disable the MFI/GameController
+    # *joystick* backend (that's a separate, auto-detected code path in
+    # SDL2's own CMake logic) - see platform_version_shim.c in the app
+    # source for why that backend needs a linker workaround under
+    # osxcross regardless of this flag.
+    echo "-- SDL2 --"
+    download "https://github.com/libsdl-org/SDL/releases/download/release-2.30.1/SDL2-2.30.1.tar.gz" "${WORK}/sdl2.tar.gz"
+    extract_tar "${WORK}/sdl2.tar.gz" "${WORK}/sdl2"
+    cmake -S "${WORK}/sdl2" -B "${WORK}/sdl2/build" "${COMMON_CMAKE[@]}" \
+        -DSDL_TESTS=OFF -DSDL_GAMECONTROLLER=OFF -DSDL_HAPTIC=OFF
+    cmake --build "${WORK}/sdl2/build" --parallel
+    cmake --install "${WORK}/sdl2/build"
+    refresh_archives
+
+    # ---- fmt ----
+    echo "-- fmt --"
+    download "https://github.com/fmtlib/fmt/archive/refs/tags/10.2.1.tar.gz" "${WORK}/fmt.tar.gz"
+    extract_tar "${WORK}/fmt.tar.gz" "${WORK}/fmt"
+    cmake -S "${WORK}/fmt" -B "${WORK}/fmt/build" "${COMMON_CMAKE[@]}" \
+        -DFMT_TEST=OFF -DFMT_DOC=OFF -DFMT_INSTALL=ON
+    cmake --build "${WORK}/fmt/build" --parallel
+    cmake --install "${WORK}/fmt/build"
+    refresh_archives
+
+    # ---- spdlog ----
+    # SPDLOG_FMT_EXTERNAL=ON: use the fmt we just built above instead of
+    # spdlog's bundled copy. NOTE: the app's CMakeLists.txt MUST forward
+    # spdlog.pc's CFLAGS_OTHER (which carries -DSPDLOG_FMT_EXTERNAL) to
+    # its own compile command, or you'll hit:
+    #   fatal error: 'spdlog/fmt/bundled/core.h' file not found
+    # This is already handled in CMakeLists.txt - see the
+    # target_compile_options() block that forwards *_CFLAGS_OTHER.
+    echo "-- spdlog --"
+    download "https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz" "${WORK}/spdlog.tar.gz"
+    extract_tar "${WORK}/spdlog.tar.gz" "${WORK}/spdlog"
+    cmake -S "${WORK}/spdlog" -B "${WORK}/spdlog/build" "${COMMON_CMAKE[@]}" \
+        -DSPDLOG_FMT_EXTERNAL=ON -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_BUILD_TESTS=OFF \
+        -DSPDLOG_BUILD_BENCH=OFF -Dfmt_DIR="${PREFIX}/lib/cmake/fmt"
+    cmake --build "${WORK}/spdlog/build" --parallel
+    cmake --install "${WORK}/spdlog/build"
+    refresh_archives
+
+    # ---- nlohmann/json (header-only, no build step) ----
+    echo "-- nlohmann/json --"
+    mkdir -p "${PREFIX}/include/nlohmann" "${PREFIX}/lib/pkgconfig"
+    download "https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp" \
+        "${PREFIX}/include/nlohmann/json.hpp"
+    cat > "${PREFIX}/lib/pkgconfig/nlohmann_json.pc" <<PC
+prefix=${PREFIX}
+includedir=\${prefix}/include
+
+Name: nlohmann_json
+Description: JSON for Modern C++
+Version: 3.11.3
+Cflags: -I\${includedir}
+PC
+
+    # ---- Assimp ----
+    echo "-- Assimp --"
+    download "https://github.com/assimp/assimp/archive/refs/tags/v5.4.3.tar.gz" "${WORK}/assimp.tar.gz"
+    extract_tar "${WORK}/assimp.tar.gz" "${WORK}/assimp"
+    cmake -S "${WORK}/assimp" -B "${WORK}/assimp/build" "${COMMON_CMAKE[@]}" \
+        -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF -DASSIMP_BUILD_ASSIMP_TOOLS=OFF \
+        -DASSIMP_WARNINGS_AS_ERRORS=OFF -DASSIMP_BUILD_ZLIB=OFF \
+        -DZLIB_ROOT="${PREFIX}" -DZLIB_LIBRARY="${PREFIX}/lib/libz.a" -DZLIB_INCLUDE_DIR="${PREFIX}/include"
+    cmake --build "${WORK}/assimp/build" --parallel
+    cmake --install "${WORK}/assimp/build"
+    refresh_archives
+
+    echo "Finished dependencies for ${ARCH}"
+}
+
+build_deps_for_arch x86_64
+build_deps_for_arch arm64
+
+rm -rf "${WORK_ROOT}"
+
+echo
+echo "============================================================"
+echo "All macOS dependencies built (x86_64 + arm64)"
+echo "============================================================"
+SCRIPT
+
+RUN chmod +x /usr/local/bin/build-deps.sh
+RUN /usr/local/bin/build-deps.sh
+
+# ============================================================================
+# STAGE 2 of 2: Build the app itself against the dependencies from
+# STAGE 1, for both architectures, then lipo them into a universal
+# binary and package the .app bundle.
+#
+# `COPY . /src` is placed here - AFTER the dependency stage - on purpose.
+# Everything above this line only changes if you edit dependency
+# versions/flags, so Docker will keep reusing the cached dependency
+# layers no matter how often your app source code changes below this
+# point. If you ever move `COPY . /src` earlier in this file, you will
+# lose that caching benefit and every app-only rebuild will also
+# rebuild every dependency from scratch.
+# ============================================================================
+
 COPY . /src
 WORKDIR /src
 
-# ---------- Build script (universal) ----------
 RUN cat > /usr/local/bin/build-app.sh <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Find the SDK directory – there should be exactly one .sdk folder.
 SDK_DIR=$(ls -d /osxcross/SDK/*.sdk | head -n1)
 if [[ -z "${SDK_DIR}" ]]; then
     echo "ERROR: No SDK found in /osxcross/SDK/"
@@ -80,7 +354,7 @@ build_arch() {
     export PKG_CONFIG_LIBDIR="${prefix}/lib/pkgconfig:${prefix}/share/pkgconfig"
 
     echo "============================================================"
-    echo "Building for ${arch}"
+    echo "Building app for ${arch}"
     echo "============================================================"
 
     rm -rf "${build_dir}" "${install_dir}"
@@ -150,10 +424,22 @@ cat > /out/3dco+.app/Contents/Info.plist <<PLIST
 </plist>
 PLIST
 
-# Copy final app to /dist (mounted volume)
-cp -r /out/3dco+.app /dist/
-echo "Universal app created at /dist/3dco+.app"
+echo "Universal app built at /out/3dco+.app"
 SCRIPT
 
 RUN chmod +x /usr/local/bin/build-app.sh
 RUN /usr/local/bin/build-app.sh
+
+# ------------------------------------------------------------------
+# IMPORTANT: this CMD runs at `docker run` time, NOT `docker build`
+# time. Volumes passed via `-v host:/container` only exist once the
+# container actually starts running - they don't exist yet during
+# `docker build`. So the copy-to-host step must live here, in a CMD,
+# rather than as another RUN step above. Also note the destination is
+# /dist/macos (not bare /dist) - build-macos.sh mounts the repo's
+# whole `dist/` folder at /dist, and other platform builds
+# (AppImage, Windows) write into their own /dist/<platform>
+# subfolders the same way, so this keeps `dist/` organized by platform
+# instead of dumping the .app straight into the top-level dist/ folder.
+# ------------------------------------------------------------------
+CMD ["/bin/sh", "-c", "mkdir -p /dist/macos && cp -r /out/3dco+.app /dist/macos/ && echo 'Universal app copied to /dist/macos/3dco+.app'"]

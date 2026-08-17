@@ -206,9 +206,9 @@ void readInfoJson(Model &m, const std::string &path) {
     } else if (p.contains("use_joystick")) {
       // Legacy: map use_joystick to inputType
       bool useRaw = p["use_joystick"].get<bool>();
-      mesh.inputType = useRaw ? INPUT_JOYSTICK : INPUT_GAMEPAD;
+      mesh.inputType = useRaw ? INPUT_TYPE_JOYSTICK : INPUT_TYPE_GAMEPAD;
     } else {
-      mesh.inputType = INPUT_GAMEPAD; // default
+      mesh.inputType = INPUT_TYPE_GAMEPAD; // default
     }
     if (p.contains("assigned_part"))
       mesh.assignedPart = p["assigned_part"].get<int>();
