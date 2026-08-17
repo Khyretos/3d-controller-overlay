@@ -148,6 +148,7 @@ typedef struct model_struct {
   // preview) -----
   std::vector<ImportedMesh> imported_meshes;
   bool has_imported_meshes = false;
+  std::string default_mapping; // name of the mapping file (without path)
 } Model;
 
 // model.h

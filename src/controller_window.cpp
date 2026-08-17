@@ -3,15 +3,21 @@
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
+#include "strings.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <spdlog/spdlog.h>
+#include <sstream>
 
 extern unsigned selected_tab;
 extern unsigned selected_mesh;
 extern std::vector<window_tab> tabs;
 
 extern bool g_log_buttons;
+extern std::string config_base_path;
+extern std::string g_loaded_mapping_name;
+extern bool gQuit;
 
 static GLuint g_glowTexture = 0;
 
@@ -197,6 +203,45 @@ bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
   }
 }
 
+// Load a mapping file into the controller_window's mapping array
+static void loadMappingFromFile(controller_window &w,
+                                const std::string &mappingName) {
+  if (mappingName.empty())
+    return;
+  std::string filePath = config_base_path + "/mapping/" + mappingName;
+  std::ifstream ifs(filePath);
+  if (!ifs.is_open()) {
+    spdlog::warn("Could not open mapping file: {}", filePath);
+    return;
+  }
+  std::string line;
+  if (std::getline(ifs, line)) {
+    // Parse comma-separated key:value pairs
+    std::stringstream ss(line);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (item.empty())
+        continue;
+      size_t colon = item.find(':');
+      if (colon != std::string::npos) {
+        std::string key = item.substr(0, colon);
+        std::string value = item.substr(colon + 1);
+        // Match key to mesh_names (part name)
+        for (int i = 0; i < 35; ++i) {
+          if (key == mesh_names[i]) {
+            w.mapping[i] = value;
+            break;
+          }
+        }
+      }
+    }
+    g_loaded_mapping_name = mappingName;
+    spdlog::info("Loaded mapping '{}' for controller", mappingName);
+  } else {
+    spdlog::warn("Mapping file '{}' is empty", filePath);
+  }
+}
+
 void createControllerWindow(std::string title, std::string model_path) {
   controller_window w;
   w.gyro_sensitivity = 5.0f;
@@ -316,29 +361,65 @@ void createControllerWindow(std::string title, std::string model_path) {
         }
       } else {
         w.sdl_joystick = SDL_JoystickOpen(chosen);
+        spdlog::warn("Generic joystick opened – you may need to manually map "
+                     "buttons in the Mapping section.");
         w.is_gamecontroller = false;
         w.joystick_index = chosen;
         if (w.sdl_joystick) {
           spdlog::info("Opened generic joystick: {}",
                        SDL_JoystickName(w.sdl_joystick));
-          // Try to open sensors for this joystick (by matching device index)
+          // --- Match sensors by device instance ID ---
+          SDL_JoystickID joyID = SDL_JoystickInstanceID(w.sdl_joystick);
           int num_sensors = SDL_NumSensors();
           for (int s = 0; s < num_sensors; ++s) {
             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
-              w.gyro_sensor = SDL_SensorOpen(s);
-              if (w.gyro_sensor) {
-                spdlog::info("Gyro sensor opened (index {})", s);
-                w.gyro_enabled = true;
-                break;
+              SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
+              // If the sensor's instance ID matches the joystick's, open it.
+              if (sensorID == joyID) {
+                w.gyro_sensor = SDL_SensorOpen(s);
+                if (w.gyro_sensor) {
+                  spdlog::info("Gyro sensor opened (index {})", s);
+                  w.gyro_enabled = true;
+                  break;
+                }
               }
             }
           }
+          // If no matching gyro was found, fallback to opening the first gyro
+          // sensor (some platforms may not have the same instance ID).
+          if (!w.gyro_sensor) {
+            for (int s = 0; s < num_sensors; ++s) {
+              if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
+                w.gyro_sensor = SDL_SensorOpen(s);
+                if (w.gyro_sensor) {
+                  spdlog::info("Gyro sensor opened by fallback (index {})", s);
+                  w.gyro_enabled = true;
+                  break;
+                }
+              }
+            }
+          }
+          // Same for accelerometer
           for (int s = 0; s < num_sensors; ++s) {
             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
-              w.accel_sensor = SDL_SensorOpen(s);
-              if (w.accel_sensor) {
-                spdlog::info("Accel sensor opened (index {})", s);
-                break;
+              SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
+              if (sensorID == joyID) {
+                w.accel_sensor = SDL_SensorOpen(s);
+                if (w.accel_sensor) {
+                  spdlog::info("Accel sensor opened (index {})", s);
+                  break;
+                }
+              }
+            }
+          }
+          if (!w.accel_sensor) {
+            for (int s = 0; s < num_sensors; ++s) {
+              if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
+                w.accel_sensor = SDL_SensorOpen(s);
+                if (w.accel_sensor) {
+                  spdlog::info("Accel sensor opened by fallback (index {})", s);
+                  break;
+                }
               }
             }
           }
@@ -364,6 +445,11 @@ void createControllerWindow(std::string title, std::string model_path) {
   }
 
   w.gyro_matrix = glm::mat4(1.0f);
+
+  // Load default mapping if defined in model
+  if (!w.model.default_mapping.empty()) {
+    loadMappingFromFile(w, w.model.default_mapping);
+  }
 
   // ----- RESET BUTTON STATES FOR THIS WINDOW -----
   for (int i = 0; i < 128; ++i) {
@@ -616,17 +702,18 @@ void controller_window_input() {
             if (SDL_GameControllerGetSensorDataWithTimestamp(
                     w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
                     3) == 0) {
+              // ---- Process gamecontroller gyro data ----
               if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
                   isnan(w.gyro_data[2])) {
                 if (w.gyro_debug_logging) {
                   spdlog::warn("Gyro data contains NaN, skipping frame");
                 }
-                continue;
+                goto skip_gyro_processing;
               }
               if (fabs(w.gyro_data[0]) < 1e-6f &&
                   fabs(w.gyro_data[1]) < 1e-6f &&
                   fabs(w.gyro_data[2]) < 1e-6f) {
-                continue;
+                goto skip_gyro_processing;
               }
               if (w.gyro_debug_logging) {
                 static int frame_counter = 0;
@@ -659,29 +746,25 @@ void controller_window_input() {
                 w.gyro_matrix[3][1] = 0.0f;
                 w.gyro_matrix[3][2] = 0.0f;
                 w.gyro_matrix[3][3] = 1.0f;
-
-                // --- NEW: re-orthogonalise ---
+                // re-orthogonalise
                 glm::mat3 rot = glm::mat3(w.gyro_matrix);
                 glm::vec3 col0 = rot[0];
                 glm::vec3 col1 = rot[1];
                 glm::vec3 col2 = rot[2];
-                // Gram-Schmidt
                 col0 = glm::normalize(col0);
                 col1 = glm::normalize(col1 - glm::dot(col0, col1) * col0);
                 col2 = glm::cross(col0, col1);
                 rot = glm::mat3(col0, col1, col2);
                 w.gyro_matrix = glm::mat4(rot);
-                // ----------------------------
-                // --- Drift reset ---
+                // Drift reset
                 float angle = glm::angle(glm::quat_cast(w.gyro_matrix));
                 if (angle > 10.0f) {
                   w.gyro_matrix = glm::mat4(1.0f);
                   if (w.gyro_debug_logging)
                     spdlog::warn("Gyro reset due to excessive drift");
                 }
-                // ---------------------
                 w.gyro_time = timestamp;
-
+                // Correction
                 glm::vec3 up_error =
                     glm::cross(glm::vec3(0, 1, 0),
                                glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
@@ -698,17 +781,16 @@ void controller_window_input() {
                       glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
                                   glm::normalize(right_error));
                 }
-
+                // Reset via buttons
                 if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
                   if (get_button_value_choice(w, w.reset_gyro_button1, true) &&
                       get_button_value_choice(w, w.reset_gyro_button2, true)) {
                     w.gyro_matrix = glm::mat4(1.0f);
-                    if (w.gyro_debug_logging) {
+                    if (w.gyro_debug_logging)
                       spdlog::debug("Gyro reset via button combo");
-                    }
                   }
                 }
-
+                // Debug logging
                 if (w.gyro_debug_logging) {
                   static int log_counter = 0;
                   if (++log_counter % 120 == 0) {
@@ -723,23 +805,137 @@ void controller_window_input() {
               }
             } else {
               if (w.gyro_debug_logging) {
-                spdlog::debug(
-                    "Failed to read gyro data (maybe sensor not ready)");
+                spdlog::debug("Failed to read gamecontroller gyro data");
               }
             }
           } else if (w.gyro_sensor) {
             has_gyro_source = true;
-          }
-
-          if (!has_gyro_source) {
+            // ---- READ GENERIC SENSOR DATA ----
+            float sensor_data[3];
+            Uint64 timestamp;
+            if (SDL_SensorGetDataWithTimestamp(w.gyro_sensor, &timestamp,
+                                               sensor_data, 3) == 0) {
+              // Copy to w.gyro_data for consistency
+              w.gyro_data[0] = sensor_data[0];
+              w.gyro_data[1] = sensor_data[1];
+              w.gyro_data[2] = sensor_data[2];
+              // Now process exactly the same way as gamecontroller gyro
+              if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
+                  isnan(w.gyro_data[2])) {
+                if (w.gyro_debug_logging) {
+                  spdlog::warn("Gyro data contains NaN, skipping frame");
+                }
+                goto skip_gyro_processing;
+              }
+              if (fabs(w.gyro_data[0]) < 1e-6f &&
+                  fabs(w.gyro_data[1]) < 1e-6f &&
+                  fabs(w.gyro_data[2]) < 1e-6f) {
+                goto skip_gyro_processing;
+              }
+              if (w.gyro_debug_logging) {
+                static int frame_counter = 0;
+                if (++frame_counter % 60 == 0) {
+                  spdlog::debug("Gyro raw: x={:.3f} y={:.3f} z={:.3f}",
+                                w.gyro_data[0], w.gyro_data[1], w.gyro_data[2]);
+                }
+              }
+              if (w.gyro_toggled) {
+                w.gyro_time = timestamp;
+                w.gyro_toggled = false;
+              } else {
+                float dt = (timestamp - w.gyro_time) * 0.000001f;
+                if (dt > 0.1f)
+                  dt = 0.1f;
+                if (dt < 0.0001f)
+                  dt = 0.0001f;
+                float sens = w.gyro_sensitivity;
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[0] * dt * sens,
+                                glm::vec3(1, 0, 0));
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[1] * dt * sens,
+                                glm::vec3(0, 1, 0));
+                w.gyro_matrix =
+                    glm::rotate(w.gyro_matrix, w.gyro_data[2] * dt * sens,
+                                glm::vec3(0, 0, 1));
+                // After applying rotations
+                w.gyro_matrix[3][0] = 0.0f;
+                w.gyro_matrix[3][1] = 0.0f;
+                w.gyro_matrix[3][2] = 0.0f;
+                w.gyro_matrix[3][3] = 1.0f;
+                // re-orthogonalise
+                glm::mat3 rot = glm::mat3(w.gyro_matrix);
+                glm::vec3 col0 = rot[0];
+                glm::vec3 col1 = rot[1];
+                glm::vec3 col2 = rot[2];
+                col0 = glm::normalize(col0);
+                col1 = glm::normalize(col1 - glm::dot(col0, col1) * col0);
+                col2 = glm::cross(col0, col1);
+                rot = glm::mat3(col0, col1, col2);
+                w.gyro_matrix = glm::mat4(rot);
+                // Drift reset
+                float angle = glm::angle(glm::quat_cast(w.gyro_matrix));
+                if (angle > 10.0f) {
+                  w.gyro_matrix = glm::mat4(1.0f);
+                  if (w.gyro_debug_logging)
+                    spdlog::warn("Gyro reset due to excessive drift");
+                }
+                w.gyro_time = timestamp;
+                // Correction
+                glm::vec3 up_error =
+                    glm::cross(glm::vec3(0, 1, 0),
+                               glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
+                if (glm::length(up_error) > 0.001f) {
+                  w.gyro_matrix =
+                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
+                                  glm::normalize(up_error));
+                }
+                glm::vec3 right_error =
+                    glm::cross(glm::vec3(1, 0, 0),
+                               glm::vec3(1, 0, 0) * glm::mat3(w.gyro_matrix));
+                if (glm::length(right_error) > 0.001f) {
+                  w.gyro_matrix =
+                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
+                                  glm::normalize(right_error));
+                }
+                // Reset via buttons
+                if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
+                  if (get_button_value_choice(w, w.reset_gyro_button1, true) &&
+                      get_button_value_choice(w, w.reset_gyro_button2, true)) {
+                    w.gyro_matrix = glm::mat4(1.0f);
+                    if (w.gyro_debug_logging)
+                      spdlog::debug("Gyro reset via button combo");
+                  }
+                }
+                // Debug logging
+                if (w.gyro_debug_logging) {
+                  static int log_counter = 0;
+                  if (++log_counter % 120 == 0) {
+                    glm::vec3 euler =
+                        glm::eulerAngles(glm::quat_cast(w.gyro_matrix));
+                    spdlog::debug(
+                        "Gyro Euler: yaw={:.3f} pitch={:.3f} roll={:.3f}",
+                        glm::degrees(euler.y), glm::degrees(euler.x),
+                        glm::degrees(euler.z));
+                  }
+                }
+              }
+            } else {
+              if (w.gyro_debug_logging) {
+                spdlog::debug("Failed to read generic gyro data");
+              }
+            }
+          } else {
+            // no gyro source – disable
             w.gyro_enabled = false;
             w.gyro_debug_logging = false;
             if (w.gyro_debug_logging) {
               spdlog::debug("No gyro source available; disabling gyro.");
             }
           }
-        }
-
+        // Label to skip processing on invalid data
+        skip_gyro_processing:;
+        } // end if gyro_enabled
         // We'll compute axis values per mesh, using the mesh's useJoystick
         // flag. Helper to find mesh by part.
         auto findMeshByPart = [&](int part) -> Mesh * {
@@ -1112,10 +1308,9 @@ void controller_window_input() {
     // Close windows that should close
     for (int i = (int)windows.size() - 1; i >= 0; --i) {
       if (glfwWindowShouldClose(windows[i].glfw_window)) {
-        unsigned id = windows[i].ID;
-        glfwDestroyWindow(windows[i].glfw_window);
-        windows.erase(windows.begin() + i);
-        removeTab(id);
+        // System window close → quit the entire application
+        gQuit = true;
+        break; // Stop processing further windows; main loop will exit
       }
     }
   }

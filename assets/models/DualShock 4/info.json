@@ -16,7 +16,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "bottom_shell.obj",
@@ -34,7 +42,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "extra.obj",
@@ -52,7 +68,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "left_trigger.obj",
@@ -70,7 +94,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "right_trigger.obj",
@@ -88,7 +120,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "left_stick.obj",
@@ -106,7 +146,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "right_stick.obj",
@@ -124,7 +172,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "left_ring.obj",
@@ -142,7 +198,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "right_ring.obj",
@@ -160,7 +224,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "a_button.obj",
@@ -178,7 +250,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "b_button.obj",
@@ -196,7 +276,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "x_button.obj",
@@ -214,7 +302,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "y_button.obj",
@@ -232,7 +328,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "back_button.obj",
@@ -250,7 +354,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "guide_button.obj",
@@ -268,7 +380,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "start_button.obj",
@@ -286,7 +406,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "left_cap.obj",
@@ -304,7 +432,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "right_cap.obj",
@@ -322,7 +458,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "left_bumper.obj",
@@ -340,7 +484,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "right_bumper.obj",
@@ -358,7 +510,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "dpad_up.obj",
@@ -376,7 +536,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "dpad_down.obj",
@@ -394,7 +562,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "dpad_left.obj",
@@ -412,7 +588,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "dpad_right.obj",
@@ -430,97 +614,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "misc.obj",
-      "name": "misc",
-      "assigned_part": 24,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "paddle1.obj",
-      "name": "paddle 1",
-      "assigned_part": 25,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "paddle2.obj",
-      "name": "paddle 2",
-      "assigned_part": 26,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "paddle3.obj",
-      "name": "paddle 3",
-      "assigned_part": 27,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "paddle4.obj",
-      "name": "paddle 4",
-      "assigned_part": 28,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "touchpad.obj",
@@ -538,7 +640,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [0.300000, 0.300000, 0.300000],
+        "alpha": 1.000000
+      }
     },
     {
       "filename": "touch_point1.obj",
@@ -556,7 +666,15 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [1.000000, 1.000000, 1.000000],
+        "alpha": 0.000000
+      }
     },
     {
       "filename": "touch_point2.obj",
@@ -574,62 +692,17 @@
       "rotation": [0.000000, 0.000000, 0.000000],
       "parent": -1,
       "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "",
-      "name": "",
-      "assigned_part": -1,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "",
-      "name": "",
-      "assigned_part": -1,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
-    },
-    {
-      "filename": "",
-      "name": "",
-      "assigned_part": -1,
-      "position": [0.000000, 0.000000, 0.000000],
-      "travel": [0.000000, 0.000000, 0.000000],
-      "popup_offset": [0.000000, 0.000000, 0.000000],
-      "popup_rotation": [0.000000, 0.000000, 0.000000],
-      "trigger_max": 0.000000,
-      "stick_max": 0.000000,
-      "touch_width": 0.000000,
-      "touch_height": 0.000000,
-      "pivot_offset": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000],
-      "parent": -1,
-      "press_color": [0.000000, 0.000000, 0.000000],
-      "use_joystick": false
+      "use_joystick": false,
+      "material": {
+        "ambient": 0.200000,
+        "diffuse": 1.000000,
+        "specular": 0.100000,
+        "shininess": 32.000000,
+        "color": [1.000000, 1.000000, 1.000000],
+        "alpha": 0.000000
+      }
     }
   ],
   "source": "https://github.com/larfingshnew/3d-controller-overlay"
-}
+,
+  "default_mapping": "keees"}

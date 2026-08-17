@@ -67,6 +67,12 @@ void writeJson(Model &m, const std::string &path) {
     spdlog::error("Failed to write JSON to {}", path);
     return;
   }
+
+  if (m.meshes.empty()) {
+    spdlog::warn("Attempted to write empty model to {} – skipping.", path);
+    return;
+  }
+
   json << std::fixed << std::setprecision(6);
   json << "{\n  \"parts\": [\n";
   for (size_t i = 0; i < m.meshes.size(); ++i) {
@@ -95,11 +101,24 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"press_color\": [" << mesh.press_color[0] << ", "
          << mesh.press_color[1] << ", " << mesh.press_color[2] << "],\n";
     json << "      \"use_joystick\": " << (mesh.useJoystick ? "true" : "false")
-         << "\n";
+         << ",\n";
+    json << "      \"material\": {\n";
+    json << "        \"ambient\": " << mesh.material.ambient << ",\n";
+    json << "        \"diffuse\": " << mesh.material.diffuse << ",\n";
+    json << "        \"specular\": " << mesh.material.specular << ",\n";
+    json << "        \"shininess\": " << mesh.material.shininess << ",\n";
+    json << "        \"color\": [" << mesh.material.color[0] << ", "
+         << mesh.material.color[1] << ", " << mesh.material.color[2] << "],\n";
+    json << "        \"alpha\": " << mesh.material.alpha << "\n";
+    json << "      }\n";
     json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
   }
   json << "  ],\n";
   json << "  \"source\": \"" << escapeJson(m.source) << "\"\n";
+  if (!m.default_mapping.empty()) {
+    json << ",\n  \"default_mapping\": \"" << escapeJson(m.default_mapping)
+         << "\"";
+  }
   json << "}\n";
 }
 void readInfoJson(Model &m, const std::string &path) {
@@ -196,6 +215,26 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.press_color[0] = mesh.press_color[1] = mesh.press_color[2] = 0.0f;
     }
 
+    if (p.contains("material")) {
+      auto &mat = p["material"];
+      if (mat.contains("ambient"))
+        mesh.material.ambient = mat["ambient"].get<float>();
+      if (mat.contains("diffuse"))
+        mesh.material.diffuse = mat["diffuse"].get<float>();
+      if (mat.contains("specular"))
+        mesh.material.specular = mat["specular"].get<float>();
+      if (mat.contains("shininess"))
+        mesh.material.shininess = mat["shininess"].get<float>();
+      if (mat.contains("color")) {
+        auto arr = mat["color"].get<std::array<float, 3>>();
+        mesh.material.color[0] = arr[0];
+        mesh.material.color[1] = arr[1];
+        mesh.material.color[2] = arr[2];
+      }
+      if (mat.contains("alpha"))
+        mesh.material.alpha = mat["alpha"].get<float>();
+    }
+
     // After setting mesh.material.color (possibly from JSON)
     mesh.original_color[0] = mesh.material.color[0];
     mesh.original_color[1] = mesh.material.color[1];
@@ -207,6 +246,8 @@ void readInfoJson(Model &m, const std::string &path) {
 
   if (data.contains("source"))
     m.source = data["source"].get<std::string>();
+  if (data.contains("default_mapping"))
+    m.default_mapping = data["default_mapping"].get<std::string>();
   spdlog::info("Loaded {} meshes from JSON", m.meshes.size());
 }
 // ------------------------------------------------------------------

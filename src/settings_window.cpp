@@ -452,8 +452,10 @@ void drawSettingsWindow() {
         ImGui::EndTabItem();
       }
       if (!open) {
-        glfwSetWindowShouldClose(getControllerWindow(tabs[i].ID)->glfw_window,
-                                 true);
+        unsigned id = tabs[i].ID;
+        removeControllerWindow(id);
+        removeTab(id);
+        // The tab is gone; selected_tab will be reset inside removeTab
       }
     }
     ImGui::EndTabBar();
@@ -1206,6 +1208,23 @@ void drawSettingsWindow() {
       // ---- Dynamic mesh table ----
       ImGui::Text("Mesh List (%zu meshes)",
                   current_window->model.meshes.size());
+
+      // --- Check-all buttons ---
+      if (ImGui::Button("Toggle All Visible")) {
+        for (auto &mesh : current_window->model.meshes) {
+          if (mesh.elements > 0)
+            mesh.visible = !mesh.visible;
+        }
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Toggle All Joystick")) {
+        for (auto &mesh : current_window->model.meshes) {
+          if (mesh.elements > 0)
+            mesh.useJoystick = !mesh.useJoystick;
+        }
+      }
+      ImGui::NewLine();
+
       if (ImGui::BeginTable("MeshTable", 11,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
@@ -2354,14 +2373,15 @@ void drawSettingsWindow() {
         ImGui::SetTooltip("Save current mapping to a file.");
 
       if (ImGui::BeginPopup("save_mapping_popup")) {
-        char name[32] = {};
+        static char name[32] = {};
         static bool name_valid = true;
+        static bool set_default = false;
         if (ImGui::InputText("Mapping Name", name, IM_ARRAYSIZE(name),
                              ImGuiInputTextFlags_EnterReturnsTrue)) {
           bool valid = check_filename_valid(name);
           name_valid = valid;
           if (valid) {
-            std::filesystem::path path(SDL_GetBasePath());
+            std::filesystem::path path(config_base_path); // updated path
             path.append("mapping/");
             std::filesystem::create_directory(path);
             path.append(name);
@@ -2369,9 +2389,6 @@ void drawSettingsWindow() {
             std::string mapping = "";
             for (int i = 0; i < 35; ++i) {
               if (!current_window->mapping[i].empty()) {
-                // Use mesh_names[i] as the key for compatibility with older
-                // mapping files? We'll use the part name (mesh_names[i]) as
-                // key.
                 mapping.append(mesh_names[i]);
                 mapping.append(":");
                 mapping.append(current_window->mapping[i]);
@@ -2382,13 +2399,24 @@ void drawSettingsWindow() {
             close_ofstream();
             g_loaded_mapping_name = name;
             spdlog::info("Saved mapping to {}", name);
+            // If set as default, update model default_mapping and save JSON
+            if (set_default) {
+              current_window->model.default_mapping = name;
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+              spdlog::info("Set '{}' as default mapping for model '{}'", name,
+                           current_window->model_name);
+            }
             ImGui::CloseCurrentPopup();
           } else {
             ImGui::Text("Invalid characters in name.");
           }
         }
+        // New checkbox
+        ImGui::Checkbox("Set as default for this model", &set_default);
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip("Enter a name for the mapping file.");
+          ImGui::SetTooltip("If checked, this mapping will be automatically "
+                            "loaded when this model is opened.");
         if (!name_valid)
           ImGui::Text("Name cannot include characters \\/:*?\"<>|");
         ImGui::EndPopup();
@@ -2404,7 +2432,7 @@ void drawSettingsWindow() {
 
       if (ImGui::BeginPopup("load_mapping_popup")) {
         if (ImGui::BeginListBox("Mappings", ImVec2(-1, 150))) {
-          std::string dir_path = SDL_GetBasePath();
+          std::string dir_path = config_base_path;
           dir_path.append("mapping/");
           std::filesystem::create_directory(dir_path);
           for (const auto &entry :

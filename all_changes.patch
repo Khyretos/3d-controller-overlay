@@ -1,0 +1,1874 @@
+diff --git a/all_changes.patch b/all_changes.patch
+new file mode 100644
+index 0000000..e69de29
+diff --git a/assets/models/DualSense/info.json b/assets/models/DualSense/info.json
+deleted file mode 100644
+index 82e810e..0000000
+--- a/assets/models/DualSense/info.json
++++ /dev/null
+@@ -1,635 +0,0 @@
+-{
+-  "parts": [
+-    {
+-      "filename": "top_shell.obj",
+-      "name": "top shell",
+-      "assigned_part": 0,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "bottom_shell.obj",
+-      "name": "bottom shell",
+-      "assigned_part": 1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "extra.obj",
+-      "name": "extra",
+-      "assigned_part": 2,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_trigger.obj",
+-      "name": "left trigger",
+-      "assigned_part": 3,
+-      "position": [-0.63, 0.01, -0.59],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.19, -0.31],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.523599,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_trigger.obj",
+-      "name": "right trigger",
+-      "assigned_part": 4,
+-      "position": [0.63, 0.01, -0.59],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.19, -0.31],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.523599,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_stick.obj",
+-      "name": "left stick",
+-      "assigned_part": 5,
+-      "position": [-0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_stick.obj",
+-      "name": "right stick",
+-      "assigned_part": 6,
+-      "position": [0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_ring.obj",
+-      "name": "left ring",
+-      "assigned_part": 7,
+-      "position": [-0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_ring.obj",
+-      "name": "right ring",
+-      "assigned_part": 8,
+-      "position": [0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "a_button.obj",
+-      "name": "a button",
+-      "assigned_part": 9,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "b_button.obj",
+-      "name": "b button",
+-      "assigned_part": 10,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "x_button.obj",
+-      "name": "x button",
+-      "assigned_part": 11,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "y_button.obj",
+-      "name": "y button",
+-      "assigned_part": 12,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "back_button.obj",
+-      "name": "back button",
+-      "assigned_part": 13,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "guide_button.obj",
+-      "name": "guide button",
+-      "assigned_part": 14,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "start_button.obj",
+-      "name": "start button",
+-      "assigned_part": 15,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_cap.obj",
+-      "name": "left cap",
+-      "assigned_part": 16,
+-      "position": [-0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_cap.obj",
+-      "name": "right cap",
+-      "assigned_part": 17,
+-      "position": [0.32, 0.2, -0.02],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_bumper.obj",
+-      "name": "left bumper",
+-      "assigned_part": 18,
+-      "position": [-0.63, 0.26, -0.65],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_bumper.obj",
+-      "name": "right bumper",
+-      "assigned_part": 19,
+-      "position": [0.63, 0.26, -0.65],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_up.obj",
+-      "name": "d-pad up",
+-      "assigned_part": 20,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_down.obj",
+-      "name": "d-pad down",
+-      "assigned_part": 21,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_left.obj",
+-      "name": "d-pad left",
+-      "assigned_part": 22,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_right.obj",
+-      "name": "d-pad right",
+-      "assigned_part": 23,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "misc.obj",
+-      "name": "misc",
+-      "assigned_part": 24,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle1.obj",
+-      "name": "paddle 1",
+-      "assigned_part": 25,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle2.obj",
+-      "name": "paddle 2",
+-      "assigned_part": 26,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle3.obj",
+-      "name": "paddle 3",
+-      "assigned_part": 27,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle4.obj",
+-      "name": "paddle 4",
+-      "assigned_part": 28,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touchpad.obj",
+-      "name": "touchpad",
+-      "assigned_part": 29,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touch_point1.obj",
+-      "name": "touch point 1",
+-      "assigned_part": 30,
+-      "position": [0.0, 0.32, -0.42],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.55,
+-      "touch_height": 0.28,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touch_point2.obj",
+-      "name": "touch point 2",
+-      "assigned_part": 31,
+-      "position": [0.0, 0.32, -0.42],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.55,
+-      "touch_height": 0.28,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    }
+-  ],
+-  "source": "https://github.com/larfingshnew/3d-controller-overlay"
+-}
+diff --git a/assets/models/Joycon Grip/info.json b/assets/models/Joycon Grip/info.json
+deleted file mode 100644
+index 48cbfa2..0000000
+--- a/assets/models/Joycon Grip/info.json	
++++ /dev/null
+@@ -1,635 +0,0 @@
+-{
+-  "parts": [
+-    {
+-      "filename": "top_shell.obj",
+-      "name": "top shell",
+-      "assigned_part": 0,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "bottom_shell.obj",
+-      "name": "bottom shell",
+-      "assigned_part": 1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "extra.obj",
+-      "name": "extra",
+-      "assigned_part": 2,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_trigger.obj",
+-      "name": "left trigger",
+-      "assigned_part": 3,
+-      "position": [-0.53, 0.02, -0.59],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.08, -0.29],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.261799,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_trigger.obj",
+-      "name": "right trigger",
+-      "assigned_part": 4,
+-      "position": [0.53, 0.02, -0.59],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.08, -0.29],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.261799,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_stick.obj",
+-      "name": "left stick",
+-      "assigned_part": 5,
+-      "position": [-0.5125, 0.175, -0.34],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_stick.obj",
+-      "name": "right stick",
+-      "assigned_part": 6,
+-      "position": [0.512, 0.175, 0.065],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_ring.obj",
+-      "name": "left ring",
+-      "assigned_part": 7,
+-      "position": [-0.512, 0.175, -0.34],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_ring.obj",
+-      "name": "right ring",
+-      "assigned_part": 8,
+-      "position": [0.512, 0.175, 0.065],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "a_button.obj",
+-      "name": "a button",
+-      "assigned_part": 9,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "b_button.obj",
+-      "name": "b button",
+-      "assigned_part": 10,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "x_button.obj",
+-      "name": "x button",
+-      "assigned_part": 11,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "y_button.obj",
+-      "name": "y button",
+-      "assigned_part": 12,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "back_button.obj",
+-      "name": "back button",
+-      "assigned_part": 13,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "guide_button.obj",
+-      "name": "guide button",
+-      "assigned_part": 14,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "start_button.obj",
+-      "name": "start button",
+-      "assigned_part": 15,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_cap.obj",
+-      "name": "left cap",
+-      "assigned_part": 16,
+-      "position": [-0.512, 0.175, -0.34],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_cap.obj",
+-      "name": "right cap",
+-      "assigned_part": 17,
+-      "position": [0.512, 0.175, 0.065],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.349066,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "left_bumper.obj",
+-      "name": "left bumper",
+-      "assigned_part": 18,
+-      "position": [-0.56, 0.12, -0.64],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, -0.12],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "right_bumper.obj",
+-      "name": "right bumper",
+-      "assigned_part": 19,
+-      "position": [0.56, 0.12, -0.64],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, -0.12],
+-      "popup_rotation": [1.5708, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_up.obj",
+-      "name": "d-pad up",
+-      "assigned_part": 20,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_down.obj",
+-      "name": "d-pad down",
+-      "assigned_part": 21,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_left.obj",
+-      "name": "d-pad left",
+-      "assigned_part": 22,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "dpad_right.obj",
+-      "name": "d-pad right",
+-      "assigned_part": 23,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "misc.obj",
+-      "name": "misc",
+-      "assigned_part": 24,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle1.obj",
+-      "name": "paddle 1",
+-      "assigned_part": 25,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle2.obj",
+-      "name": "paddle 2",
+-      "assigned_part": 26,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle3.obj",
+-      "name": "paddle 3",
+-      "assigned_part": 27,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "paddle4.obj",
+-      "name": "paddle 4",
+-      "assigned_part": 28,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touchpad.obj",
+-      "name": "touchpad",
+-      "assigned_part": 29,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touch_point1.obj",
+-      "name": "touch point 1",
+-      "assigned_part": 30,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "touch_point2.obj",
+-      "name": "touch point 2",
+-      "assigned_part": 31,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    },
+-    {
+-      "filename": "",
+-      "name": "",
+-      "assigned_part": -1,
+-      "position": [0.0, 0.0, 0.0],
+-      "travel": [0.0, 0.0, 0.0],
+-      "popup_offset": [0.0, 0.0, 0.0],
+-      "popup_rotation": [0.0, 0.0, 0.0],
+-      "trigger_max": 0.0,
+-      "stick_max": 0.0,
+-      "touch_width": 0.0,
+-      "touch_height": 0.0,
+-      "pivot_offset": [0.0, 0.0, 0.0],
+-      "rotation": [0.0, 0.0, 0.0],
+-      "parent": -1,
+-      "press_color": [0.0, 0.0, 0.0],
+-      "use_joystick": false
+-    }
+-  ],
+-  "source": "https://github.com/larfingshnew/3d-controller-overlay"
+-}
+diff --git a/src/controller_window.cpp b/src/controller_window.cpp
+index f908074..f088490 100644
+--- a/src/controller_window.cpp
++++ b/src/controller_window.cpp
+@@ -3,15 +3,21 @@
+ #include "settings_window.h"
+ #include "shader.h"
+ #include "shaders.h"
++#include "strings.h"
+ #include <algorithm>
+ #include <cmath>
++#include <fstream>
+ #include <spdlog/spdlog.h>
++#include <sstream>
+ 
+ extern unsigned selected_tab;
+ extern unsigned selected_mesh;
+ extern std::vector<window_tab> tabs;
+ 
+ extern bool g_log_buttons;
++extern std::string config_base_path;
++extern std::string g_loaded_mapping_name;
++extern bool gQuit;
+ 
+ static GLuint g_glowTexture = 0;
+ 
+@@ -197,6 +203,45 @@ bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
+   }
+ }
+ 
++// Load a mapping file into the controller_window's mapping array
++static void loadMappingFromFile(controller_window &w,
++                                const std::string &mappingName) {
++  if (mappingName.empty())
++    return;
++  std::string filePath = config_base_path + "/mapping/" + mappingName;
++  std::ifstream ifs(filePath);
++  if (!ifs.is_open()) {
++    spdlog::warn("Could not open mapping file: {}", filePath);
++    return;
++  }
++  std::string line;
++  if (std::getline(ifs, line)) {
++    // Parse comma-separated key:value pairs
++    std::stringstream ss(line);
++    std::string item;
++    while (std::getline(ss, item, ',')) {
++      if (item.empty())
++        continue;
++      size_t colon = item.find(':');
++      if (colon != std::string::npos) {
++        std::string key = item.substr(0, colon);
++        std::string value = item.substr(colon + 1);
++        // Match key to mesh_names (part name)
++        for (int i = 0; i < 35; ++i) {
++          if (key == mesh_names[i]) {
++            w.mapping[i] = value;
++            break;
++          }
++        }
++      }
++    }
++    g_loaded_mapping_name = mappingName;
++    spdlog::info("Loaded mapping '{}' for controller", mappingName);
++  } else {
++    spdlog::warn("Mapping file '{}' is empty", filePath);
++  }
++}
++
+ void createControllerWindow(std::string title, std::string model_path) {
+   controller_window w;
+   w.gyro_sensitivity = 5.0f;
+@@ -316,29 +361,65 @@ void createControllerWindow(std::string title, std::string model_path) {
+         }
+       } else {
+         w.sdl_joystick = SDL_JoystickOpen(chosen);
++        spdlog::warn("Generic joystick opened – you may need to manually map "
++                     "buttons in the Mapping section.");
+         w.is_gamecontroller = false;
+         w.joystick_index = chosen;
+         if (w.sdl_joystick) {
+           spdlog::info("Opened generic joystick: {}",
+                        SDL_JoystickName(w.sdl_joystick));
+-          // Try to open sensors for this joystick (by matching device index)
++          // --- Match sensors by device instance ID ---
++          SDL_JoystickID joyID = SDL_JoystickInstanceID(w.sdl_joystick);
+           int num_sensors = SDL_NumSensors();
+           for (int s = 0; s < num_sensors; ++s) {
+             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
+-              w.gyro_sensor = SDL_SensorOpen(s);
+-              if (w.gyro_sensor) {
+-                spdlog::info("Gyro sensor opened (index {})", s);
+-                w.gyro_enabled = true;
+-                break;
++              SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
++              // If the sensor's instance ID matches the joystick's, open it.
++              if (sensorID == joyID) {
++                w.gyro_sensor = SDL_SensorOpen(s);
++                if (w.gyro_sensor) {
++                  spdlog::info("Gyro sensor opened (index {})", s);
++                  w.gyro_enabled = true;
++                  break;
++                }
++              }
++            }
++          }
++          // If no matching gyro was found, fallback to opening the first gyro
++          // sensor (some platforms may not have the same instance ID).
++          if (!w.gyro_sensor) {
++            for (int s = 0; s < num_sensors; ++s) {
++              if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
++                w.gyro_sensor = SDL_SensorOpen(s);
++                if (w.gyro_sensor) {
++                  spdlog::info("Gyro sensor opened by fallback (index {})", s);
++                  w.gyro_enabled = true;
++                  break;
++                }
+               }
+             }
+           }
++          // Same for accelerometer
+           for (int s = 0; s < num_sensors; ++s) {
+             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
+-              w.accel_sensor = SDL_SensorOpen(s);
+-              if (w.accel_sensor) {
+-                spdlog::info("Accel sensor opened (index {})", s);
+-                break;
++              SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
++              if (sensorID == joyID) {
++                w.accel_sensor = SDL_SensorOpen(s);
++                if (w.accel_sensor) {
++                  spdlog::info("Accel sensor opened (index {})", s);
++                  break;
++                }
++              }
++            }
++          }
++          if (!w.accel_sensor) {
++            for (int s = 0; s < num_sensors; ++s) {
++              if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
++                w.accel_sensor = SDL_SensorOpen(s);
++                if (w.accel_sensor) {
++                  spdlog::info("Accel sensor opened by fallback (index {})", s);
++                  break;
++                }
+               }
+             }
+           }
+@@ -365,6 +446,11 @@ void createControllerWindow(std::string title, std::string model_path) {
+ 
+   w.gyro_matrix = glm::mat4(1.0f);
+ 
++  // Load default mapping if defined in model
++  if (!w.model.default_mapping.empty()) {
++    loadMappingFromFile(w, w.model.default_mapping);
++  }
++
+   // ----- RESET BUTTON STATES FOR THIS WINDOW -----
+   for (int i = 0; i < 128; ++i) {
+     w.last_joy_button_values[i] = false;
+@@ -616,17 +702,18 @@ void controller_window_input() {
+             if (SDL_GameControllerGetSensorDataWithTimestamp(
+                     w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
+                     3) == 0) {
++              // ---- Process gamecontroller gyro data ----
+               if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
+                   isnan(w.gyro_data[2])) {
+                 if (w.gyro_debug_logging) {
+                   spdlog::warn("Gyro data contains NaN, skipping frame");
+                 }
+-                continue;
++                goto skip_gyro_processing;
+               }
+               if (fabs(w.gyro_data[0]) < 1e-6f &&
+                   fabs(w.gyro_data[1]) < 1e-6f &&
+                   fabs(w.gyro_data[2]) < 1e-6f) {
+-                continue;
++                goto skip_gyro_processing;
+               }
+               if (w.gyro_debug_logging) {
+                 static int frame_counter = 0;
+@@ -659,29 +746,25 @@ void controller_window_input() {
+                 w.gyro_matrix[3][1] = 0.0f;
+                 w.gyro_matrix[3][2] = 0.0f;
+                 w.gyro_matrix[3][3] = 1.0f;
+-
+-                // --- NEW: re-orthogonalise ---
++                // re-orthogonalise
+                 glm::mat3 rot = glm::mat3(w.gyro_matrix);
+                 glm::vec3 col0 = rot[0];
+                 glm::vec3 col1 = rot[1];
+                 glm::vec3 col2 = rot[2];
+-                // Gram-Schmidt
+                 col0 = glm::normalize(col0);
+                 col1 = glm::normalize(col1 - glm::dot(col0, col1) * col0);
+                 col2 = glm::cross(col0, col1);
+                 rot = glm::mat3(col0, col1, col2);
+                 w.gyro_matrix = glm::mat4(rot);
+-                // ----------------------------
+-                // --- Drift reset ---
++                // Drift reset
+                 float angle = glm::angle(glm::quat_cast(w.gyro_matrix));
+                 if (angle > 10.0f) {
+                   w.gyro_matrix = glm::mat4(1.0f);
+                   if (w.gyro_debug_logging)
+                     spdlog::warn("Gyro reset due to excessive drift");
+                 }
+-                // ---------------------
+                 w.gyro_time = timestamp;
+-
++                // Correction
+                 glm::vec3 up_error =
+                     glm::cross(glm::vec3(0, 1, 0),
+                                glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
+@@ -698,17 +781,16 @@ void controller_window_input() {
+                       glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
+                                   glm::normalize(right_error));
+                 }
+-
++                // Reset via buttons
+                 if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
+                   if (get_button_value_choice(w, w.reset_gyro_button1, true) &&
+                       get_button_value_choice(w, w.reset_gyro_button2, true)) {
+                     w.gyro_matrix = glm::mat4(1.0f);
+-                    if (w.gyro_debug_logging) {
++                    if (w.gyro_debug_logging)
+                       spdlog::debug("Gyro reset via button combo");
+-                    }
+                   }
+                 }
+-
++                // Debug logging
+                 if (w.gyro_debug_logging) {
+                   static int log_counter = 0;
+                   if (++log_counter % 120 == 0) {
+@@ -723,23 +805,137 @@ void controller_window_input() {
+               }
+             } else {
+               if (w.gyro_debug_logging) {
+-                spdlog::debug(
+-                    "Failed to read gyro data (maybe sensor not ready)");
++                spdlog::debug("Failed to read gamecontroller gyro data");
+               }
+             }
+           } else if (w.gyro_sensor) {
+             has_gyro_source = true;
+-          }
+-
+-          if (!has_gyro_source) {
++            // ---- READ GENERIC SENSOR DATA ----
++            float sensor_data[3];
++            Uint64 timestamp;
++            if (SDL_SensorGetDataWithTimestamp(w.gyro_sensor, &timestamp,
++                                               sensor_data, 3) == 0) {
++              // Copy to w.gyro_data for consistency
++              w.gyro_data[0] = sensor_data[0];
++              w.gyro_data[1] = sensor_data[1];
++              w.gyro_data[2] = sensor_data[2];
++              // Now process exactly the same way as gamecontroller gyro
++              if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
++                  isnan(w.gyro_data[2])) {
++                if (w.gyro_debug_logging) {
++                  spdlog::warn("Gyro data contains NaN, skipping frame");
++                }
++                goto skip_gyro_processing;
++              }
++              if (fabs(w.gyro_data[0]) < 1e-6f &&
++                  fabs(w.gyro_data[1]) < 1e-6f &&
++                  fabs(w.gyro_data[2]) < 1e-6f) {
++                goto skip_gyro_processing;
++              }
++              if (w.gyro_debug_logging) {
++                static int frame_counter = 0;
++                if (++frame_counter % 60 == 0) {
++                  spdlog::debug("Gyro raw: x={:.3f} y={:.3f} z={:.3f}",
++                                w.gyro_data[0], w.gyro_data[1], w.gyro_data[2]);
++                }
++              }
++              if (w.gyro_toggled) {
++                w.gyro_time = timestamp;
++                w.gyro_toggled = false;
++              } else {
++                float dt = (timestamp - w.gyro_time) * 0.000001f;
++                if (dt > 0.1f)
++                  dt = 0.1f;
++                if (dt < 0.0001f)
++                  dt = 0.0001f;
++                float sens = w.gyro_sensitivity;
++                w.gyro_matrix =
++                    glm::rotate(w.gyro_matrix, w.gyro_data[0] * dt * sens,
++                                glm::vec3(1, 0, 0));
++                w.gyro_matrix =
++                    glm::rotate(w.gyro_matrix, w.gyro_data[1] * dt * sens,
++                                glm::vec3(0, 1, 0));
++                w.gyro_matrix =
++                    glm::rotate(w.gyro_matrix, w.gyro_data[2] * dt * sens,
++                                glm::vec3(0, 0, 1));
++                // After applying rotations
++                w.gyro_matrix[3][0] = 0.0f;
++                w.gyro_matrix[3][1] = 0.0f;
++                w.gyro_matrix[3][2] = 0.0f;
++                w.gyro_matrix[3][3] = 1.0f;
++                // re-orthogonalise
++                glm::mat3 rot = glm::mat3(w.gyro_matrix);
++                glm::vec3 col0 = rot[0];
++                glm::vec3 col1 = rot[1];
++                glm::vec3 col2 = rot[2];
++                col0 = glm::normalize(col0);
++                col1 = glm::normalize(col1 - glm::dot(col0, col1) * col0);
++                col2 = glm::cross(col0, col1);
++                rot = glm::mat3(col0, col1, col2);
++                w.gyro_matrix = glm::mat4(rot);
++                // Drift reset
++                float angle = glm::angle(glm::quat_cast(w.gyro_matrix));
++                if (angle > 10.0f) {
++                  w.gyro_matrix = glm::mat4(1.0f);
++                  if (w.gyro_debug_logging)
++                    spdlog::warn("Gyro reset due to excessive drift");
++                }
++                w.gyro_time = timestamp;
++                // Correction
++                glm::vec3 up_error =
++                    glm::cross(glm::vec3(0, 1, 0),
++                               glm::vec3(0, 1, 0) * glm::mat3(w.gyro_matrix));
++                if (glm::length(up_error) > 0.001f) {
++                  w.gyro_matrix =
++                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
++                                  glm::normalize(up_error));
++                }
++                glm::vec3 right_error =
++                    glm::cross(glm::vec3(1, 0, 0),
++                               glm::vec3(1, 0, 0) * glm::mat3(w.gyro_matrix));
++                if (glm::length(right_error) > 0.001f) {
++                  w.gyro_matrix =
++                      glm::rotate(w.gyro_matrix, w.gyro_correction * 0.0001f,
++                                  glm::normalize(right_error));
++                }
++                // Reset via buttons
++                if (w.reset_gyro_button1 >= 0 && w.reset_gyro_button2 >= 0) {
++                  if (get_button_value_choice(w, w.reset_gyro_button1, true) &&
++                      get_button_value_choice(w, w.reset_gyro_button2, true)) {
++                    w.gyro_matrix = glm::mat4(1.0f);
++                    if (w.gyro_debug_logging)
++                      spdlog::debug("Gyro reset via button combo");
++                  }
++                }
++                // Debug logging
++                if (w.gyro_debug_logging) {
++                  static int log_counter = 0;
++                  if (++log_counter % 120 == 0) {
++                    glm::vec3 euler =
++                        glm::eulerAngles(glm::quat_cast(w.gyro_matrix));
++                    spdlog::debug(
++                        "Gyro Euler: yaw={:.3f} pitch={:.3f} roll={:.3f}",
++                        glm::degrees(euler.y), glm::degrees(euler.x),
++                        glm::degrees(euler.z));
++                  }
++                }
++              }
++            } else {
++              if (w.gyro_debug_logging) {
++                spdlog::debug("Failed to read generic gyro data");
++              }
++            }
++          } else {
++            // no gyro source – disable
+             w.gyro_enabled = false;
+             w.gyro_debug_logging = false;
+             if (w.gyro_debug_logging) {
+               spdlog::debug("No gyro source available; disabling gyro.");
+             }
+           }
+-        }
+-
++        // Label to skip processing on invalid data
++        skip_gyro_processing:;
++        } // end if gyro_enabled
+         // We'll compute axis values per mesh, using the mesh's useJoystick
+         // flag. Helper to find mesh by part.
+         auto findMeshByPart = [&](int part) -> Mesh * {
+@@ -1112,10 +1308,9 @@ void controller_window_input() {
+     // Close windows that should close
+     for (int i = (int)windows.size() - 1; i >= 0; --i) {
+       if (glfwWindowShouldClose(windows[i].glfw_window)) {
+-        unsigned id = windows[i].ID;
+-        glfwDestroyWindow(windows[i].glfw_window);
+-        windows.erase(windows.begin() + i);
+-        removeTab(id);
++        // System window close → quit the entire application
++        gQuit = true;
++        break; // Stop processing further windows; main loop will exit
+       }
+     }
+   }
+diff --git a/src/model.cpp b/src/model.cpp
+index 34225aa..3bd3ef3 100644
+--- a/src/model.cpp
++++ b/src/model.cpp
+@@ -67,6 +67,12 @@ void writeJson(Model &m, const std::string &path) {
+     spdlog::error("Failed to write JSON to {}", path);
+     return;
+   }
++
++  if (m.meshes.empty()) {
++    spdlog::warn("Attempted to write empty model to {} – skipping.", path);
++    return;
++  }
++
+   json << std::fixed << std::setprecision(6);
+   json << "{\n  \"parts\": [\n";
+   for (size_t i = 0; i < m.meshes.size(); ++i) {
+@@ -95,11 +101,24 @@ void writeJson(Model &m, const std::string &path) {
+     json << "      \"press_color\": [" << mesh.press_color[0] << ", "
+          << mesh.press_color[1] << ", " << mesh.press_color[2] << "],\n";
+     json << "      \"use_joystick\": " << (mesh.useJoystick ? "true" : "false")
+-         << "\n";
++         << ",\n";
++    json << "      \"material\": {\n";
++    json << "        \"ambient\": " << mesh.material.ambient << ",\n";
++    json << "        \"diffuse\": " << mesh.material.diffuse << ",\n";
++    json << "        \"specular\": " << mesh.material.specular << ",\n";
++    json << "        \"shininess\": " << mesh.material.shininess << ",\n";
++    json << "        \"color\": [" << mesh.material.color[0] << ", "
++         << mesh.material.color[1] << ", " << mesh.material.color[2] << "],\n";
++    json << "        \"alpha\": " << mesh.material.alpha << "\n";
++    json << "      }\n";
+     json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
+   }
+   json << "  ],\n";
+   json << "  \"source\": \"" << escapeJson(m.source) << "\"\n";
++  if (!m.default_mapping.empty()) {
++    json << ",\n  \"default_mapping\": \"" << escapeJson(m.default_mapping)
++         << "\"";
++  }
+   json << "}\n";
+ }
+ void readInfoJson(Model &m, const std::string &path) {
+@@ -196,6 +215,26 @@ void readInfoJson(Model &m, const std::string &path) {
+       mesh.press_color[0] = mesh.press_color[1] = mesh.press_color[2] = 0.0f;
+     }
+ 
++    if (p.contains("material")) {
++      auto &mat = p["material"];
++      if (mat.contains("ambient"))
++        mesh.material.ambient = mat["ambient"].get<float>();
++      if (mat.contains("diffuse"))
++        mesh.material.diffuse = mat["diffuse"].get<float>();
++      if (mat.contains("specular"))
++        mesh.material.specular = mat["specular"].get<float>();
++      if (mat.contains("shininess"))
++        mesh.material.shininess = mat["shininess"].get<float>();
++      if (mat.contains("color")) {
++        auto arr = mat["color"].get<std::array<float, 3>>();
++        mesh.material.color[0] = arr[0];
++        mesh.material.color[1] = arr[1];
++        mesh.material.color[2] = arr[2];
++      }
++      if (mat.contains("alpha"))
++        mesh.material.alpha = mat["alpha"].get<float>();
++    }
++
+     // After setting mesh.material.color (possibly from JSON)
+     mesh.original_color[0] = mesh.material.color[0];
+     mesh.original_color[1] = mesh.material.color[1];
+@@ -207,6 +246,8 @@ void readInfoJson(Model &m, const std::string &path) {
+ 
+   if (data.contains("source"))
+     m.source = data["source"].get<std::string>();
++  if (data.contains("default_mapping"))
++    m.default_mapping = data["default_mapping"].get<std::string>();
+   spdlog::info("Loaded {} meshes from JSON", m.meshes.size());
+ }
+ // ------------------------------------------------------------------
+diff --git a/src/model.h b/src/model.h
+index 5011b38..96cb96c 100644
+--- a/src/model.h
++++ b/src/model.h
+@@ -148,6 +148,7 @@ typedef struct model_struct {
+   // preview) -----
+   std::vector<ImportedMesh> imported_meshes;
+   bool has_imported_meshes = false;
++  std::string default_mapping; // name of the mapping file (without path)
+ } Model;
+ 
+ // model.h
+diff --git a/src/settings_window.cpp b/src/settings_window.cpp
+index 9c9e22c..b73839a 100755
+--- a/src/settings_window.cpp
++++ b/src/settings_window.cpp
+@@ -452,8 +452,10 @@ void drawSettingsWindow() {
+         ImGui::EndTabItem();
+       }
+       if (!open) {
+-        glfwSetWindowShouldClose(getControllerWindow(tabs[i].ID)->glfw_window,
+-                                 true);
++        unsigned id = tabs[i].ID;
++        removeControllerWindow(id);
++        removeTab(id);
++        // The tab is gone; selected_tab will be reset inside removeTab
+       }
+     }
+     ImGui::EndTabBar();
+@@ -1206,6 +1208,23 @@ void drawSettingsWindow() {
+       // ---- Dynamic mesh table ----
+       ImGui::Text("Mesh List (%zu meshes)",
+                   current_window->model.meshes.size());
++
++      // --- Check-all buttons ---
++      if (ImGui::Button("Toggle All Visible")) {
++        for (auto &mesh : current_window->model.meshes) {
++          if (mesh.elements > 0)
++            mesh.visible = !mesh.visible;
++        }
++      }
++      ImGui::SameLine();
++      if (ImGui::Button("Toggle All Joystick")) {
++        for (auto &mesh : current_window->model.meshes) {
++          if (mesh.elements > 0)
++            mesh.useJoystick = !mesh.useJoystick;
++        }
++      }
++      ImGui::NewLine();
++
+       if (ImGui::BeginTable("MeshTable", 11,
+                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                 ImGuiTableFlags_SizingStretchSame)) {
+@@ -2354,14 +2373,15 @@ void drawSettingsWindow() {
+         ImGui::SetTooltip("Save current mapping to a file.");
+ 
+       if (ImGui::BeginPopup("save_mapping_popup")) {
+-        char name[32] = {};
++        static char name[32] = {};
+         static bool name_valid = true;
++        static bool set_default = false;
+         if (ImGui::InputText("Mapping Name", name, IM_ARRAYSIZE(name),
+                              ImGuiInputTextFlags_EnterReturnsTrue)) {
+           bool valid = check_filename_valid(name);
+           name_valid = valid;
+           if (valid) {
+-            std::filesystem::path path(SDL_GetBasePath());
++            std::filesystem::path path(config_base_path); // updated path
+             path.append("mapping/");
+             std::filesystem::create_directory(path);
+             path.append(name);
+@@ -2369,9 +2389,6 @@ void drawSettingsWindow() {
+             std::string mapping = "";
+             for (int i = 0; i < 35; ++i) {
+               if (!current_window->mapping[i].empty()) {
+-                // Use mesh_names[i] as the key for compatibility with older
+-                // mapping files? We'll use the part name (mesh_names[i]) as
+-                // key.
+                 mapping.append(mesh_names[i]);
+                 mapping.append(":");
+                 mapping.append(current_window->mapping[i]);
+@@ -2382,13 +2399,24 @@ void drawSettingsWindow() {
+             close_ofstream();
+             g_loaded_mapping_name = name;
+             spdlog::info("Saved mapping to {}", name);
++            // If set as default, update model default_mapping and save JSON
++            if (set_default) {
++              current_window->model.default_mapping = name;
++              writeJson(current_window->model,
++                        current_window->model.path + "/info.json");
++              spdlog::info("Set '{}' as default mapping for model '{}'", name,
++                           current_window->model_name);
++            }
+             ImGui::CloseCurrentPopup();
+           } else {
+             ImGui::Text("Invalid characters in name.");
+           }
+         }
++        // New checkbox
++        ImGui::Checkbox("Set as default for this model", &set_default);
+         if (ImGui::IsItemHovered())
+-          ImGui::SetTooltip("Enter a name for the mapping file.");
++          ImGui::SetTooltip("If checked, this mapping will be automatically "
++                            "loaded when this model is opened.");
+         if (!name_valid)
+           ImGui::Text("Name cannot include characters \\/:*?\"<>|");
+         ImGui::EndPopup();
+@@ -2404,7 +2432,7 @@ void drawSettingsWindow() {
+ 
+       if (ImGui::BeginPopup("load_mapping_popup")) {
+         if (ImGui::BeginListBox("Mappings", ImVec2(-1, 150))) {
+-          std::string dir_path = SDL_GetBasePath();
++          std::string dir_path = config_base_path;
+           dir_path.append("mapping/");
+           std::filesystem::create_directory(dir_path);
+           for (const auto &entry :
