@@ -19,11 +19,14 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <stdio.h>
+using json = nlohmann::json;
 
 extern std::vector<controller_window> windows;
 extern std::string button_names[21];
+extern std::string config_base_path;
 
 static bool HasTouchpadFinger(controller_window *w, int touchpadIdx,
                               int fingerIdx) {
@@ -38,61 +41,7 @@ static bool HasTouchpadFinger(controller_window *w, int touchpadIdx,
 }
 
 bool g_log_buttons = false;
-std::string g_loaded_mapping_name = "";
 static int last_logged_device_index = -1;
-
-std::string getBindingDescription(const std::string &binding) {
-  if (binding.empty())
-    return "unbound";
-  if (binding[0] == 'b') {
-    int num = std::stoi(binding.substr(1));
-    if (num >= 0 && num < 21) {
-      return "Button " + std::to_string(num) + " (" + button_names[num] + ")";
-    } else {
-      return "Button " + std::to_string(num);
-    }
-  }
-  if (binding[0] == 'h') {
-    size_t dot = binding.find('.');
-    if (dot != std::string::npos) {
-      int hatIdx = std::stoi(binding.substr(1, dot - 1));
-      int dir = std::stoi(binding.substr(dot + 1));
-      const char *dirNames[8] = {"Up",   "Right-Up",  "Right", "Right-Down",
-                                 "Down", "Left-Down", "Left",  "Left-Up"};
-      return "Hat " + std::to_string(hatIdx) + " " +
-             (dir >= 0 && dir < 8 ? dirNames[dir] : "?");
-    }
-    return binding;
-  }
-  if (binding[0] == 'a') {
-    if (binding.back() == '+') {
-      int num = std::stoi(binding.substr(1, binding.size() - 2));
-      return "Axis " + std::to_string(num) + " Positive";
-    } else if (binding.back() == '-') {
-      int num = std::stoi(binding.substr(1, binding.size() - 2));
-      return "Axis " + std::to_string(num) + " Negative";
-    } else {
-      int num = std::stoi(binding.substr(1));
-      return "Axis " + std::to_string(num);
-    }
-  }
-  if (binding[0] == 't') {
-    // Parse tX_fY_z
-    size_t pos1 = binding.find('_');
-    if (pos1 != std::string::npos) {
-      size_t pos2 = binding.find('_', pos1 + 1);
-      if (pos2 != std::string::npos) {
-        std::string touchStr = binding.substr(1, pos1 - 1);
-        std::string fingerStr = binding.substr(pos1 + 1, pos2 - pos1 - 1);
-        char axis = binding.back();
-        return "Touchpad " + touchStr + " Finger " + fingerStr.substr(1) +
-               " Axis " + (axis == 'x' ? "X" : "Y");
-      }
-    }
-    return binding;
-  }
-  return binding;
-}
 
 // Actual filenames of OBJ meshes (used for file I/O)
 std::string mesh_filenames[35] = {
@@ -106,46 +55,10 @@ std::string mesh_filenames[35] = {
     "dpad_down.obj",    "dpad_left.obj",     "dpad_right.obj",
     "misc.obj",         "paddle1.obj",       "paddle2.obj",
     "paddle3.obj",      "paddle4.obj",       "touchpad.obj",
-    "touch_point1.obj", "touch_point2.obj",  "touchpad2.obj",
+    "touch_point1.obj", "touch_point2.obj",  "jltouchpad2.obj",
     "touch_point3.obj", "touch_point4.obj"};
 
 std::string invalid_characters = "\\/:*?\"<>|";
-
-std::string mapping_names[35] = {"a",
-                                 "b",
-                                 "x",
-                                 "y",
-                                 "back",
-                                 "guide",
-                                 "start",
-                                 "leftstick",
-                                 "rightstick",
-                                 "leftshoulder",
-                                 "rightshoulder",
-                                 "dpup",
-                                 "dpdown",
-                                 "dpleft",
-                                 "dpright",
-                                 "touchpad",
-                                 "misc",
-                                 "paddle1",
-                                 "paddle2",
-                                 "paddle3",
-                                 "paddle4",
-                                 "leftx",
-                                 "lefty",
-                                 "rightx",
-                                 "righty",
-                                 "lefttrigger",
-                                 "righttrigger",
-                                 "touch0_f0_x",
-                                 "touch0_f0_y",
-                                 "touch0_f1_x",
-                                 "touch0_f1_y",
-                                 "touch1_f0_x",
-                                 "touch1_f0_y",
-                                 "touch1_f1_x",
-                                 "touch1_f1_y"};
 
 std::string input_names[35] = {"a button",
                                "b button",
@@ -193,8 +106,6 @@ std::string mesh_names[35] = {
     "misc",          "paddle 1",      "paddle 2",      "paddle 3",
     "paddle 4",      "touchpad",      "touch point 1", "touch point 2",
     "touchpad 2",    "touch point 3", "touch point 4"};
-
-std::string current_mapping[27];
 
 bool remap = false;
 std::string rebind_string = "";
@@ -551,7 +462,11 @@ void drawSettingsWindow() {
       ImGui::NewLine();
       ImGui::SliderInt("Swap Interval", &current_window->swap_interval, 0, 2);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("V‑sync: 0 = off, 1 = on, 2 = adaptive.");
+        ImGui::SetTooltip(
+            "Controls V‑sync (vertical synchronisation).\n"
+            "0 = Off (unlimited FPS, may cause screen tearing).\n"
+            "1 = On (synchronised to screen refresh rate).\n"
+            "2 = Adaptive (attempts to maintain half refresh rate).");
 
       ImGui::NewLine();
       if (ImGui::Button("Open Data Directory")) {
@@ -865,8 +780,11 @@ void drawSettingsWindow() {
               m.elements = 0; // empty geometry
               m.vao = m.vbo = m.ebo = 0;
               m.visible = true;
-              // all other fields (position, travel, etc.) remain
-              // zero-initialised
+              m.touch_width = 1.0f;
+              m.touch_height = 1.0f;
+              m.isTouchpad = false; // optional, already false
+              m.inputBinding = "";  // already empty
+              m.inputType = INPUT_TYPE_GAMEPAD;
             }
             current_window->model.path = new_model_path;
             current_window->model_name = name;
@@ -1234,7 +1152,7 @@ void drawSettingsWindow() {
         ImGui::SetTooltip("Log controller inputs to console.");
       ImGui::NewLine();
 
-      if (ImGui::BeginTable("MeshTable", 6,
+      if (ImGui::BeginTable("MeshTable", 7,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed);
@@ -1242,6 +1160,7 @@ void drawSettingsWindow() {
         ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Parent", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Visible", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Invert", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableHeadersRow();
 
@@ -1360,6 +1279,33 @@ void drawSettingsWindow() {
                     return raw + " (" + label + " analog)";
                   }
                 }
+                if (type == "gamepad") {
+                  // ---- Touchpad handling ----
+                  if (raw.rfind("touch", 0) == 0) {
+                    std::string rest = raw.substr(5);
+                    size_t underscore1 = rest.find('_');
+                    if (underscore1 != std::string::npos) {
+                      std::string touchStr = rest.substr(0, underscore1);
+                      std::string rest2 = rest.substr(underscore1 + 1);
+                      size_t underscore2 = rest2.find('_');
+                      if (underscore2 == std::string::npos) {
+                        // Combined: touchX_fY
+                        std::string fingerStr = rest2;
+                        return "Touchpad " + touchStr + ", Finger " +
+                               fingerStr.substr(1) + " (X/Y)";
+                      } else {
+                        // Per-axis: touchX_fY_z
+                        std::string fingerStr = rest2.substr(0, underscore2);
+                        char axis = rest2.back();
+                        return "Touchpad " + touchStr + ", Finger " +
+                               fingerStr.substr(1) + " " +
+                               (axis == 'x' ? "X" : "Y");
+                      }
+                    }
+                  }
+
+                  // ... existing button/axis handling (button, axis, etc.) ...
+                }
               } else if (type == "joystick") {
                 if (raw[0] == 'h') {
                   size_t dot = raw.find('.');
@@ -1428,6 +1374,18 @@ void drawSettingsWindow() {
                 inputOptions.push_back("a" + std::to_string(a)); // plain axis
                 inputOptions.push_back("a" + std::to_string(a) + "+");
                 inputOptions.push_back("a" + std::to_string(a) + "-");
+              }
+              for (int t = 0; t < 2; ++t) {
+                for (int f = 0; f < 2; ++f) {
+                  // Per-axis
+                  inputOptions.push_back("touch" + std::to_string(t) + "_f" +
+                                         std::to_string(f) + "_x");
+                  inputOptions.push_back("touch" + std::to_string(t) + "_f" +
+                                         std::to_string(f) + "_y");
+                  // Combined (both axes)
+                  inputOptions.push_back("touch" + std::to_string(t) + "_f" +
+                                         std::to_string(f));
+                }
               }
               if (currentType == "joystick") {
                 for (int h = 0; h < 4; ++h) {
@@ -1564,8 +1522,21 @@ void drawSettingsWindow() {
             ImGui::TextDisabled(" ");
           }
 
-          // Column 5: Actions
+          // Column 5: Invert
           ImGui::TableSetColumnIndex(5);
+          if (hasMesh) {
+            ImGui::PushID(i + 4000);
+            ImGui::Checkbox("##invert", &mesh.invert);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Invert the input (button press or axis direction).");
+            ImGui::PopID();
+          } else {
+            ImGui::TextDisabled(" ");
+          }
+
+          // Column 6: Actions
+          ImGui::TableSetColumnIndex(6);
           if (hasMesh) {
             if (ImGui::Button(("Import##" + std::to_string(i)).c_str())) {
               model_dialog.Open();
@@ -1788,6 +1759,138 @@ void drawSettingsWindow() {
               ImGui::SetTooltip("Movement when the button is pressed.");
           }
 
+          // ---- Touchpoint anchoring (if this mesh is a touch point part) ----
+          bool isTouchPoint =
+              (part == 30 || part == 31 || part == 33 || part == 34);
+          if (isTouchPoint) {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                               "Touch Point Settings");
+            int touchpadIdx =
+                getTouchpadAncestor(current_window->model, selected_mesh);
+            if (touchpadIdx != -1) {
+              ImGui::Text(
+                  "Anchored to touchpad: %s",
+                  current_window->model.meshes[touchpadIdx].name.c_str());
+              ImGui::Text(
+                  "Touch area size: %.2f x %.2f",
+                  current_window->model.meshes[touchpadIdx].touch_width,
+                  current_window->model.meshes[touchpadIdx].touch_height);
+              if (ImGui::Button("Reset position to touchpad origin")) {
+                selectedMesh.position[0] = 0.0f;
+                selectedMesh.position[1] = 0.0f;
+                selectedMesh.position[2] = 0.0f;
+                if (selectedMesh.parentIndex != touchpadIdx) {
+                  selectedMesh.parentIndex = touchpadIdx;
+                }
+                spdlog::info("Reset touchpoint to origin of touchpad.");
+              }
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Set this touch point's position to (0,0,0) "
+                                  "relative to its parent touchpad.");
+            } else {
+              ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f),
+                                 "Not anchored to a touchpad.");
+              if (ImGui::Button("Find and anchor to touchpad")) {
+                int found = -1;
+                for (int i = 0; i < (int)current_window->model.meshes.size();
+                     ++i) {
+                  if (current_window->model.meshes[i].isTouchpad) {
+                    found = i;
+                    break;
+                  }
+                }
+                if (found != -1) {
+                  selectedMesh.parentIndex = found;
+                  selectedMesh.position[0] = 0.0f;
+                  selectedMesh.position[1] = 0.0f;
+                  selectedMesh.position[2] = 0.0f;
+                  spdlog::info("Anchored touch point to touchpad mesh '{}'",
+                               current_window->model.meshes[found].name);
+                } else {
+                  spdlog::warn("No touchpad mesh found. Please mark a mesh as "
+                               "a touchpad first.");
+                }
+              }
+              if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Find the first mesh marked as a touchpad and set this as "
+                    "its child with position (0,0,0).");
+            }
+            // Override custom scale: force it off for touchpoints
+            selectedMesh.useCustomScale = false;
+          }
+
+          // ---- NEW: Touchpad configuration (independent of assignedPart) ----
+          ImGui::Separator();
+          bool isTouchpad = selectedMesh.isTouchpad;
+          if (ImGui::Checkbox("Is Touchpad", &isTouchpad)) {
+            selectedMesh.isTouchpad = isTouchpad;
+            if (isTouchpad) {
+              // Ensure default dimensions if they are zero
+              if (selectedMesh.touch_width <= 0.01f)
+                selectedMesh.touch_width = 1.0f;
+              if (selectedMesh.touch_height <= 0.01f)
+                selectedMesh.touch_height = 1.0f;
+            }
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Mark this mesh as a touchpad surface. This "
+                              "enables touch area controls.");
+
+          if (selectedMesh.isTouchpad) {
+            ImGui::SliderFloat("Touch Area Width", &selectedMesh.touch_width,
+                               0.01f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Touch Area Height", &selectedMesh.touch_height,
+                               0.01f, 5.0f, "%.2f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Width and height of the touch-sensitive area "
+                                "in world units.");
+
+            // ---- Add this line ----
+            ImGui::Checkbox("Show Touch Area",
+                            &current_window->show_touch_area);
+
+            if (ImGui::BeginTable("TouchTransform", 2,
+                                  ImGuiTableFlags_BordersInnerV)) {
+              ImGui::TableSetupColumn("Offset",
+                                      ImGuiTableColumnFlags_WidthStretch);
+              ImGui::TableSetupColumn("Rotation",
+                                      ImGuiTableColumnFlags_WidthStretch);
+              ImGui::TableHeadersRow();
+              ImGui::TableNextRow();
+              ImGui::TableSetColumnIndex(0);
+              ImGui::Text("Offset (world units)");
+              ImGui::SliderFloat("X", &selectedMesh.touch_offset[0], -2.0f,
+                                 2.0f, "%.2f");
+              ImGui::SliderFloat("Y", &selectedMesh.touch_offset[1], -2.0f,
+                                 2.0f, "%.2f");
+              ImGui::SliderFloat("Z", &selectedMesh.touch_offset[2], -2.0f,
+                                 2.0f, "%.2f");
+              ImGui::TableSetColumnIndex(1);
+              ImGui::Text("Rotation (degrees)");
+              ImGui::SliderAngle("Yaw", &selectedMesh.touch_rotation[1],
+                                 -180.0f, 180.0f);
+              ImGui::SliderAngle("Pitch", &selectedMesh.touch_rotation[0],
+                                 -180.0f, 180.0f);
+              ImGui::SliderAngle("Roll", &selectedMesh.touch_rotation[2],
+                                 -180.0f, 180.0f);
+              ImGui::EndTable();
+            }
+
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Draws a magenta rectangle showing the touch area.");
+
+            ImGui::TextColored(
+                ImVec4(0.7f, 0.7f, 0.2f, 1.0f),
+                "Note: To use touch points, assign a mesh to a touch point "
+                "part,\n"
+                "set its parent to the touchpad, and position it at (0,0,0) "
+                "relative\n"
+                "to the touchpad. It will then move within the touch area.");
+          }
+
           // ---- Popup offsets ----
           if ((part == 18 || part == 19) || (part > 24 && part < 29) ||
               (part == 3 || part == 4)) {
@@ -1874,32 +1977,6 @@ void drawSettingsWindow() {
                   m.touch_height = selectedMesh.touch_height;
                 }
               }
-            }
-          }
-
-          // ---- Touch Area Visualisation ----
-          if (part == 29 || part == 30 || part == 31 || part == 32 ||
-              part == 33 || part == 34) {
-            ImGui::Separator();
-            ImGui::Checkbox("Show Touch Area",
-                            &current_window->show_touch_area);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Draws a magenta rectangle showing the touch area.");
-
-            if (current_window->show_touch_area) {
-              ImGui::SliderFloat("X Offset",
-                                 &current_window->touch_area_offset[0], -2.0f,
-                                 2.0f, "%.3f");
-              ImGui::SliderFloat("Y Offset",
-                                 &current_window->touch_area_offset[1], -2.0f,
-                                 2.0f, "%.3f");
-              ImGui::SliderFloat("Z Offset",
-                                 &current_window->touch_area_offset[2], -2.0f,
-                                 2.0f, "%.3f");
-              if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Offset of the touch area rectangle from the "
-                                  "touchpad's origin.");
             }
           }
 
@@ -2403,8 +2480,6 @@ void drawSettingsWindow() {
         ImGui::TreePop();
       }
     }
-
-  end_mapping:; // empty statement (label needs a statement)
 
     // ============================================================
     // HELP
@@ -2998,596 +3073,335 @@ void writeOBJ(const std::string &path, const ImportedMesh &mesh) {
   }
 }
 
-void saveTabs() {
-  clear_directory("settings");
+static std::string getSettingsFilePath() {
+  return config_base_path + "/settings.json";
+}
 
-  // ---- Temporarily remove highlights from all windows ----
-  std::vector<controller_window *> windows_with_highlight;
-  for (auto &w : windows) {
-    if (w.highlight_enabled && !w.original_colors.empty()) {
-      windows_with_highlight.push_back(&w);
-      // Restore original colours
-      for (auto &pair : w.original_colors) {
-        int idx = pair.first;
-        Mesh &mesh = w.model.meshes[idx];
-        mesh.material.color[0] = pair.second[0];
-        mesh.material.color[1] = pair.second[1];
-        mesh.material.color[2] = pair.second[2];
-        mesh.highlight_value = 0.0f;
-      }
-    }
-  }
+// ------------------------------------------------------------------
+// saveGlobalSettings()
+// ------------------------------------------------------------------
+static void saveGlobalSettings() {
+  json root = json::object();
 
-  // ---- Save all tabs ----
-  for (window_tab t : tabs) {
+  for (const auto &t : tabs) {
     controller_window *w = getControllerWindow(t.ID);
     if (!w)
       continue;
-    writeJson(w->model, w->model.path + "/info.json");
 
-    // Write settings file (existing code, unchanged)
-    std::string path = "settings/";
-    path.append(t.title);
-    open_ofstream(path);
-    // ... (keep all the existing write_* calls exactly as they were) ...
-    // I'll include them below for completeness, but you can keep your
-    // existing ones.
-    write_string(std::string("model path"), w->model.path);
-    write_string(std::string("title"), t.title);
-    write_int(std::string("always on top"), w->always_on_top);
-    write_int(std::string("borderless"), w->borderless);
-    write_int(std::string("drag to move"), w->drag_to_move);
-    write_int(std::string("scroll to resize"), w->scroll_to_resize);
-    write_int(std::string("show grid"), w->grid);
-    write_int(std::string("wireframe"), w->wireframe);
-    int ww = 640, hh = 480;
-    if (!glfwGetWindowAttrib(w->glfw_window, GLFW_ICONIFIED)) {
-      glfwGetWindowSize(w->glfw_window, &ww, &hh);
+    json tab = json::object();
+    tab["title"] = t.title;
+    tab["model_path"] = w->model.path;
+
+    // Window state
+    tab["always_on_top"] = w->always_on_top;
+    tab["borderless"] = w->borderless;
+    tab["drag_to_move"] = w->drag_to_move;
+    tab["scroll_to_resize"] = w->scroll_to_resize;
+    tab["grid"] = w->grid;
+    tab["wireframe"] = w->wireframe;
+
+    int ww, hh;
+    glfwGetWindowSize(w->glfw_window, &ww, &hh);
+    tab["width"] = ww;
+    tab["height"] = hh;
+
+    int x, y;
+    glfwGetWindowPos(w->glfw_window, &x, &y);
+    tab["x_pos"] = x;
+    tab["y_pos"] = y;
+
+    tab["swap_interval"] = w->swap_interval;
+    tab["frame_cap"] = w->frame_cap;
+    tab["bg_color"] = {w->bg_color[0], w->bg_color[1], w->bg_color[2],
+                       w->bg_color[3]};
+    tab["freelook"] = w->freelook;
+
+    // Camera
+    tab["camera_distance"] = w->camera_distance;
+    tab["camera_yaw"] = w->camera_yaw;
+    tab["camera_pitch"] = w->camera_pitch;
+    tab["camera_roll"] = w->camera_roll;
+    tab["move_speed"] = w->move_speed;
+    tab["turn_speed"] = w->turn_speed;
+    tab["freelook_yaw"] = w->freelook_yaw;
+    tab["freelook_pitch"] = w->freelook_pitch;
+    tab["freelook_position"] = {w->freelook_position.x, w->freelook_position.y,
+                                w->freelook_position.z};
+
+    // Model‑level options (per‑window overrides)
+    tab["popup_bumpers"] = w->model.popup_bumpers;
+    tab["popup_triggers"] = w->model.popup_triggers;
+    tab["popup_paddles"] = w->model.popup_paddles;
+    tab["left_stick_deadzone"] =
+        (w->model.meshes.size() > 7)
+            ? w->model.meshes[7].ring_highlight_deadzone
+            : 0;
+    tab["right_stick_deadzone"] =
+        (w->model.meshes.size() > 8)
+            ? w->model.meshes[8].ring_highlight_deadzone
+            : 0;
+
+    // Colors
+    tab["highlight_color"] = {w->highlight_color[0], w->highlight_color[1],
+                              w->highlight_color[2]};
+    tab["global_press_color"] = {w->global_press_color[0],
+                                 w->global_press_color[1],
+                                 w->global_press_color[2]};
+
+    // Gyro
+    tab["gyro_debug_logging"] = w->gyro_debug_logging;
+    tab["gyro_enabled"] = w->gyro_enabled;
+    tab["reset_gyro_button1"] = w->reset_gyro_button1;
+    tab["reset_gyro_button2"] = w->reset_gyro_button2;
+    tab["gyro_correction"] = w->gyro_correction;
+    tab["gyro_sensitivity"] = w->gyro_sensitivity;
+
+    // ---- Lights ----
+    json direct = json::array();
+    for (auto &dl : w->direct_lights) {
+      json obj;
+      obj["name"] = dl.name;
+      obj["direction"] = {dl.direction.x, dl.direction.y, dl.direction.z};
+      obj["color"] = {dl.color[0], dl.color[1], dl.color[2]};
+      direct.push_back(obj);
     }
-    write_int(std::string("width"), ww);
-    write_int(std::string("height"), hh);
-    int x = 100, y = 100;
-    if (!glfwGetWindowAttrib(w->glfw_window, GLFW_ICONIFIED)) {
-      glfwGetWindowPos(w->glfw_window, &x, &y);
+    tab["direct_lights"] = direct;
+
+    json point = json::array();
+    for (auto &pl : w->point_lights) {
+      json obj;
+      obj["name"] = pl.name;
+      obj["hide"] = pl.hide;
+      obj["position"] = {pl.position.x, pl.position.y, pl.position.z};
+      obj["intensity"] = pl.intensity;
+      obj["color"] = {pl.color[0], pl.color[1], pl.color[2]};
+      point.push_back(obj);
     }
-    write_int(std::string("x pos"), x);
-    write_int(std::string("y pos"), y);
-    write_int(std::string("swap interval"), w->swap_interval);
-    write_int(std::string("frame cap"), w->frame_cap);
-    write_float(std::string("bg red"), w->bg_color[0]);
-    write_float(std::string("bg green"), w->bg_color[1]);
-    write_float(std::string("bg blue"), w->bg_color[2]);
-    write_float(std::string("bg alpha"), w->bg_color[3]);
-    write_int(std::string("freelook"), w->freelook);
-    write_float(std::string("camera distance"), w->camera_distance);
-    write_float(std::string("camera yaw"), w->camera_yaw);
-    write_float(std::string("camera pitch"), w->camera_pitch);
-    write_float(std::string("camera roll"), w->camera_roll);
-    write_int(std::string("move speed"), w->move_speed);
-    write_int(std::string("turn speed"), w->turn_speed);
-    write_float(std::string("freelook yaw"), w->freelook_yaw);
-    write_float(std::string("freelook pitch"), w->freelook_pitch);
-    write_3_floats(std::string("freelook position"), w->freelook_position.x,
-                   w->freelook_position.y, w->freelook_position.z);
-    write_int(std::string("popup bumbers"), w->model.popup_bumpers);
-    write_int(std::string("popup triggers"), w->model.popup_triggers);
-    write_int(std::string("popup paddles"), w->model.popup_paddles);
-    write_int(std::string("left stick highlight deadzone"),
-              (w->model.meshes.size() > 7)
-                  ? w->model.meshes[7].ring_highlight_deadzone
-                  : 0);
-    write_int(std::string("right stick highlight deadzone"),
-              (w->model.meshes.size() > 8)
-                  ? w->model.meshes[8].ring_highlight_deadzone
-                  : 0);
-    write_float(std::string("highlight red"), w->highlight_color[0]);
-    write_float(std::string("highlight green"), w->highlight_color[1]);
-    write_float(std::string("highlight blue"), w->highlight_color[2]);
-    write_float(std::string("global press red"), w->global_press_color[0]);
-    write_float(std::string("global press green"), w->global_press_color[1]);
-    write_float(std::string("global press blue"), w->global_press_color[2]);
-    write_float(std::string("touch area offset x"), w->touch_area_offset[0]);
-    write_float(std::string("touch area offset y"), w->touch_area_offset[1]);
-    write_float(std::string("touch area offset z"), w->touch_area_offset[2]);
-    write_int(std::string("model meshes"), w->model.meshes.size());
-    write_line(std::string("materials"));
-    for (int i = 0; i < (int)w->model.meshes.size(); ++i) {
-      write_line(std::to_string(w->model.meshes[i].material.ambient));
-      write_line(std::to_string(w->model.meshes[i].material.diffuse));
-      write_line(std::to_string(w->model.meshes[i].material.specular));
-      write_line(std::to_string(w->model.meshes[i].material.shininess));
-      write_line(std::to_string(w->model.meshes[i].material.color[0]));
-      write_line(std::to_string(w->model.meshes[i].material.color[1]));
-      write_line(std::to_string(w->model.meshes[i].material.color[2]));
-      write_line(std::to_string(w->model.meshes[i].material.highlight[0]));
-      write_line(std::to_string(w->model.meshes[i].material.highlight[1]));
-      write_line(std::to_string(w->model.meshes[i].material.highlight[2]));
+    tab["point_lights"] = point;
+
+    json spot = json::array();
+    for (auto &sl : w->spot_lights) {
+      json obj;
+      obj["name"] = sl.name;
+      obj["hide"] = sl.hide;
+      obj["position"] = {sl.position.x, sl.position.y, sl.position.z};
+      obj["intensity"] = sl.intensity;
+      obj["color"] = {sl.color[0], sl.color[1], sl.color[2]};
+      obj["yaw"] = sl.yaw;
+      obj["pitch"] = sl.pitch;
+      obj["cutoff"] = sl.cutoff;
+      obj["outer_cutoff"] = sl.outer_cutoff;
+      spot.push_back(obj);
     }
-    write_line(std::string("textures"));
-    for (int i = 0; i < (int)w->model.meshes.size(); ++i) {
-      write_line(std::to_string(w->model.meshes[i].textures.size()));
-    }
-    for (int i = 0; i < (int)w->model.meshes.size(); ++i) {
-      for (int j = 0; j < (int)w->model.meshes[i].textures.size(); ++j) {
-        write_line(w->model.meshes[i].textures[j].path);
-        write_line(std::to_string(w->model.meshes[i].textures[j].type));
-        write_line(std::to_string(w->model.meshes[i].textures[j].wrapX));
-        write_line(std::to_string(w->model.meshes[i].textures[j].wrapY));
-        write_line(std::to_string(w->model.meshes[i].textures[j].offsetX));
-        write_line(std::to_string(w->model.meshes[i].textures[j].offsetY));
-        write_line(std::to_string(w->model.meshes[i].textures[j].scaleX));
-        write_line(std::to_string(w->model.meshes[i].textures[j].scaleY));
-        write_line(std::to_string(w->model.meshes[i].textures[j].rotation));
-        write_line(std::to_string(w->model.meshes[i].textures[j].border[0]));
-        write_line(std::to_string(w->model.meshes[i].textures[j].border[1]));
-        write_line(std::to_string(w->model.meshes[i].textures[j].border[2]));
-        write_line(std::to_string(w->model.meshes[i].textures[j].border[3]));
-      }
-    }
-    write_int(std::string("gyro debug logging"), w->gyro_debug_logging);
-    write_int(std::string("gyro enabled"), w->gyro_enabled);
-    write_int(std::string("reset gyro button 1"), w->reset_gyro_button1);
-    write_int(std::string("reset gyro button 2"), w->reset_gyro_button2);
-    write_int(std::string("gyro correction"), w->gyro_correction);
-    write_float(std::string("gyro sensitivity"), w->gyro_sensitivity);
-    write_int(std::string("direct lights"), w->direct_lights.size());
-    for (int i = 0; i < (int)w->direct_lights.size(); ++i) {
-      write_line(w->direct_lights[i].name);
-      write_line(std::to_string(w->direct_lights[i].direction[0]));
-      write_line(std::to_string(w->direct_lights[i].direction[1]));
-      write_line(std::to_string(w->direct_lights[i].direction[2]));
-      write_line(std::to_string(w->direct_lights[i].color[0]));
-      write_line(std::to_string(w->direct_lights[i].color[1]));
-      write_line(std::to_string(w->direct_lights[i].color[2]));
-    }
-    write_int(std::string("point lights"), w->point_lights.size());
-    for (int i = 0; i < (int)w->point_lights.size(); ++i) {
-      write_line(w->point_lights[i].name);
-      write_line(std::to_string(w->point_lights[i].hide));
-      write_line(std::to_string(w->point_lights[i].position[0]));
-      write_line(std::to_string(w->point_lights[i].position[1]));
-      write_line(std::to_string(w->point_lights[i].position[2]));
-      write_line(std::to_string(w->point_lights[i].intensity));
-      write_line(std::to_string(w->point_lights[i].color[0]));
-      write_line(std::to_string(w->point_lights[i].color[1]));
-      write_line(std::to_string(w->point_lights[i].color[2]));
-    }
-    write_int(std::string("spot lights"), w->spot_lights.size());
-    for (int i = 0; i < (int)w->spot_lights.size(); ++i) {
-      write_line(w->spot_lights[i].name);
-      write_line(std::to_string(w->spot_lights[i].hide));
-      write_line(std::to_string(w->spot_lights[i].position[0]));
-      write_line(std::to_string(w->spot_lights[i].position[1]));
-      write_line(std::to_string(w->spot_lights[i].position[2]));
-      write_line(std::to_string(w->spot_lights[i].intensity));
-      write_line(std::to_string(w->spot_lights[i].color[0]));
-      write_line(std::to_string(w->spot_lights[i].color[1]));
-      write_line(std::to_string(w->spot_lights[i].color[2]));
-      write_line(std::to_string(w->spot_lights[i].yaw));
-      write_line(std::to_string(w->spot_lights[i].pitch));
-      write_line(std::to_string(w->spot_lights[i].cutoff));
-      write_line(std::to_string(w->spot_lights[i].outer_cutoff));
-    }
-    close_ofstream();
+    tab["spot_lights"] = spot;
+
+    // Store under the tab's ID (or title) – we'll use title as key.
+    root[t.title] = tab;
   }
 
-  // ---- Re‑apply highlights ----
-  for (controller_window *w : windows_with_highlight) {
-    for (auto &pair : w->original_colors) {
-      int idx = pair.first;
-      Mesh &mesh = w->model.meshes[idx];
-      mesh.material.color[0] = w->highlight_color[0];
-      mesh.material.color[1] = w->highlight_color[1];
-      mesh.material.color[2] = w->highlight_color[2];
-      mesh.highlight_value = 0.2f;
+  std::ofstream f(getSettingsFilePath());
+  if (!f) {
+    spdlog::error("Failed to open settings.json for writing");
+    return;
+  }
+  f << root.dump(4);
+  spdlog::info("Saved global settings to {}", getSettingsFilePath());
+}
+
+// ------------------------------------------------------------------
+// loadGlobalSettings()
+// ------------------------------------------------------------------
+static void loadGlobalSettings() {
+  std::ifstream f(getSettingsFilePath());
+  if (!f) {
+    spdlog::info("No settings.json found – will create on first save.");
+    return;
+  }
+
+  json root;
+  try {
+    f >> root;
+  } catch (...) {
+    spdlog::warn("Failed to parse settings.json – ignoring.");
+    return;
+  }
+
+  // Delete old settings folder if it still exists
+  std::filesystem::remove_all(config_base_path + "/settings");
+
+  // We'll create tabs in the order they appear in the JSON
+  for (auto &[title, tab] : root.items()) {
+    std::string modelPath = tab.value("model_path", "");
+    if (modelPath.empty()) {
+      spdlog::warn("Tab '{}' has no model_path, skipping.", title);
+      continue;
     }
+
+    // Create the window
+    createControllerWindow(title, modelPath);
+    controller_window *w = getLastWindow();
+    if (!w)
+      continue;
+
+    // ---- Push a tab for this window ----
+    window_tab new_tab;
+    new_tab.title = title;
+    new_tab.ID = ++tabs_made;
+    tabs.push_back(new_tab);
+    w->ID = new_tab.ID;
+
+    // ---- Apply all settings ----
+    w->always_on_top = tab.value("always_on_top", false);
+    glfwSetWindowAttrib(w->glfw_window, GLFW_FLOATING, w->always_on_top);
+
+    w->borderless = tab.value("borderless", false);
+    glfwSetWindowAttrib(w->glfw_window, GLFW_DECORATED, !w->borderless);
+
+    w->drag_to_move = tab.value("drag_to_move", false);
+    w->scroll_to_resize = tab.value("scroll_to_resize", false);
+    w->grid = tab.value("grid", false);
+    w->wireframe = tab.value("wireframe", false);
+
+    int ww = tab.value("width", 640);
+    int hh = tab.value("height", 480);
+    glfwSetWindowSize(w->glfw_window, ww, hh);
+
+    int x = tab.value("x_pos", 100);
+    int y = tab.value("y_pos", 100);
+    glfwSetWindowPos(w->glfw_window, x, y);
+
+    w->swap_interval = tab.value("swap_interval", 1);
+    w->frame_cap = tab.value("frame_cap", 60);
+
+    auto bg =
+        tab.value("bg_color", std::array<float, 4>{0.2f, 0.3f, 0.3f, 1.0f});
+    w->bg_color[0] = bg[0];
+    w->bg_color[1] = bg[1];
+    w->bg_color[2] = bg[2];
+    w->bg_color[3] = bg[3];
+
+    w->freelook = tab.value("freelook", false);
+
+    w->camera_distance = tab.value("camera_distance", 3.5f);
+    w->camera_yaw = tab.value("camera_yaw", 0.0f);
+    w->camera_pitch = tab.value("camera_pitch", 89.999f);
+    w->camera_roll = tab.value("camera_roll", 0.0f);
+    w->move_speed = tab.value("move_speed", 5);
+    w->turn_speed = tab.value("turn_speed", 5);
+    w->freelook_yaw = tab.value("freelook_yaw", 180.0f);
+    w->freelook_pitch = tab.value("freelook_pitch", 0.0f);
+    auto fp =
+        tab.value("freelook_position", std::array<float, 3>{0.0f, 0.5f, 3.0f});
+    w->freelook_position = glm::vec3(fp[0], fp[1], fp[2]);
+
+    w->model.popup_bumpers = tab.value("popup_bumpers", false);
+    w->model.popup_triggers = tab.value("popup_triggers", false);
+    w->model.popup_paddles = tab.value("popup_paddles", false);
+
+    int ldz = tab.value("left_stick_deadzone", 15);
+    if (w->model.meshes.size() > 7)
+      w->model.meshes[7].ring_highlight_deadzone = ldz;
+    int rdz = tab.value("right_stick_deadzone", 15);
+    if (w->model.meshes.size() > 8)
+      w->model.meshes[8].ring_highlight_deadzone = rdz;
+
+    auto hc =
+        tab.value("highlight_color", std::array<float, 3>{1.0f, 0.0f, 0.0f});
+    w->highlight_color[0] = hc[0];
+    w->highlight_color[1] = hc[1];
+    w->highlight_color[2] = hc[2];
+    auto pc =
+        tab.value("global_press_color", std::array<float, 3>{0.0f, 1.0f, 0.0f});
+    w->global_press_color[0] = pc[0];
+    w->global_press_color[1] = pc[1];
+    w->global_press_color[2] = pc[2];
+
+    auto tao =
+        tab.value("touch_area_offset", std::array<float, 3>{0.0f, 0.01f, 0.0f});
+
+    w->gyro_debug_logging = tab.value("gyro_debug_logging", false);
+    w->gyro_enabled = tab.value("gyro_enabled", false);
+    w->reset_gyro_button1 = tab.value("reset_gyro_button1", -1);
+    w->reset_gyro_button2 = tab.value("reset_gyro_button2", -1);
+    w->gyro_correction = tab.value("gyro_correction", 5);
+    w->gyro_sensitivity = tab.value("gyro_sensitivity", 5.0f);
+
+    // ---- Lights ----
+    w->direct_lights.clear();
+    for (auto &dl : tab["direct_lights"]) {
+      direct_light d;
+      d.name = dl.value("name", "Directional Light");
+      auto dir =
+          dl.value("direction", std::array<float, 3>{0.25f, -1.0f, 0.0f});
+      d.direction = glm::vec3(dir[0], dir[1], dir[2]);
+      auto col = dl.value("color", std::array<float, 3>{1.0f, 1.0f, 1.0f});
+      d.color[0] = col[0];
+      d.color[1] = col[1];
+      d.color[2] = col[2];
+      w->direct_lights.push_back(d);
+    }
+
+    w->point_lights.clear();
+    for (auto &pl : tab["point_lights"]) {
+      point_light p;
+      p.name = pl.value("name", "Point Light");
+      p.hide = pl.value("hide", false);
+      auto pos = pl.value("position", std::array<float, 3>{0.0f, 0.0f, 0.0f});
+      p.position = glm::vec3(pos[0], pos[1], pos[2]);
+      p.intensity = pl.value("intensity", 0.5f);
+      auto col = pl.value("color", std::array<float, 3>{1.0f, 1.0f, 1.0f});
+      p.color[0] = col[0];
+      p.color[1] = col[1];
+      p.color[2] = col[2];
+      p.ambient =
+          glm::vec3(p.color[0] * 0.05f, p.color[1] * 0.05f, p.color[2] * 0.05f);
+      p.diffuse =
+          glm::vec3(p.color[0] * 0.8f, p.color[1] * 0.8f, p.color[2] * 0.8f);
+      p.specular = glm::vec3(p.color[0], p.color[1], p.color[2]);
+      w->point_lights.push_back(p);
+    }
+
+    w->spot_lights.clear();
+    for (auto &sl : tab["spot_lights"]) {
+      spot_light s;
+      s.name = sl.value("name", "Spot Light");
+      s.hide = sl.value("hide", false);
+      auto pos = sl.value("position", std::array<float, 3>{0.0f, 0.0f, 2.0f});
+      s.position = glm::vec3(pos[0], pos[1], pos[2]);
+      s.intensity = sl.value("intensity", 0.5f);
+      auto col = sl.value("color", std::array<float, 3>{1.0f, 1.0f, 1.0f});
+      s.color[0] = col[0];
+      s.color[1] = col[1];
+      s.color[2] = col[2];
+      s.ambient =
+          glm::vec3(s.color[0] * 0.05f, s.color[1] * 0.05f, s.color[2] * 0.05f);
+      s.diffuse =
+          glm::vec3(s.color[0] * 0.8f, s.color[1] * 0.8f, s.color[2] * 0.8f);
+      s.specular = glm::vec3(s.color[0], s.color[1], s.color[2]);
+      s.yaw = sl.value("yaw", 0.0f);
+      s.pitch = sl.value("pitch", 0.0f);
+      s.direction.x =
+          cos(glm::radians(s.pitch)) * sin(glm::radians(s.yaw + 180));
+      s.direction.y = sin(glm::radians(s.pitch));
+      s.direction.z =
+          cos(glm::radians(s.pitch)) * cos(glm::radians(s.yaw + 180));
+      s.cutoff = sl.value("cutoff", 20.0f);
+      s.outer_cutoff = sl.value("outer_cutoff", 50.0f);
+      w->spot_lights.push_back(s);
+    }
+
+    // Update the tab title (already set, but ensure it's correct)
+    tabs.back().title = title;
+    glfwSetWindowTitle(w->glfw_window, title.c_str());
   }
 }
 
+void saveTabs() { saveGlobalSettings(); }
+
 void loadTabs() {
-  std::vector<std::filesystem::path> files;
-  get_directory_contents(&files, "settings");
-  for (std::filesystem::path path : files) {
-    std::string new_tab_title = "Controller ";
-    window_tab new_tab;
-    tabs_made++;
-    new_tab_title.append(std::to_string(tabs_made));
-    new_tab.title = new_tab_title;
-    tabs.push_back(new_tab);
-    tabs.back().ID = tabs_made;
-
-    std::vector<std::string> lines;
-    open_ifstream(path.c_str());
-    read_file(&lines);
-    close_ifstream();
-    unsigned line_index = 0;
-
-    for (std::string line : lines) {
-      if (line == "model path") {
-        createControllerWindow(new_tab_title, lines[line_index + 1]);
-        getLastWindow()->ID = tabs_made;
-        getControllerWindow(tabs.back().ID)->model_name =
-            get_top_folder(getControllerWindow(tabs.back().ID)->model.path);
-      }
-      if (line == "title") {
-        tabs.back().title = lines[line_index + 1];
-        glfwSetWindowTitle(getControllerWindow(tabs.back().ID)->glfw_window,
-                           lines[line_index + 1].c_str());
-      }
-      if (line == "always on top") {
-        getControllerWindow(tabs.back().ID)->always_on_top =
-            std::stoi(lines[line_index + 1]);
-        glfwSetWindowAttrib(getControllerWindow(tabs.back().ID)->glfw_window,
-                            GLFW_FLOATING, std::stoi(lines[line_index + 1]));
-      }
-      if (line == "borderless") {
-        getControllerWindow(tabs.back().ID)->borderless =
-            std::stoi(lines[line_index + 1]);
-        glfwSetWindowAttrib(getControllerWindow(tabs.back().ID)->glfw_window,
-                            GLFW_DECORATED, !std::stoi(lines[line_index + 1]));
-      }
-      if (line == "drag to move")
-        getControllerWindow(tabs.back().ID)->drag_to_move =
-            std::stoi(lines[line_index + 1]);
-      if (line == "scroll to resize")
-        getControllerWindow(tabs.back().ID)->scroll_to_resize =
-            std::stoi(lines[line_index + 1]);
-      if (line == "show grid")
-        getControllerWindow(tabs.back().ID)->grid =
-            std::stoi(lines[line_index + 1]);
-      if (line == "wireframe")
-        getControllerWindow(tabs.back().ID)->wireframe =
-            std::stoi(lines[line_index + 1]);
-      if (line == "width")
-        glfwSetWindowSize(getControllerWindow(tabs.back().ID)->glfw_window,
-                          std::stoi(lines[line_index + 1]),
-                          std::stoi(lines[line_index + 3]));
-      if (line == "x pos")
-        glfwSetWindowPos(getControllerWindow(tabs.back().ID)->glfw_window,
-                         std::stoi(lines[line_index + 1]),
-                         std::stoi(lines[line_index + 3]));
-      if (line == "swap interval")
-        getControllerWindow(tabs.back().ID)->swap_interval =
-            std::stoi(lines[line_index + 1]);
-      if (line == "frame cap")
-        getControllerWindow(tabs.back().ID)->frame_cap =
-            std::stoi(lines[line_index + 1]);
-      if (line == "bg red")
-        getControllerWindow(tabs.back().ID)->bg_color[0] =
-            std::stof(lines[line_index + 1]);
-      if (line == "bg green")
-        getControllerWindow(tabs.back().ID)->bg_color[1] =
-            std::stof(lines[line_index + 1]);
-      if (line == "bg blue")
-        getControllerWindow(tabs.back().ID)->bg_color[2] =
-            std::stof(lines[line_index + 1]);
-      if (line == "bg alpha")
-        getControllerWindow(tabs.back().ID)->bg_color[3] =
-            std::stof(lines[line_index + 1]);
-      if (line == "freelook")
-        getControllerWindow(tabs.back().ID)->freelook =
-            std::stoi(lines[line_index + 1]);
-      if (line == "camera distance")
-        getControllerWindow(tabs.back().ID)->camera_distance =
-            std::stof(lines[line_index + 1]);
-      if (line == "camera yaw")
-        getControllerWindow(tabs.back().ID)->camera_yaw =
-            std::stof(lines[line_index + 1]);
-      if (line == "camera pitch")
-        getControllerWindow(tabs.back().ID)->camera_pitch =
-            std::stof(lines[line_index + 1]);
-      if (line == "camera roll")
-        getControllerWindow(tabs.back().ID)->camera_roll =
-            std::stof(lines[line_index + 1]);
-      if (line == "move speed")
-        getControllerWindow(tabs.back().ID)->move_speed =
-            std::stoi(lines[line_index + 1]);
-      if (line == "turn speed")
-        getControllerWindow(tabs.back().ID)->turn_speed =
-            std::stoi(lines[line_index + 1]);
-      if (line == "freelook yaw")
-        getControllerWindow(tabs.back().ID)->freelook_yaw =
-            std::stof(lines[line_index + 1]);
-      if (line == "freelook pitch")
-        getControllerWindow(tabs.back().ID)->freelook_pitch =
-            std::stof(lines[line_index + 1]);
-      if (line == "freelook position") {
-        getControllerWindow(tabs.back().ID)->freelook_position.x =
-            std::stof(lines[line_index + 1]);
-        getControllerWindow(tabs.back().ID)->freelook_position.y =
-            std::stof(lines[line_index + 2]);
-        getControllerWindow(tabs.back().ID)->freelook_position.z =
-            std::stof(lines[line_index + 3]);
-      }
-      if (line == "popup bumbers")
-        getControllerWindow(tabs.back().ID)->model.popup_bumpers =
-            std::stoi(lines[line_index + 1]);
-      if (line == "popup triggers")
-        getControllerWindow(tabs.back().ID)->model.popup_triggers =
-            std::stoi(lines[line_index + 1]);
-      if (line == "popup paddles")
-        getControllerWindow(tabs.back().ID)->model.popup_paddles =
-            std::stoi(lines[line_index + 1]);
-      if (line == "left stick highlight deadzone") {
-        controller_window *cw = getControllerWindow(tabs.back().ID);
-        if (cw && cw->model.meshes.size() > 7)
-          cw->model.meshes[7].ring_highlight_deadzone =
-              std::stoi(lines[line_index + 1]);
-      }
-      if (line == "right stick highlight deadzone") {
-        controller_window *cw = getControllerWindow(tabs.back().ID);
-        if (cw && cw->model.meshes.size() > 8)
-          cw->model.meshes[8].ring_highlight_deadzone =
-              std::stoi(lines[line_index + 1]);
-      }
-      if (line == "highlight red")
-        getControllerWindow(tabs.back().ID)->highlight_color[0] =
-            std::stof(lines[line_index + 1]);
-      if (line == "highlight green")
-        getControllerWindow(tabs.back().ID)->highlight_color[1] =
-            std::stof(lines[line_index + 1]);
-      if (line == "highlight blue")
-        getControllerWindow(tabs.back().ID)->highlight_color[2] =
-            std::stof(lines[line_index + 1]);
-      {
-        controller_window *curWin = getControllerWindow(tabs.back().ID);
-        if (curWin) {
-          for (int i = 3; i < (int)curWin->model.meshes.size(); i++) {
-            if (i != 5 && i != 6) {
-              curWin->model.meshes[i].material.highlight[0] =
-                  curWin->highlight_color[0];
-              curWin->model.meshes[i].material.highlight[1] =
-                  curWin->highlight_color[1];
-              curWin->model.meshes[i].material.highlight[2] =
-                  curWin->highlight_color[2];
-            }
-          }
-        }
-      }
-      if (line == "global press red")
-        getControllerWindow(tabs.back().ID)->global_press_color[0] =
-            std::stof(lines[line_index + 1]);
-      if (line == "global press green")
-        getControllerWindow(tabs.back().ID)->global_press_color[1] =
-            std::stof(lines[line_index + 1]);
-      if (line == "global press blue")
-        getControllerWindow(tabs.back().ID)->global_press_color[2] =
-            std::stof(lines[line_index + 1]);
-      if (line == "materials") {
-        for (int i = 0;
-             i < (int)getControllerWindow(tabs.back().ID)->model.meshes.size();
-             i++) {
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.ambient = std::stof(lines[line_index + 1 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.diffuse = std::stof(lines[line_index + 2 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.specular = std::stof(lines[line_index + 3 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.shininess = std::stof(lines[line_index + 4 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.color[0] = std::stof(lines[line_index + 5 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.color[1] = std::stof(lines[line_index + 6 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.color[2] = std::stof(lines[line_index + 7 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[0] =
-              std::stof(lines[line_index + 8 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[1] =
-              std::stof(lines[line_index + 9 + (i * 10)]);
-          getControllerWindow(tabs.back().ID)
-              ->model.meshes[i]
-              .material.highlight[2] =
-              std::stof(lines[line_index + 10 + (i * 10)]);
-        }
-      }
-      if (line == "textures") {
-        unsigned texture_count = 0;
-        for (int mesh = 0;
-             mesh <
-             (int)getControllerWindow(tabs.back().ID)->model.meshes.size();
-             mesh++) {
-          int mesh_textures = std::stoi(lines[line_index + 1 + mesh]);
-          for (int i = 0; i < mesh_textures; i++) {
-            unsigned texture_line =
-                line_index +
-                (int)getControllerWindow(tabs.back().ID)->model.meshes.size() +
-                1 + texture_count * 13;
-            Texture t;
-            loadTexture(t.id, lines[texture_line]);
-            t.path = lines[texture_line];
-            t.name = lines[texture_line];
-            t.type = std::stoi(lines[texture_line + 1]);
-            t.wrapX = std::stoi(lines[texture_line + 2]);
-            t.wrapY = std::stoi(lines[texture_line + 3]);
-            t.offsetX = std::stof(lines[texture_line + 4]);
-            t.offsetY = std::stof(lines[texture_line + 5]);
-            t.scaleX = std::stof(lines[texture_line + 6]);
-            t.scaleY = std::stof(lines[texture_line + 7]);
-            t.rotation = std::stof(lines[texture_line + 8]);
-            t.border[0] = std::stof(lines[texture_line + 9]);
-            t.border[1] = std::stof(lines[texture_line + 10]);
-            t.border[2] = std::stof(lines[texture_line + 11]);
-            t.border[3] = std::stof(lines[texture_line + 12]);
-            texture_count++;
-            glBindTexture(GL_TEXTURE_2D, t.id);
-            enum Wrap {
-              repeat,
-              mirror_repeat,
-              clamp_edge,
-              clamp_border,
-              wrap_count
-            };
-            switch (t.wrapX) {
-            case repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-              break;
-            case mirror_repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_MIRRORED_REPEAT);
-              break;
-            case clamp_edge:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_CLAMP_TO_EDGE);
-              break;
-            case clamp_border:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                              GL_CLAMP_TO_BORDER);
-              break;
-            }
-            switch (t.wrapY) {
-            case repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-              break;
-            case mirror_repeat:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_MIRRORED_REPEAT);
-              break;
-            case clamp_edge:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_CLAMP_TO_EDGE);
-              break;
-            case clamp_border:
-              glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                              GL_CLAMP_TO_BORDER);
-              break;
-            }
-            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, t.border);
-            getControllerWindow(tabs.back().ID)
-                ->model.meshes[mesh]
-                .textures.push_back(t);
-          }
-        }
-      }
-      if (line == "gyro debug logging") {
-        getControllerWindow(tabs.back().ID)->gyro_debug_logging =
-            std::stoi(lines[line_index + 1]);
-      }
-      if (line == "gyro sensitivity") {
-        getControllerWindow(tabs.back().ID)->gyro_sensitivity =
-            std::stof(lines[line_index + 1]);
-      }
-      if (line == "touch area offset x") {
-        getControllerWindow(tabs.back().ID)->touch_area_offset[0] =
-            std::stof(lines[line_index + 1]);
-      }
-      if (line == "touch area offset y") {
-        getControllerWindow(tabs.back().ID)->touch_area_offset[1] =
-            std::stof(lines[line_index + 1]);
-      }
-      if (line == "touch area offset z") {
-        getControllerWindow(tabs.back().ID)->touch_area_offset[2] =
-            std::stof(lines[line_index + 1]);
-      }
-      if (line == "gyro enabled") {
-        getControllerWindow(tabs.back().ID)->gyro_enabled =
-            std::stoi(lines[line_index + 1]);
-        SDL_GameControllerSetSensorEnabled(
-            getControllerWindow(tabs.back().ID)->sdl_controller,
-            SDL_SENSOR_GYRO,
-            (SDL_bool)getControllerWindow(tabs.back().ID)->gyro_enabled);
-      }
-      if (line == "reset gyro button 1")
-        getControllerWindow(tabs.back().ID)->reset_gyro_button1 =
-            std::stoi(lines[line_index + 1]);
-      if (line == "reset gyro button 2")
-        getControllerWindow(tabs.back().ID)->reset_gyro_button2 =
-            std::stoi(lines[line_index + 1]);
-      if (line == "gyro correction")
-        getControllerWindow(tabs.back().ID)->gyro_correction =
-            std::stoi(lines[line_index + 1]);
-      line_index++;
-      if (line == "direct lights") {
-        getControllerWindow(tabs.back().ID)->direct_lights.clear();
-        int lights = std::stoi(lines[line_index]);
-        for (int i = 0; i < lights; i++) {
-          direct_light new_light;
-          new_light.name = lines[line_index + (i * 7) + 1];
-          new_light.direction[0] = std::stof(lines[line_index + (i * 7) + 2]);
-          new_light.direction[1] = std::stof(lines[line_index + (i * 7) + 3]);
-          new_light.direction[2] = std::stof(lines[line_index + (i * 7) + 4]);
-          new_light.color[0] = std::stof(lines[line_index + (i * 7) + 5]);
-          new_light.color[1] = std::stof(lines[line_index + (i * 7) + 6]);
-          new_light.color[2] = std::stof(lines[line_index + (i * 7) + 7]);
-          getControllerWindow(tabs.back().ID)
-              ->direct_lights.push_back(new_light);
-        }
-      }
-      if (line == "point lights") {
-        getControllerWindow(tabs.back().ID)->point_lights.clear();
-        int lights = std::stoi(lines[line_index]);
-        for (int i = 0; i < lights; i++) {
-          point_light new_light;
-          new_light.name = lines[line_index + (i * 9) + 1];
-          new_light.hide = (bool)std::stoi(lines[line_index + (i * 9) + 2]);
-          new_light.position[0] = std::stof(lines[line_index + (i * 9) + 3]);
-          new_light.position[1] = std::stof(lines[line_index + (i * 9) + 4]);
-          new_light.position[2] = std::stof(lines[line_index + (i * 9) + 5]);
-          new_light.intensity = std::stof(lines[line_index + (i * 9) + 6]);
-          new_light.color[0] = std::stof(lines[line_index + (i * 9) + 7]);
-          new_light.color[1] = std::stof(lines[line_index + (i * 9) + 8]);
-          new_light.color[2] = std::stof(lines[line_index + (i * 9) + 9]);
-          new_light.ambient.r = new_light.color[0] * 0.05f;
-          new_light.ambient.g = new_light.color[1] * 0.05f;
-          new_light.ambient.b = new_light.color[2] * 0.05f;
-          new_light.diffuse.r = new_light.color[0] * 0.8f;
-          new_light.diffuse.g = new_light.color[1] * 0.8f;
-          new_light.diffuse.b = new_light.color[2] * 0.8f;
-          new_light.specular.r = new_light.color[0];
-          new_light.specular.g = new_light.color[1];
-          new_light.specular.b = new_light.color[2];
-          getControllerWindow(tabs.back().ID)
-              ->point_lights.push_back(new_light);
-        }
-      }
-      if (line == "spot lights") {
-        getControllerWindow(tabs.back().ID)->spot_lights.clear();
-        int lights = std::stoi(lines[line_index]);
-        for (int i = 0; i < lights; i++) {
-          spot_light new_light;
-          new_light.name = lines[line_index + (i * 13) + 1];
-          new_light.hide = (bool)std::stoi(lines[line_index + (i * 13) + 2]);
-          new_light.position[0] = std::stof(lines[line_index + (i * 13) + 3]);
-          new_light.position[1] = std::stof(lines[line_index + (i * 13) + 4]);
-          new_light.position[2] = std::stof(lines[line_index + (i * 13) + 5]);
-          new_light.intensity = std::stof(lines[line_index + (i * 13) + 6]);
-          new_light.color[0] = std::stof(lines[line_index + (i * 13) + 7]);
-          new_light.color[1] = std::stof(lines[line_index + (i * 13) + 8]);
-          new_light.color[2] = std::stof(lines[line_index + (i * 13) + 9]);
-          new_light.ambient.r = new_light.color[0] * 0.05f;
-          new_light.ambient.g = new_light.color[1] * 0.05f;
-          new_light.ambient.b = new_light.color[2] * 0.05f;
-          new_light.diffuse.r = new_light.color[0] * 0.8f;
-          new_light.diffuse.g = new_light.color[1] * 0.8f;
-          new_light.diffuse.b = new_light.color[2] * 0.8f;
-          new_light.specular.r = new_light.color[0];
-          new_light.specular.g = new_light.color[1];
-          new_light.specular.b = new_light.color[2];
-          new_light.yaw = std::stof(lines[line_index + (i * 13) + 10]);
-          new_light.pitch = std::stof(lines[line_index + (i * 13) + 11]);
-          new_light.direction.x = cos(glm::radians(new_light.pitch)) *
-                                  sin(glm::radians(new_light.yaw + 180));
-          new_light.direction.y = sin(glm::radians(new_light.pitch));
-          new_light.direction.z = cos(glm::radians(new_light.pitch)) *
-                                  cos(glm::radians(new_light.yaw + 180));
-          new_light.cutoff = std::stof(lines[line_index + (i * 13) + 12]);
-          new_light.outer_cutoff = std::stof(lines[line_index + (i * 13) + 13]);
-          getControllerWindow(tabs.back().ID)->spot_lights.push_back(new_light);
-        }
-      }
-    }
-  }
+  // Delete any leftover old‑format settings directory
+  std::filesystem::remove_all(config_base_path + "/settings");
+  loadGlobalSettings();
 }
 
 bool check_filename_valid(const char *name) {
@@ -3616,34 +3430,6 @@ std::string get_top_folder(std::string path) {
     }
   }
   return dir;
-}
-
-std::vector<std::string> get_binding(std::string b) {
-  std::vector<std::string> binding;
-  std::stringstream line_stream(b);
-  std::string word;
-  while (std::getline(line_stream, word, ':')) {
-    binding.push_back(word);
-  }
-  return binding;
-}
-
-std::vector<std::string>
-get_current_mapping(SDL_GameController *sdl_controller) {
-  std::vector<std::string> mapping;
-  if (sdl_controller) {
-    char *mapping_str = SDL_GameControllerMapping(sdl_controller);
-    if (mapping_str) {
-      std::stringstream line_stream(mapping_str);
-      std::string word;
-      while (std::getline(line_stream, word, ',')) {
-        if (!word.empty())
-          mapping.push_back(word);
-      }
-      SDL_free(mapping_str);
-    }
-  }
-  return mapping;
 }
 
 std::string get_first_model() {

@@ -3,12 +3,9 @@
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
-#include "strings.h"
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <spdlog/spdlog.h>
-#include <sstream>
 
 extern unsigned selected_tab;
 extern unsigned selected_mesh;
@@ -16,7 +13,6 @@ extern std::vector<window_tab> tabs;
 
 extern bool g_log_buttons;
 extern std::string config_base_path;
-extern std::string g_loaded_mapping_name;
 extern bool gQuit;
 
 static GLuint g_glowTexture = 0;
@@ -54,8 +50,9 @@ void createGlowTexture() {
 }
 void createTouchAreaRect(controller_window &w) {
   if (!w.touch_area_vao) {
-    float vertices[] = {-0.5f, -0.5f, 0.0f, 0.5f,  -0.5f, 0.0f,
-                        0.5f,  0.5f,  0.0f, -0.5f, 0.5f,  0.0f};
+    // Vertices in the XZ plane (Y=0), centered at origin.
+    float vertices[] = {-0.5f, 0.0f, -0.5f, 0.5f,  0.0f, -0.5f,
+                        0.5f,  0.0f, 0.5f,  -0.5f, 0.0f, 0.5f};
     unsigned int line_indices[] = {0, 1, 1, 2, 2, 3, 3, 0};
     glGenVertexArrays(1, &w.touch_area_vao);
     glGenBuffers(1, &w.touch_area_vbo);
@@ -210,45 +207,6 @@ static Uint8 getHatValue(controller_window &w, int hatIdx) {
     return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
   }
   return SDL_HAT_CENTERED;
-}
-
-// Load a mapping file into the controller_window's mapping array
-static void loadMappingFromFile(controller_window &w,
-                                const std::string &mappingName) {
-  if (mappingName.empty())
-    return;
-  std::string filePath = config_base_path + "/mapping/" + mappingName;
-  std::ifstream ifs(filePath);
-  if (!ifs.is_open()) {
-    spdlog::warn("Could not open mapping file: {}", filePath);
-    return;
-  }
-  std::string line;
-  if (std::getline(ifs, line)) {
-    // Parse comma-separated key:value pairs
-    std::stringstream ss(line);
-    std::string item;
-    while (std::getline(ss, item, ',')) {
-      if (item.empty())
-        continue;
-      size_t colon = item.find(':');
-      if (colon != std::string::npos) {
-        std::string key = item.substr(0, colon);
-        std::string value = item.substr(colon + 1);
-        // Match key to mesh_names (part name)
-        for (int i = 0; i < 35; ++i) {
-          if (key == mesh_names[i]) {
-            w.mapping[i] = value;
-            break;
-          }
-        }
-      }
-    }
-    g_loaded_mapping_name = mappingName;
-    spdlog::info("Loaded mapping '{}' for controller", mappingName);
-  } else {
-    spdlog::warn("Mapping file '{}' is empty", filePath);
-  }
 }
 
 void createControllerWindow(std::string title, std::string model_path) {
@@ -455,11 +413,6 @@ void createControllerWindow(std::string title, std::string model_path) {
 
   w.gyro_matrix = glm::mat4(1.0f);
 
-  // Load default mapping if defined in model
-  if (!w.model.default_mapping.empty()) {
-    loadMappingFromFile(w, w.model.default_mapping);
-  }
-
   // ----- RESET BUTTON STATES FOR THIS WINDOW -----
   for (int i = 0; i < 128; ++i) {
     w.last_joy_button_values[i] = false;
@@ -467,63 +420,13 @@ void createControllerWindow(std::string title, std::string model_path) {
   for (int i = 0; i < 64; ++i) {
     w.last_button_values[i] = false;
   }
-  // -------------------------------------------------
-
-  // ---- Assign glow texture to touch point meshes ----
-  // ---- Assign glow texture to touch point meshes ----
-  createGlowTexture();
-  for (auto &mesh : w.model.meshes) {
-    int part = mesh.assignedPart;
-    if (part == 30 || part == 31 || part == 33 || part == 34) {
-      mesh.original_color[0] = mesh.material.color[0];
-      mesh.original_color[1] = mesh.material.color[1];
-      mesh.original_color[2] = mesh.material.color[2];
-      mesh.original_alpha = mesh.material.alpha;
-
-      // Clear any existing textures
-      mesh.textures.clear();
-      // Add the glow texture
-      Texture tex;
-      tex.id = g_glowTexture;
-      tex.path = "glow_texture";
-      tex.name = "Glow";
-      tex.type = 0; // diffuse
-      tex.wrapX = 0;
-      tex.wrapY = 0;
-      tex.offsetX = 0;
-      tex.offsetY = 0;
-      tex.scaleX = 1.0f;
-      tex.scaleY = 1.0f;
-      tex.rotation = 0.0f;
-      mesh.textures.push_back(tex);
-      // Force material to white so texture colour shows
-      mesh.material.color[0] = 1.0f;
-      mesh.material.color[1] = 1.0f;
-      mesh.material.color[2] = 1.0f;
-      // Start invisible; alpha will be driven by glow_intensity
-      mesh.material.alpha = 0.0f;
-      mesh.highlight_value = 0.0f;
-      // Scale up so the glow is visible
-      mesh.useCustomScale = true;
-      mesh.scale[0] = 0.3f;
-      mesh.scale[1] = 0.3f;
-      mesh.scale[2] = 0.3f;
-
-      // Ensure visible
-      mesh.visible = true;
-    }
-  }
 
   windows.push_back(w);
-
-  // Initialize mapping to empty strings
-  for (int i = 0; i < 35; ++i) {
-    windows.back().mapping[i] = "";
-  }
 }
 
 void applyMappingToMeshes(controller_window &w) {
-  for (auto &mesh : w.model.meshes) {
+  for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
+    Mesh &mesh = w.model.meshes[meshIdx];
     if (mesh.inputBinding.empty())
       continue;
 
@@ -540,26 +443,30 @@ void applyMappingToMeshes(controller_window &w) {
     mesh.pull = 0.0f;
 
     if (type == "gamepad" || type == "joystick") {
-      // Use raw or gamecontroller based on type? Actually we need to know which
-      // API to use. For gamepad, use gamecontroller API; for joystick, use raw
-      // joystick.
       bool useRaw = (type == "joystick");
 
       // ---- Handle full stick bindings ----
       if (value == "leftstick") {
         float lx = get_axis_value_choice(w, 0, useRaw);
         float ly = get_axis_value_choice(w, 1, useRaw);
+        if (mesh.invert) {
+          lx = -lx;
+          ly = -ly;
+        }
         mesh.stick_X = lx * 32767.0f;
         mesh.stick_Y = ly * 32767.0f;
-        // Optional highlight when stick is moved
         if (fabs(lx) > 0.1f || fabs(ly) > 0.1f)
           mesh.highlight_value = std::max(fabs(lx), fabs(ly)) * 1.2f;
         else
           mesh.highlight_value = 0.0f;
-        continue; // skip button/axis parsing
+        continue;
       } else if (value == "rightstick") {
         float rx = get_axis_value_choice(w, 2, useRaw);
         float ry = get_axis_value_choice(w, 3, useRaw);
+        if (mesh.invert) {
+          rx = -rx;
+          ry = -ry;
+        }
         mesh.stick_X = rx * 32767.0f;
         mesh.stick_Y = ry * 32767.0f;
         if (fabs(rx) > 0.1f || fabs(ry) > 0.1f)
@@ -579,6 +486,8 @@ void applyMappingToMeshes(controller_window &w) {
       if (prefix == 'b') {
         num = std::stoi(value.substr(1));
         bool pressed = get_button_value_choice(w, num, useRaw);
+        if (mesh.invert)
+          pressed = !pressed;
         mesh.press = pressed ? 1.0f : 0.0f;
         mesh.highlight_value = pressed ? 1.0f : 0.0f;
       } else if (prefix == 'a') {
@@ -596,6 +505,9 @@ void applyMappingToMeshes(controller_window &w) {
           num = std::stoi(value.substr(1));
         }
         float axisVal = get_axis_value_choice(w, num, useRaw);
+        if (mesh.invert)
+          axisVal = -axisVal;
+
         if (isDirection) {
           // Directional (button-like) axis: press if past threshold
           bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
@@ -605,26 +517,25 @@ void applyMappingToMeshes(controller_window &w) {
           // Plain analog axis
           if (type == "gamepad" && (num == 4 || num == 5)) {
             // Gamepad triggers are already 0..1
-            float value = std::max(0.0f, std::min(1.0f, axisVal));
-            mesh.pull = value * 32767.0f;
-            mesh.press = value;
-            mesh.highlight_value = value;
+            float val = std::max(0.0f, std::min(1.0f, axisVal));
+            mesh.pull = val * 32767.0f;
+            mesh.press = val;
+            mesh.highlight_value = val;
           } else {
             // For centered axes (sticks, generic joystick) map -1..1 → 0..1
-            float value = (axisVal + 1.0f) * 0.5f;
-            mesh.pull = value * 32767.0f;
-            mesh.press = value;
-            mesh.highlight_value = value;
+            float val = (axisVal + 1.0f) * 0.5f;
+            mesh.pull = val * 32767.0f;
+            mesh.press = val;
+            mesh.highlight_value = val;
           }
         }
       } else if (prefix == 'h') {
-        // Hat: hX.Y
+        // Hat: hX.Y – no inversion
         size_t dot = value.find('.');
         if (dot != std::string::npos) {
           num = std::stoi(value.substr(1, dot - 1));
           hatDir = std::stoi(value.substr(dot + 1));
-          Uint8 hatVal = getHatValue(w, num); // we need getHatValue
-          // Convert hatDir to SDL_HAT_* and check
+          Uint8 hatVal = getHatValue(w, num);
           Uint8 sdlDir = 0;
           switch (hatDir) {
           case 0:
@@ -657,22 +568,143 @@ void applyMappingToMeshes(controller_window &w) {
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
         }
       }
+
+      // ---- Touchpad handling (only for gamepad) ----
+      if (type == "gamepad" && value.rfind("touch", 0) == 0) {
+        // Parse touchX_fY[_z] (z is optional axis)
+        std::string rest = value.substr(5);
+        size_t underscore1 = rest.find('_');
+        if (underscore1 != std::string::npos) {
+          std::string touchStr = rest.substr(0, underscore1);
+          std::string rest2 = rest.substr(underscore1 + 1);
+          size_t underscore2 = rest2.find('_');
+          if (underscore2 == std::string::npos) {
+            // Combined: touchX_fY (both axes)
+            std::string fingerStr = rest2;
+            int touchpadIdx = std::stoi(touchStr);
+            int fingerIdx = std::stoi(fingerStr.substr(1));
+            if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
+                fingerIdx < 2) {
+              auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
+              if (ts.state == 1) {
+                float x = ts.x;
+                float y = ts.y;
+                if (mesh.invert) {
+                  x = 1.0f - x;
+                  y = 1.0f - y;
+                }
+                mesh.touch_X = x;
+                mesh.touch_Y = y;
+                mesh.touch_state = 1;
+                mesh.glow_intensity = 1.0f;
+
+                // ---- AUTO-ANCHOR: if this mesh is a touchpoint part, parent
+                // it to a touchpad ----
+                int part = mesh.assignedPart;
+                if (part == 30 || part == 31 || part == 33 || part == 34) {
+                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                  if (touchpadIdxFound == -1) {
+                    // No touchpad ancestor – search for any other mesh marked
+                    // as touchpad
+                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                        touchpadIdxFound = i;
+                        break;
+                      }
+                    }
+                  }
+                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                    // Only update if parent changes or position needs reset
+                    if (mesh.parentIndex != touchpadIdxFound ||
+                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                        mesh.position[2] != 0.0f) {
+                      mesh.parentIndex = touchpadIdxFound;
+                      mesh.position[0] = 0.0f;
+                      mesh.position[1] = 0.0f;
+                      mesh.position[2] = 0.0f;
+                      mesh.useCustomScale = false;
+                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                   mesh.name,
+                                   w.model.meshes[touchpadIdxFound].name);
+                    }
+                  } else if (touchpadIdxFound == meshIdx) {
+                    spdlog::warn("Touchpoint '{}' is also a touchpad – cannot "
+                                 "anchor to itself",
+                                 mesh.name);
+                  }
+                }
+              } else {
+                mesh.touch_state = 0;
+                mesh.glow_intensity = 0.0f;
+              }
+            }
+          } else {
+            // Per-axis: touchX_fY_z
+            std::string fingerStr = rest2.substr(0, underscore2);
+            char axis = rest2.back();
+            int touchpadIdx = std::stoi(touchStr);
+            int fingerIdx = std::stoi(fingerStr.substr(1));
+            if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
+                fingerIdx < 2) {
+              auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
+              if (ts.state == 1) {
+                float val = (axis == 'x') ? ts.x : ts.y;
+                if (mesh.invert)
+                  val = 1.0f - val;
+                if (axis == 'x')
+                  mesh.touch_X = val;
+                else
+                  mesh.touch_Y = val;
+                mesh.touch_state = 1;
+                mesh.glow_intensity = 1.0f;
+
+                // ---- AUTO-ANCHOR (same as above) ----
+                int part = mesh.assignedPart;
+                if (part == 30 || part == 31 || part == 33 || part == 34) {
+                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                  if (touchpadIdxFound == -1) {
+                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                        touchpadIdxFound = i;
+                        break;
+                      }
+                    }
+                  }
+                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                    if (mesh.parentIndex != touchpadIdxFound ||
+                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                        mesh.position[2] != 0.0f) {
+                      mesh.parentIndex = touchpadIdxFound;
+                      mesh.position[0] = 0.0f;
+                      mesh.position[1] = 0.0f;
+                      mesh.position[2] = 0.0f;
+                      mesh.useCustomScale = false;
+                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                   mesh.name,
+                                   w.model.meshes[touchpadIdxFound].name);
+                    }
+                  } else if (touchpadIdxFound == meshIdx) {
+                    spdlog::warn("Touchpoint '{}' is also a touchpad – cannot "
+                                 "anchor to itself",
+                                 mesh.name);
+                  }
+                }
+              } else {
+                mesh.touch_state = 0;
+                mesh.glow_intensity = 0.0f;
+              }
+            }
+          }
+        }
+        continue; // done with this mesh
+      }
     } else if (type == "keyboard") {
-      // Handle keyboard key
-      // We need SDL_GetKeyboardState to check key state
-      // We'll need to map key strings like "key_w" to SDL_SCANCODE_W, etc.
-      // This requires adding a lookup table.
-      // For now, we'll implement a simple mapping for common keys.
-      // We'll add a helper function later.
-      // For now, we'll just set press to 0.
+      // Keyboard – inversion will be added later
     } else if (type == "mouse") {
-      // Handle mouse button/axis
-      // Need to query mouse state via SDL_GetMouseState or similar.
-      // For now, set press to 0.
+      // Mouse – inversion will be added later
     }
   }
 }
-
 void controller_window_input() {
   SDL_PumpEvents();
 
@@ -960,157 +992,7 @@ void controller_window_input() {
           }
         }
 
-        // ---- Update touchpoint meshes from touchpad data ----
-        for (auto &mesh : w.model.meshes) {
-          int part = mesh.assignedPart;
-          int touchpadIdx = -1, fingerIdx = -1;
-          if (part == 30) {
-            touchpadIdx = 0;
-            fingerIdx = 0;
-          } else if (part == 31) {
-            touchpadIdx = 0;
-            fingerIdx = 1;
-          } else if (part == 33) {
-            touchpadIdx = 1;
-            fingerIdx = 0;
-          } else if (part == 34) {
-            touchpadIdx = 1;
-            fingerIdx = 1;
-          }
-          if (touchpadIdx >= 0 && fingerIdx >= 0) {
-            if (!w.mapping[part].empty()) {
-              mesh.touch_X = 0.0f;
-              mesh.touch_Y = 0.0f;
-              mesh.touch_state = 0;
-              continue;
-            }
-
-            if (touchpadIdx < 4 && fingerIdx < 2) {
-              auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
-              mesh.touch_X = ts.x;
-              mesh.touch_Y = ts.y;
-              mesh.touch_state = (ts.state == 1) ? 1 : 0;
-              // Set glow intensity to 1.0 when finger touches
-              if (ts.state == 1) {
-                mesh.glow_intensity = 1.0f;
-              }
-              mesh.visible = true; // will be hidden when glow fades
-            }
-          }
-
-          // --- LOGGING (unchanged, but safe because it uses get_axis_value
-          // etc.)
-          // ---
-          if (g_log_buttons) {
-            if (w.is_gamecontroller && w.sdl_controller) {
-              SDL_Joystick *joy =
-                  SDL_GameControllerGetJoystick(w.sdl_controller);
-              if (joy) {
-                int numAxes = SDL_JoystickNumAxes(joy);
-                for (int i = 0; i < numAxes; ++i) {
-                  float val = get_axis_value(w, i);
-                  std::string label;
-                  if (i < 6) {
-                    switch (i) {
-                    case 0:
-                      label = "Left X";
-                      break;
-                    case 1:
-                      label = "Left Y";
-                      break;
-                    case 2:
-                      label = "Right X";
-                      break;
-                    case 3:
-                      label = "Right Y";
-                      break;
-                    case 4:
-                      label = "Left Trigger";
-                      break;
-                    case 5:
-                      label = "Right Trigger";
-                      break;
-                    }
-                  } else {
-                    label = "Axis " + std::to_string(i);
-                  }
-                  logAxisChange(w, i, val, label);
-                }
-
-                int numJoyButtons = SDL_JoystickNumButtons(joy);
-                for (int b = 0; b < numJoyButtons; ++b) {
-                  bool pressed = SDL_JoystickGetButton(joy, b);
-                  if (pressed && !w.last_joy_button_values[b]) {
-                    spdlog::info("[b{}] Joystick Button {} pressed", b, b);
-                  }
-                  w.last_joy_button_values[b] = pressed;
-                }
-
-                for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; ++b) {
-                  bool pressed = SDL_GameControllerGetButton(
-                      w.sdl_controller, (SDL_GameControllerButton)b);
-                  if (pressed && !w.last_button_values[b]) {
-                    std::string name;
-                    if (b >= 0 && b < 21) {
-                      name = button_names[b];
-                    } else {
-                      name = "Button " + std::to_string(b);
-                    }
-                    spdlog::info("[b{}] {} pressed", b, name);
-                  }
-                  w.last_button_values[b] = pressed;
-                }
-
-                int numTouchpads =
-                    SDL_GameControllerGetNumTouchpads(w.sdl_controller);
-                for (int t = 0; t < numTouchpads; ++t) {
-                  int numFingers = SDL_GameControllerGetNumTouchpadFingers(
-                      w.sdl_controller, t);
-                  for (int f = 0; f < numFingers; ++f) {
-                    Uint8 state;
-                    float x, y;
-                    if (SDL_GameControllerGetTouchpadFinger(w.sdl_controller, t,
-                                                            f, &state, &x, &y,
-                                                            nullptr) == 0) {
-                      if (state == 1) {
-                        spdlog::info(
-                            "Touchpad {} finger {} down at ({:.3f}, {:.3f})", t,
-                            f, x, y);
-                      } else if (state == 2) {
-                        spdlog::info("Touchpad {} finger {} up", t, f);
-                      }
-                    }
-                  }
-                }
-              }
-            } else if (!w.is_gamecontroller && w.sdl_joystick) {
-              int numButtons = SDL_JoystickNumButtons(w.sdl_joystick);
-              for (int i = 0; i < numButtons; ++i) {
-                bool pressed = SDL_JoystickGetButton(w.sdl_joystick, i);
-                if (pressed && !w.last_joy_button_values[i]) {
-                  spdlog::info("[b{}] Generic Button {} pressed", i, i);
-                }
-                w.last_joy_button_values[i] = pressed;
-              }
-
-              int numAxes = SDL_JoystickNumAxes(w.sdl_joystick);
-              for (int i = 0; i < numAxes; ++i) {
-                float val = SDL_JoystickGetAxis(w.sdl_joystick, i) / 32767.0f;
-                std::string label = "Generic Axis " + std::to_string(i);
-                logAxisChange(w, i, val, label);
-              }
-
-              int numHats = SDL_JoystickNumHats(w.sdl_joystick);
-              for (int i = 0; i < numHats; ++i) {
-                Uint8 hatVal = SDL_JoystickGetHat(w.sdl_joystick, i);
-                logHatChange(w, i, hatVal);
-              }
-            }
-          }
-
-          // --- APPLY CUSTOM MAPPING ---
-          applyMappingToMeshes(w);
-        }
+        applyMappingToMeshes(w);
 
         // ---- Propagate stick motion to children (rings, caps) ----
         for (int stickPart : {5, 6}) {
@@ -1682,28 +1564,17 @@ void drawControllerWindows() {
 
       for (auto &mesh : w.model.meshes) {
         int part = mesh.assignedPart;
-        if (part == 30 || part == 31 || part == 33 || part == 34) {
-          if (w.mapping[part].empty()) {
-            // Real touch point – glow effect
-            mesh.glow_intensity *= decay;
-            if (mesh.glow_intensity < 0.001f)
-              mesh.glow_intensity = 0.0f;
-            // Force white glow material
-            mesh.material.color[0] = 1.0f;
-            mesh.material.color[1] = 1.0f;
-            mesh.material.color[2] = 1.0f;
-            mesh.material.alpha = mesh.glow_intensity;
-            mesh.visible = (mesh.glow_intensity > 0.001f);
-          } else {
-            // Mapped touch point – restore original material
-            mesh.material.color[0] = mesh.original_color[0];
-            mesh.material.color[1] = mesh.original_color[1];
-            mesh.material.color[2] = mesh.original_color[2];
-            mesh.material.alpha = mesh.original_alpha;
-            mesh.visible = true;
-            // glow_intensity is not used – we keep it zero
+        if (mesh.touch_state > 0) {
+          // Apply decay to all touch points (both bound and unbound)
+          mesh.glow_intensity *= decay;
+          if (mesh.glow_intensity < 0.001f)
             mesh.glow_intensity = 0.0f;
-          }
+          // Force white glow material so the glow texture shows correctly
+          mesh.material.color[0] = 1.0f;
+          mesh.material.color[1] = 1.0f;
+          mesh.material.color[2] = 1.0f;
+          mesh.material.alpha = mesh.glow_intensity;
+          mesh.visible = (mesh.glow_intensity > 0.001f);
         }
       }
 
@@ -1743,11 +1614,11 @@ void drawControllerWindows() {
       if (w.show_touch_area) {
         createTouchAreaRect(w);
         glUseProgram(w.grid_shader);
-        for (int idx : {29, 32}) {
-          if (idx >= (int)w.model.meshes.size())
-            continue;
-          const Mesh &touchpad = w.model.meshes[idx];
-          if (touchpad.elements == 0)
+        // Set alpha for touch area (50% transparency)
+        shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
+        for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+          const Mesh &touchpad = w.model.meshes[i];
+          if (!touchpad.isTouchpad || touchpad.elements == 0)
             continue;
           float tw = touchpad.touch_width;
           float th = touchpad.touch_height;
@@ -1755,24 +1626,45 @@ void drawControllerWindows() {
             tw = 1.0f;
           if (th < 0.01f)
             th = 1.0f;
-          glm::vec3 pos =
-              glm::vec3(touchpad.position[0], touchpad.position[1] + 0.02f,
-                        touchpad.position[2]);
-          pos += glm::vec3(w.touch_area_offset[0], w.touch_area_offset[1],
-                           w.touch_area_offset[2]);
-          glm::mat4 rectMat = glm::mat4(1.0f);
-          rectMat = glm::translate(rectMat, pos);
-          rectMat = glm::scale(rectMat, glm::vec3(tw, 0.02f, th));
-          shaderUniformMat4(w.grid_shader, "model", rectMat);
+
+          // Get touchpad's world matrix (without gyro, but includes its own
+          // transform and parents)
+          glm::mat4 touchpadWorld = getModelMatrixWithoutGyro(w.model, i);
+          // Apply touch offset and rotation
+          glm::mat4 rectModel = touchpadWorld;
+          rectModel =
+              glm::translate(rectModel, glm::vec3(touchpad.touch_offset[0],
+                                                  touchpad.touch_offset[1],
+                                                  touchpad.touch_offset[2]));
+          rectModel =
+              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[1]),
+                          glm::vec3(0, 1, 0)); // yaw
+          rectModel =
+              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[0]),
+                          glm::vec3(1, 0, 0)); // pitch
+          rectModel =
+              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[2]),
+                          glm::vec3(0, 0, 1)); // roll
+          rectModel = glm::scale(rectModel, glm::vec3(tw, 0.02f, th));
+
+          shaderUniformMat4(w.grid_shader, "model", rectModel);
           shaderUniformVec3(w.grid_shader, "gridColor",
                             glm::vec3(1.0f, 0.0f, 1.0f));
+
           glBindVertexArray(w.touch_area_vao);
+          // Draw filled rectangle with transparency
           glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+          // Draw outline (opaque)
           glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+          shaderUniformFloat(w.grid_shader, "alpha", 1.0f); // outline opaque
           glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
           glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
           glBindVertexArray(0);
+          // Reset alpha to 0.5 for next rectangle
+          shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
         }
+        // Reset alpha for other grid elements (e.g., normal grid, pivot circle)
+        shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
         glUseProgram(0);
       }
 

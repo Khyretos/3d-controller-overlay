@@ -93,6 +93,10 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"stick_max\": " << mesh.stick_max << ",\n";
     json << "      \"touch_width\": " << mesh.touch_width << ",\n";
     json << "      \"touch_height\": " << mesh.touch_height << ",\n";
+    json << "      \"touch_offset\": [" << mesh.touch_offset[0] << ", "
+         << mesh.touch_offset[1] << ", " << mesh.touch_offset[2] << "],\n";
+    json << "      \"touch_rotation\": [" << mesh.touch_rotation[0] << ", "
+         << mesh.touch_rotation[1] << ", " << mesh.touch_rotation[2] << "],\n";
     json << "      \"pivot_offset\": [" << mesh.pivot_offset[0] << ", "
          << mesh.pivot_offset[1] << ", " << mesh.pivot_offset[2] << "],\n";
     json << "      \"rotation\": [" << mesh.rotation[0] << ", "
@@ -103,6 +107,9 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"input_type\": " << mesh.inputType << ",\n";
     json << "      \"input_binding\": \"" << escapeJson(mesh.inputBinding)
          << "\",\n";
+    json << "      \"invert\": " << (mesh.invert ? "true" : "false") << ",\n";
+    json << "      \"isTouchpad\": " << (mesh.isTouchpad ? "true" : "false")
+         << ",\n";
     json << "      \"material\": {\n";
     json << "        \"ambient\": " << mesh.material.ambient << ",\n";
     json << "        \"diffuse\": " << mesh.material.diffuse << ",\n";
@@ -116,10 +123,6 @@ void writeJson(Model &m, const std::string &path) {
   }
   json << "  ],\n";
   json << "  \"source\": \"" << escapeJson(m.source) << "\"\n";
-  if (!m.default_mapping.empty()) {
-    json << ",\n  \"default_mapping\": \"" << escapeJson(m.default_mapping)
-         << "\"";
-  }
   json << "}\n";
 }
 void readInfoJson(Model &m, const std::string &path) {
@@ -187,6 +190,18 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.touch_width = p["touch_width"].get<float>();
     if (p.contains("touch_height"))
       mesh.touch_height = p["touch_height"].get<float>();
+    if (p.contains("touch_offset")) {
+      auto arr = p["touch_offset"].get<std::array<float, 3>>();
+      mesh.touch_offset[0] = arr[0];
+      mesh.touch_offset[1] = arr[1];
+      mesh.touch_offset[2] = arr[2];
+    }
+    if (p.contains("touch_rotation")) {
+      auto arr = p["touch_rotation"].get<std::array<float, 3>>();
+      mesh.touch_rotation[0] = arr[0];
+      mesh.touch_rotation[1] = arr[1];
+      mesh.touch_rotation[2] = arr[2];
+    }
     if (p.contains("pivot_offset")) {
       auto arr = p["pivot_offset"].get<std::array<float, 3>>();
       mesh.pivot_offset[0] = arr[0];
@@ -210,6 +225,14 @@ void readInfoJson(Model &m, const std::string &path) {
     } else {
       mesh.inputType = INPUT_TYPE_GAMEPAD; // default
     }
+    if (p.contains("input_binding"))
+      mesh.inputBinding = p["input_binding"].get<std::string>();
+    if (p.contains("invert"))
+      mesh.invert = p["invert"].get<bool>();
+    if (p.contains("isTouchpad"))
+      mesh.isTouchpad = p["isTouchpad"].get<bool>();
+    else
+      mesh.isTouchpad = false; // default
     if (p.contains("assigned_part"))
       mesh.assignedPart = p["assigned_part"].get<int>();
     mesh.name = p.value("name", filename);
@@ -254,9 +277,6 @@ void readInfoJson(Model &m, const std::string &path) {
 
   if (data.contains("source"))
     m.source = data["source"].get<std::string>();
-  if (data.contains("default_mapping"))
-    m.default_mapping = data["default_mapping"].get<std::string>();
-  spdlog::info("Loaded {} meshes from JSON", m.meshes.size());
 }
 // ------------------------------------------------------------------
 // LEGACY OBJ LOADER (32 meshes from folder)
@@ -756,6 +776,18 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   }
 }
 
+int getTouchpadAncestor(const Model &m, int meshIndex) {
+  if (meshIndex < 0 || meshIndex >= (int)m.meshes.size())
+    return -1;
+  int current = meshIndex;
+  while (current != -1) {
+    if (m.meshes[current].isTouchpad)
+      return current;
+    current = m.meshes[current].parentIndex;
+  }
+  return -1;
+}
+
 glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
                                const glm::mat4 &parentMatrix) {
   const Mesh &mesh = m.meshes[meshIndex];
@@ -819,13 +851,39 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
 
   // ---- Touchpad offset ----
   if (mesh.touch_state > 0) {
-    model = glm::translate(
-        model,
-        glm::vec3((mesh.touch_X * mesh.touch_width) - mesh.touch_width * 0.5, 0,
-                  (mesh.touch_Y * mesh.touch_height) -
-                      mesh.touch_height * 0.5));
+    int touchpadIdx = getTouchpadAncestor(m, meshIndex);
+    if (touchpadIdx != -1) {
+      const Mesh &touchpad = m.meshes[touchpadIdx];
+      float tw = touchpad.touch_width;
+      float th = touchpad.touch_height;
+      // Base movement in local space (centered)
+      glm::vec3 move = glm::vec3((mesh.touch_X * tw) - tw * 0.5f, 0.0f,
+                                 (mesh.touch_Y * th) - th * 0.5f);
+      // Apply touchpad's touch rotation (yaw, pitch, roll)
+      glm::mat4 rotMat = glm::mat4(1.0f);
+      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[1]),
+                           glm::vec3(0, 1, 0)); // yaw
+      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[0]),
+                           glm::vec3(1, 0, 0)); // pitch
+      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[2]),
+                           glm::vec3(0, 0, 1)); // roll
+      move = glm::vec3(rotMat * glm::vec4(move, 1.0f));
+      // Add touchpad's offset
+      move += glm::vec3(touchpad.touch_offset[0], touchpad.touch_offset[1],
+                        touchpad.touch_offset[2]);
+      // Lift the touchpoint 0.1 units above the surface (local Y)
+      move.y += 0.1f;
+      // Apply translation
+      model = glm::translate(model, move);
+    } else {
+      // Fallback: use own dimensions and zero offset/rotation
+      model = glm::translate(
+          model,
+          glm::vec3(
+              (mesh.touch_X * mesh.touch_width) - mesh.touch_width * 0.5, 0.1f,
+              (mesh.touch_Y * mesh.touch_height) - mesh.touch_height * 0.5));
+    }
   }
-
   return model;
 }
 
@@ -1045,6 +1103,9 @@ void convertImportedToMeshes(Model &m) {
     mesh.material.highlight[0] = 0.0f;
     mesh.material.highlight[1] = 1.0f;
     mesh.material.highlight[2] = 0.0f;
+    mesh.touch_width = 1.0f;
+    mesh.touch_height = 1.0f;
+    mesh.isTouchpad = false;
     // parentIndex will be set when mapping is applied; we don't set it here.
 
     std::vector<float> vertex_data;

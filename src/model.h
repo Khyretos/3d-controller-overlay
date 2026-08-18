@@ -128,6 +128,11 @@ typedef struct mesh_struct {
   float original_alpha = 1.0f;
   std::string inputBinding; // e.g., "gamepad:b0", "joystick:a1+",
                             // "keyboard:key_w", "mouse:mouse_left"
+  bool invert = false;
+  bool isTouchpad = false;
+
+  float touch_offset[3] = {0.0f, 0.0f, 0.0f};
+  float touch_rotation[3] = {0.0f, 0.0f, 0.0f};
 } Mesh;
 
 // ----- NEW: Imported mesh data for custom model mapping -----
@@ -158,7 +163,6 @@ typedef struct model_struct {
   // preview) -----
   std::vector<ImportedMesh> imported_meshes;
   bool has_imported_meshes = false;
-  std::string default_mapping; // name of the mapping file (without path)
 } Model;
 
 // model.h
@@ -219,4 +223,7 @@ void writeJson(Model &m, const std::string &path);
 glm::mat4 getModelMatrixWithoutGyro(const Model &m, int meshIdx);
 glm::vec3 getModelWorldPositionWithoutGyro(const Model &m, int meshIdx);
 bool wouldCreateCycle(const Model &m, int childIdx, int parentIdx);
+
+int getTouchpadAncestor(const Model &m, int meshIndex);
+
 #endif

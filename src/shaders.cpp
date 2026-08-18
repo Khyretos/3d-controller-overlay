@@ -19,12 +19,13 @@ const std::string grid_fragment_shader_code =
     "#version 410 core\n"
     "\n"
     "uniform vec3 gridColor;\n"
+    "uniform float alpha;\n"
     "\n"
     "out vec4 FragColor;\n"
     "\n"
     "void main()\n"
     "{\n"
-    "    FragColor = vec4(gridColor, 1.0);\n"
+    "    FragColor = vec4(gridColor, alpha);\n"
     "}\n";
 
 const std::string light_source_vertex_shader_code =

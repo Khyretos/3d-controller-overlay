@@ -7,17 +7,17 @@
 
 #include "stb_image.h"
 
+#include <array>
+#include <map>
 #include <math.h>
 #include <memory>
 #include <string>
 #include <vector>
-#include <map>
-#include <array>
 
 #include "model.h"
 #include <GLFW/glfw3.h>
-#include <glad/glad.h>
 #include <SDL2/SDL.h>
+#include <glad/glad.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/spdlog.h>
 
@@ -74,7 +74,6 @@ typedef struct controller_window_struct {
   };
   bool is_gamecontroller = false; // true if opened as gamecontroller
   int joystick_index = -1;        // device index
-  std::string mapping[35];
 
   // Sensors
   SDL_Sensor *gyro_sensor = nullptr;
@@ -196,8 +195,6 @@ typedef struct controller_window_struct {
   GLuint touch_area_wire_ebo = 0;
   GLuint touch_area_elements_tri = 0;
   GLuint touch_area_elements_wire = 0;
-  float touch_area_offset[3] = {0.0f, 0.01f,
-                                0.0f}; // X, Y, Z offsets from touchpad position
   GLuint pivot_vao = 0;
   GLuint pivot_vbo = 0;
   int pivot_segments = 20;
@@ -207,7 +204,6 @@ typedef struct controller_window_struct {
   double pivot_drag_start_screen_y = 0.0;
   glm::vec3 pivot_drag_start_world = glm::vec3(0.0f);
   int pivot_drag_mesh_index = -1;
-  bool invert_mapping[35] = {};
   float global_press_color[3] = {0.0f, 1.0f, 0.0f}; // default green
 } controller_window;
 

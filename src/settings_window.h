@@ -50,11 +50,7 @@ const GLFWvidmode *get_vid_mode();
 bool check_filename_valid(const char *name);
 std::string get_top_folder(std::string path);
 std::string get_first_model();
-std::vector<std::string>
-get_current_mapping(SDL_GameController *sdl_controller);
-std::vector<std::string> get_binding(std::string b);
 
 extern bool g_log_buttons;
-extern std::string g_loaded_mapping_name;
 
 #endif
