@@ -60,7 +60,7 @@ add_custom_command(
 # Mark header as generated
 set_source_files_properties(${GEN_HEADER} PROPERTIES GENERATED TRUE)
 
-# ----------------------------------------------------------f--------
+# ------------------------------------------------------------------
 # Executable – uses the collected sources
 # ------------------------------------------------------------------
 add_executable(3dco+ ${SRC_FILES} ${GEN_HEADER})
