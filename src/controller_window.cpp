@@ -1,4 +1,5 @@
 #include "controller_window.h"
+#include "keyboard_input.h"
 #include "cube_info.h"
 #include "settings_window.h"
 #include "shader.h"
@@ -714,8 +715,7 @@ void applyMappingToMeshes(controller_window &w) {
       } else {
         auto it = keyMap.find(value);
         if (it != keyMap.end()) {
-          const Uint8 *state = SDL_GetKeyboardState(NULL);
-          bool pressed = state[it->second] ? true : false;
+          bool pressed = GlobalKeyboard::isPressed(it->second);
           if (mesh.invert)
             pressed = !pressed;
           mesh.press = pressed ? 1.0f : 0.0f;
@@ -1007,68 +1007,32 @@ void controller_window_input() {
             }
           }
 
-          // ---- KEYBOARD RAW LOGGING (global, independent of mesh bindings)
-          // ---- Static map to track last state across all windows (shared)
-          static std::map<SDL_Scancode, bool> lastKeyState;
-          const Uint8 *state = SDL_GetKeyboardState(NULL);
-          if (state) {
-            // Debug: log once that we entered this block
+          // ---- GLOBAL KEYBOARD LOGGING ----
+          // SDL_GetKeyboardState() only tracks SDL's own keyboard event path.
+          // This application is a GLFW overlay, so use the platform backend
+          // instead. It works even when another application owns keyboard focus.
+          if (g_log_buttons) {
             if (!keyboard_logging_entered) {
-              spdlog::info("[DEBUG] Keyboard logging block entered "
-                           "(g_log_buttons is true)");
+              spdlog::info("[DEBUG] Global keyboard logging block entered");
               keyboard_logging_entered = true;
             }
 
-            // Define a list of scancodes we care about
-            std::vector<SDL_Scancode> scancodes = {
-                SDL_SCANCODE_A,      SDL_SCANCODE_B,      SDL_SCANCODE_C,
-                SDL_SCANCODE_D,      SDL_SCANCODE_E,      SDL_SCANCODE_F,
-                SDL_SCANCODE_G,      SDL_SCANCODE_H,      SDL_SCANCODE_I,
-                SDL_SCANCODE_J,      SDL_SCANCODE_K,      SDL_SCANCODE_L,
-                SDL_SCANCODE_M,      SDL_SCANCODE_N,      SDL_SCANCODE_O,
-                SDL_SCANCODE_P,      SDL_SCANCODE_Q,      SDL_SCANCODE_R,
-                SDL_SCANCODE_S,      SDL_SCANCODE_T,      SDL_SCANCODE_U,
-                SDL_SCANCODE_V,      SDL_SCANCODE_W,      SDL_SCANCODE_X,
-                SDL_SCANCODE_Y,      SDL_SCANCODE_Z,      SDL_SCANCODE_0,
-                SDL_SCANCODE_1,      SDL_SCANCODE_2,      SDL_SCANCODE_3,
-                SDL_SCANCODE_4,      SDL_SCANCODE_5,      SDL_SCANCODE_6,
-                SDL_SCANCODE_7,      SDL_SCANCODE_8,      SDL_SCANCODE_9,
-                SDL_SCANCODE_F1,     SDL_SCANCODE_F2,     SDL_SCANCODE_F3,
-                SDL_SCANCODE_F4,     SDL_SCANCODE_F5,     SDL_SCANCODE_F6,
-                SDL_SCANCODE_F7,     SDL_SCANCODE_F8,     SDL_SCANCODE_F9,
-                SDL_SCANCODE_F10,    SDL_SCANCODE_F11,    SDL_SCANCODE_F12,
-                SDL_SCANCODE_SPACE,  SDL_SCANCODE_RETURN, SDL_SCANCODE_TAB,
-                SDL_SCANCODE_ESCAPE, SDL_SCANCODE_UP,     SDL_SCANCODE_DOWN,
-                SDL_SCANCODE_LEFT,   SDL_SCANCODE_RIGHT,  SDL_SCANCODE_LSHIFT,
-                SDL_SCANCODE_RSHIFT, SDL_SCANCODE_LCTRL,  SDL_SCANCODE_RCTRL,
-                SDL_SCANCODE_LALT,   SDL_SCANCODE_RALT};
-            for (SDL_Scancode sc : scancodes) {
-              bool pressed = state[sc] ? true : false;
-              bool &last = lastKeyState[sc];
-              if (pressed != last) {
-                const char *name = SDL_GetScancodeName(sc);
-                if (pressed) {
-                  spdlog::info("[keyboard] Key '{}' pressed", name);
-                } else {
-                  spdlog::info("[keyboard] Key '{}' released", name);
-                }
-                last = pressed;
+            static std::array<bool, SDL_NUM_SCANCODES> lastKeyState{};
+            static bool keyboardLogInitialized = false;
+            for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+              bool pressed = GlobalKeyboard::isPressed(static_cast<SDL_Scancode>(i));
+              if (keyboardLogInitialized && pressed != lastKeyState[i]) {
+                const char *name = SDL_GetScancodeName(static_cast<SDL_Scancode>(i));
+                spdlog::info("[keyboard] Key '{}' {}", name,
+                             pressed ? "pressed" : "released");
               }
+              lastKeyState[i] = pressed;
             }
-
-            // Also log a test for 'A' key every time it's pressed (to
-            // double-check)
-            static bool lastA = false;
-            bool aPressed = state[SDL_SCANCODE_A] ? true : false;
-            if (aPressed != lastA) {
-              spdlog::info("[DEBUG] A key state changed to {}",
-                           aPressed ? "pressed" : "released");
-              lastA = aPressed;
-            }
+            keyboardLogInitialized = true;
           } else {
-            spdlog::warn("[DEBUG] SDL_GetKeyboardState returned NULL!");
+            keyboard_logging_entered = false;
           }
-        } // end g_log_buttons
+        } // end keyboard logging
 
         // ---- Apply mapping to meshes ----
         applyMappingToMeshes(w);

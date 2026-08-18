@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "keyboard_input.h"
 #include "settings_window.h"
 #include <iostream>
 #include <spdlog/sinks/rotating_file_sink.h>
@@ -46,7 +47,12 @@ void InitializeProgram() {
   }
   spdlog::info("SDL initialized");
 
-  // ---- 5. Now create the settings window (which initialises ImGui) ----
+  // ---- 5. Start the platform-specific global keyboard backend.
+  // This is independent of the GLFW window focus and is required for
+  // keyboard overlays while another application is focused.
+  GlobalKeyboard::initialize();
+
+  // ---- 6. Now create the settings window (which initialises ImGui) ----
   createSettingsWindow();
   loadTabs();
 }
@@ -80,6 +86,7 @@ void Cleanup() {
   saveTabs();
   removeSettingsWindow();
   destroyWindows();
+  GlobalKeyboard::shutdown();
   SDL_Quit();
   glfwTerminate();
   spdlog::info("Shutdown complete.");

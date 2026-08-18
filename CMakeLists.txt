@@ -27,7 +27,7 @@ find_package(OpenGL REQUIRED)
 find_package(ZLIB REQUIRED)
 
 if(NOT APPLE)
-    find_package(Threads REQUIRED)
+find_package(Threads REQUIRED)
     set(THREAD_LIBRARY Threads::Threads)
 else()
     if(NOT TARGET Threads::Threads)
@@ -60,7 +60,7 @@ add_custom_command(
 # Mark header as generated
 set_source_files_properties(${GEN_HEADER} PROPERTIES GENERATED TRUE)
 
-# ------------------------------------------------------------------
+# ----------------------------------------------------------f--------
 # Executable – uses the collected sources
 # ------------------------------------------------------------------
 add_executable(3dco+ ${SRC_FILES} ${GEN_HEADER})
@@ -134,14 +134,21 @@ else()
 endif()
 
 if(APPLE)
-    target_link_options(3dco+ PRIVATE -L${CMAKE_PREFIX_PATH}/lib)
+    target_link_options(3dco+ PRIVATE
+        -L${CMAKE_PREFIX_PATH}/lib
+    )
 
     target_link_libraries(3dco+ PRIVATE
         ${BASE_LIBS}
+
+        # OpenGL / GLFW / macOS
         "-framework OpenGL"
         "-framework Cocoa"
         "-framework IOKit"
+
+        # Core macOS frameworks
         "-framework CoreFoundation"
+        "-framework CoreGraphics"
         "-framework CoreAudio"
         "-framework AudioToolbox"
         "-framework ForceFeedback"
@@ -153,8 +160,10 @@ if(APPLE)
         "-framework Carbon"
         "-framework CoreHaptics"
         "-framework Foundation"
+
         "-lobjc"
         "-lresolv"
+
         ZLIB::ZLIB
     )
 else()
@@ -166,7 +175,7 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(3dco+ PRIVATE ws2_32 winmm)
+    target_link_libraries(3dco+ PRIVATE ws2_32 winmm user32)
     if(NOT BUILD_STATIC)
         file(GLOB WINDOWS_REDIST "${CMAKE_SOURCE_DIR}/packaging/windows/redist/*.dll")
         foreach(dll ${WINDOWS_REDIST})
