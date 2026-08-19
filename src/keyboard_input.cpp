@@ -36,6 +36,52 @@ std::atomic_bool g_running{false};
 std::mutex g_lifecycleMutex;
 std::string g_status = "not initialized";
 
+// ---- Mouse state ----
+static std::atomic<int> g_mouse_x{0};
+static std::atomic<int> g_mouse_y{0};
+static std::array<std::atomic_bool, 8> g_mouse_buttons{};
+
+// Relative motion is ACCUMULATED here (like scroll below), not overwritten.
+// Backends can emit several raw events per real-world mouse movement (e.g.
+// separate X and Y evdev events on Linux); if we used .store() per event,
+// all but the very last write in a frame would be silently discarded.
+static float g_mouse_dx_accum = 0.0f;
+static float g_mouse_dy_accum = 0.0f;
+static std::mutex g_mouse_delta_mutex;
+
+// ---- Scroll state ----
+static float g_scroll_x_accum = 0.0f;
+static float g_scroll_y_accum = 0.0f;
+static std::mutex g_scroll_mutex;
+
+// Called by a platform backend with a RAW RELATIVE delta (pixels or device
+// counts, whatever unit that platform naturally produces). Accumulates so
+// nothing gets lost between polls of getMouseDelta().
+static void addMouseDelta(float dx, float dy) {
+  std::lock_guard<std::mutex> lock(g_mouse_delta_mutex);
+  g_mouse_dx_accum += dx;
+  g_mouse_dy_accum += dy;
+}
+
+// Purely informational (used for on-screen/log display of an approximate
+// cursor position). Not used to derive movement anymore - deltas come only
+// from addMouseDelta() above.
+static void setMousePosition(int x, int y) {
+  g_mouse_x.store(x);
+  g_mouse_y.store(y);
+}
+
+static void setMouseButton(int idx, bool down) {
+  if (idx >= 0 && idx < 8)
+    g_mouse_buttons[idx].store(down);
+}
+
+static void updateScrollState(float dx, float dy) {
+  std::lock_guard<std::mutex> lock(g_scroll_mutex);
+  g_scroll_x_accum += dx;
+  g_scroll_y_accum += dy;
+}
+
 void clearKeys() {
   for (auto &key : g_keys)
     key.store(false, std::memory_order_relaxed);
@@ -186,7 +232,71 @@ SDL_Scancode vkToScancode(DWORD vk, DWORD scanCode, DWORD flags) {
 }
 
 HHOOK g_hook = nullptr;
+HHOOK g_mouseHook = nullptr;
 std::thread g_thread;
+
+LRESULT CALLBACK lowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+  if (nCode == HC_ACTION && lParam) {
+    const MSLLHOOKSTRUCT *event =
+        reinterpret_cast<const MSLLHOOKSTRUCT *>(lParam);
+    POINT pt = event->pt;
+
+    // Track the previous absolute cursor position so we can report a
+    // relative delta. `havePos` guards against reporting a huge spurious
+    // delta on the very first callback (pos - 0 would otherwise be a jump
+    // from the origin to wherever the cursor currently is).
+    static bool havePos = false;
+    static LONG lastX = 0, lastY = 0;
+
+    int idx = -1;
+    switch (wParam) {
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+      idx = 0;
+      break;
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+      idx = 1;
+      break;
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+      idx = 2;
+      break;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+      idx = (GET_XBUTTON_WPARAM(event->mouseData) == 1) ? 3 : 4;
+      break;
+    case WM_MOUSEWHEEL: {
+      short delta = GET_WHEEL_DELTA_WPARAM(event->mouseData);
+      updateScrollState(0.0f, (float)delta / WHEEL_DELTA);
+      return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    case WM_MOUSEHWHEEL: {
+      short delta = GET_WHEEL_DELTA_WPARAM(event->mouseData);
+      updateScrollState((float)delta / WHEEL_DELTA, 0.0f);
+      return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    default:
+      break;
+    }
+
+    if (idx >= 0) {
+      bool down = (wParam == WM_LBUTTONDOWN || wParam == WM_RBUTTONDOWN ||
+                   wParam == WM_MBUTTONDOWN || wParam == WM_XBUTTONDOWN);
+      setMouseButton(idx, down);
+    }
+
+    if (havePos) {
+      addMouseDelta(static_cast<float>(pt.x - lastX),
+                    static_cast<float>(pt.y - lastY));
+    }
+    lastX = pt.x;
+    lastY = pt.y;
+    havePos = true;
+    setMousePosition(pt.x, pt.y);
+  }
+  return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
 
 LRESULT CALLBACK lowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
   if (nCode == HC_ACTION && lParam) {
@@ -212,7 +322,13 @@ void windowsThread() {
     g_running.store(false);
     return;
   }
-  g_status = "Windows low-level keyboard hook";
+  g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, lowLevelMouseProc,
+                                  GetModuleHandleW(nullptr), 0);
+  if (!g_mouseHook) {
+    spdlog::warn("Global mouse hook failed (mouse will not be detected)");
+  }
+
+  g_status = "Windows low-level keyboard + mouse hooks";
   spdlog::info("Global keyboard backend: {}", g_status);
 
   MSG msg{};
@@ -230,6 +346,10 @@ void windowsThread() {
   if (g_hook) {
     UnhookWindowsHookEx(g_hook);
     g_hook = nullptr;
+  }
+  if (g_mouseHook) {
+    UnhookWindowsHookEx(g_mouseHook);
+    g_mouseHook = nullptr;
   }
 }
 
@@ -468,6 +588,51 @@ CGEventRef macEventCallback(CGEventTapProxy, CGEventType type, CGEventRef event,
       CGEventTapEnable(g_eventTap, true);
     return event;
   }
+
+  // ---- Mouse and scroll events ----
+  if (type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp ||
+      type == kCGEventRightMouseDown || type == kCGEventRightMouseUp ||
+      type == kCGEventOtherMouseDown || type == kCGEventOtherMouseUp ||
+      type == kCGEventMouseMoved || type == kCGEventLeftMouseDragged ||
+      type == kCGEventRightMouseDragged || type == kCGEventOtherMouseDragged) {
+
+    CGPoint loc = CGEventGetLocation(event);
+    setMousePosition((int)loc.x, (int)loc.y);
+
+    // Use the event's own relative-motion fields instead of diffing
+    // absolute location between callbacks. This is what CGEventTap already
+    // computes for us and avoids any position-tracking edge cases.
+    double dx = CGEventGetDoubleValueField(event, kCGMouseEventDeltaX);
+    double dy = CGEventGetDoubleValueField(event, kCGMouseEventDeltaY);
+    addMouseDelta((float)dx, (float)dy);
+
+    int buttonNum = -1;
+    if (type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp)
+      buttonNum = 0;
+    else if (type == kCGEventRightMouseDown || type == kCGEventRightMouseUp)
+      buttonNum = 1;
+    else if (type == kCGEventOtherMouseDown || type == kCGEventOtherMouseUp) {
+      buttonNum =
+          (int)CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
+    }
+    if (buttonNum >= 0 && buttonNum < 8) {
+      bool down =
+          (type == kCGEventLeftMouseDown || type == kCGEventRightMouseDown ||
+           type == kCGEventOtherMouseDown);
+      setMouseButton(buttonNum, down);
+    }
+  }
+
+  if (type == kCGEventScrollWheel) {
+    int64_t deltaY =
+        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1);
+    int64_t deltaX =
+        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis2);
+    updateScrollState((float)deltaX, (float)deltaY);
+    return event;
+  }
+
+  // ---- Keyboard events ----
   if (type != kCGEventKeyDown && type != kCGEventKeyUp)
     return event;
   CGKeyCode key = static_cast<CGKeyCode>(
@@ -477,8 +642,16 @@ CGEventRef macEventCallback(CGEventTapProxy, CGEventType type, CGEventRef event,
 }
 
 void macThread() {
-  CGEventMask mask =
-      CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp);
+  CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) |
+                     CGEventMaskBit(kCGEventKeyUp) |
+                     CGEventMaskBit(kCGEventMouseMoved) |
+                     CGEventMaskBit(kCGEventLeftMouseDown) |
+                     CGEventMaskBit(kCGEventLeftMouseUp) |
+                     CGEventMaskBit(kCGEventRightMouseDown) |
+                     CGEventMaskBit(kCGEventRightMouseUp) |
+                     CGEventMaskBit(kCGEventOtherMouseDown) |
+                     CGEventMaskBit(kCGEventOtherMouseUp) |
+                     CGEventMaskBit(kCGEventScrollWheel);
   g_eventTap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap,
                                 kCGEventTapOptionListenOnly, mask,
                                 macEventCallback, nullptr);
@@ -489,7 +662,7 @@ void macThread() {
     g_running.store(false);
     return;
   }
-  g_status = "macOS CGEventTap";
+  g_status = "macOS CGEventTap (keyboard + mouse + scroll)";
   spdlog::info("Global keyboard backend: {}", g_status);
   CFRunLoopSourceRef source =
       CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_eventTap, 0);
@@ -511,8 +684,14 @@ void macThread() {
 struct LinuxDevice {
   int fd = -1;
   std::string path;
-  std::unordered_set<int> pressed;
+  bool is_mouse = false;
+  bool has_abs = false;
+  bool abs_initialized = false; // true once we've seen a real ABS reading
+  int abs_x = 0, abs_y = 0;
+  bool mouse_buttons[8] = {false};
+  std::unordered_set<int> pressed_keys;
 };
+
 std::thread g_thread;
 
 bool testBit(const unsigned long *bits, int bit) {
@@ -527,11 +706,6 @@ SDL_Scancode linuxKeyToScancode(int key) {
   if (key == KEY_0)
     return SDL_SCANCODE_0;
   switch (key) {
-  // NOTE: Linux evdev KEY_* codes follow the physical AT-scancode keyboard
-  // layout, not alphabetical order (e.g. KEY_A=30, KEY_S=31, KEY_D=32...,
-  // while KEY_Q=16..KEY_P=25 sit in a completely separate block). They are
-  // NOT safe to map with arithmetic offsets - each letter must be listed
-  // explicitly.
   case KEY_A:
     return SDL_SCANCODE_A;
   case KEY_B:
@@ -685,14 +859,26 @@ bool looksLikeKeyboard(int fd) {
   unsigned long bits[(KEY_MAX / (8 * sizeof(unsigned long))) + 1]{};
   if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits) < 0)
     return false;
-  // Require ordinary keyboard keys. This rejects most mice/gamepads while
-  // still accepting compact and laptop keyboards.
   return testBit(bits, KEY_A) && testBit(bits, KEY_Z) &&
          testBit(bits, KEY_SPACE) && testBit(bits, KEY_ENTER);
 }
 
+bool looksLikeMouse(int fd) {
+  unsigned long bits_ev[(EV_MAX / (8 * sizeof(unsigned long))) + 1];
+  if (ioctl(fd, EVIOCGBIT(0, sizeof(bits_ev)), bits_ev) < 0)
+    return false;
+  if (!testBit(bits_ev, EV_KEY))
+    return false;
+  if (!(testBit(bits_ev, EV_REL) || testBit(bits_ev, EV_ABS)))
+    return false;
+  unsigned long bits_key[(KEY_MAX / (8 * sizeof(unsigned long))) + 1];
+  if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits_key)), bits_key) < 0)
+    return false;
+  return testBit(bits_key, BTN_LEFT) || testBit(bits_key, BTN_MOUSE);
+}
+
 void removeDevice(std::vector<LinuxDevice> &devices, size_t index) {
-  for (int key : devices[index].pressed) {
+  for (int key : devices[index].pressed_keys) {
     setKey(linuxKeyToScancode(key), false);
   }
   close(devices[index].fd);
@@ -715,26 +901,41 @@ void scanDevices(std::vector<LinuxDevice> &devices) {
     if (already)
       continue;
     int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0 || !looksLikeKeyboard(fd)) {
-      if (fd >= 0)
-        close(fd);
+    if (fd < 0)
+      continue;
+    bool isKeyboard = looksLikeKeyboard(fd);
+    bool isMouse = looksLikeMouse(fd);
+    if (!isKeyboard && !isMouse) {
+      close(fd);
       continue;
     }
-    devices.push_back({fd, path, {}});
-    spdlog::info("Global keyboard: monitoring {}", path);
+    LinuxDevice dev;
+    dev.fd = fd;
+    dev.path = path;
+    dev.is_mouse = isMouse;
+    unsigned long abs_bits[(ABS_MAX / (8 * sizeof(unsigned long))) + 1] = {};
+    if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits) >= 0) {
+      dev.has_abs = testBit(abs_bits, ABS_X) && testBit(abs_bits, ABS_Y);
+    }
+    if (isKeyboard) {
+      devices.push_back(dev);
+      spdlog::info("Global input: monitoring keyboard {}", path);
+    } else if (isMouse) {
+      devices.push_back(dev);
+      spdlog::info("Global input: monitoring mouse {}", path);
+    }
   }
 }
 
 void linuxThread() {
   std::vector<LinuxDevice> devices;
-  g_status = "Linux evdev (/dev/input/event*)";
+  g_status = "Linux evdev (keyboard + mouse + scroll)";
   scanDevices(devices);
   if (devices.empty()) {
-    spdlog::warn("Global keyboard: no readable keyboard event devices found. "
-                 "On Linux this usually means the user lacks permission to "
-                 "read /dev/input/event*.");
+    spdlog::warn("Global input: no keyboard or mouse devices found. "
+                 "Check permissions for /dev/input/event*.");
   } else {
-    spdlog::info("Global keyboard backend: {}", g_status);
+    spdlog::info("Global input backend: {}", g_status);
   }
 
   auto lastScan = std::chrono::steady_clock::now();
@@ -761,26 +962,103 @@ void linuxThread() {
       }
       if (!(pfds[i].revents & POLLIN))
         continue;
-      input_event event{};
-      while (read(devices[i].fd, &event, sizeof(event)) == sizeof(event)) {
-        if (event.type != EV_KEY)
-          continue;
-        SDL_Scancode sc = linuxKeyToScancode(event.code);
-        if (sc == SDL_SCANCODE_UNKNOWN)
-          continue;
-        if (event.value == 1) {
-          if (devices[i].pressed.insert(event.code).second)
-            setKey(sc, true);
-        } else if (event.value == 0) {
-          devices[i].pressed.erase(event.code);
-          setKey(sc, false);
+      input_event ev{};
+      while (read(devices[i].fd, &ev, sizeof(ev)) == sizeof(ev)) {
+        LinuxDevice &dev = devices[i];
+        if (dev.is_mouse) {
+          if (ev.type == EV_REL) {
+            // EV_REL events ARE the relative delta already - forward them
+            // directly instead of accumulating into a fake position and
+            // diffing that again (which was the source of the runaway
+            // "0-8192" pseudo-coordinate and its clamping bugs).
+            if (ev.code == REL_X) {
+              addMouseDelta((float)ev.value, 0.0f);
+              setMousePosition(dev.abs_x += ev.value, dev.abs_y);
+            } else if (ev.code == REL_Y) {
+              addMouseDelta(0.0f, (float)ev.value);
+              setMousePosition(dev.abs_x, dev.abs_y += ev.value);
+            } else if (ev.code == REL_WHEEL) {
+              updateScrollState(0.0f, (float)ev.value);
+            } else if (ev.code == REL_HWHEEL) {
+              updateScrollState((float)ev.value, 0.0f);
+            }
+          } else if (ev.type == EV_ABS) {
+            // Absolute pointing devices (e.g. touchscreens/tablets) report
+            // position directly; derive a relative delta from consecutive
+            // readings instead of using the raw position as-is.
+            dev.has_abs = true;
+            if (ev.code == ABS_X) {
+              if (dev.abs_initialized)
+                addMouseDelta((float)(ev.value - dev.abs_x), 0.0f);
+              dev.abs_x = ev.value;
+            } else if (ev.code == ABS_Y) {
+              if (dev.abs_initialized)
+                addMouseDelta(0.0f, (float)(ev.value - dev.abs_y));
+              dev.abs_y = ev.value;
+            }
+            setMousePosition(dev.abs_x, dev.abs_y);
+          } else if (ev.type == EV_KEY) {
+            int btn = -1;
+            switch (ev.code) {
+            case BTN_LEFT:
+              btn = 0;
+              break;
+            case BTN_RIGHT:
+              btn = 1;
+              break;
+            case BTN_MIDDLE:
+              btn = 2;
+              break;
+            case BTN_SIDE:
+              btn = 3;
+              break;
+            case BTN_EXTRA:
+              btn = 4;
+              break;
+            case BTN_FORWARD:
+              btn = 5;
+              break;
+            case BTN_BACK:
+              btn = 6;
+              break;
+            case BTN_TASK:
+              btn = 7;
+              break;
+            default:
+              break;
+            }
+            if (btn >= 0 && btn < 8) {
+              dev.mouse_buttons[btn] = (ev.value == 1);
+              setMouseButton(btn, dev.mouse_buttons[btn]);
+            }
+          } else if (ev.type == EV_SYN) {
+            // Mark ABS readings valid only after the first full sync packet
+            // so we don't compute a delta against an uninitialized abs_x/y.
+            dev.abs_initialized = true;
+          }
+        } else {
+          // Keyboard device
+          if (ev.type != EV_KEY)
+            continue;
+          SDL_Scancode sc = linuxKeyToScancode(ev.code);
+          if (sc == SDL_SCANCODE_UNKNOWN)
+            continue;
+          if (ev.value == 1) {
+            if (dev.pressed_keys.insert(ev.code).second)
+              setKey(sc, true);
+          } else if (ev.value == 0) {
+            dev.pressed_keys.erase(ev.code);
+            setKey(sc, false);
+          }
         }
       }
     }
   }
   for (auto &d : devices) {
-    for (int key : d.pressed)
-      setKey(linuxKeyToScancode(key), false);
+    if (!d.is_mouse) {
+      for (int key : d.pressed_keys)
+        setKey(linuxKeyToScancode(key), false);
+    }
     close(d.fd);
   }
 }
@@ -790,7 +1068,7 @@ void linuxThread() {
 std::thread g_thread;
 void unsupportedThread() {
   g_status = "unsupported platform";
-  spdlog::warn("Global keyboard backend: unsupported platform");
+  spdlog::warn("Global input backend: unsupported platform");
 }
 
 #endif
@@ -814,8 +1092,6 @@ bool initialize() {
   g_thread = std::thread(unsupportedThread);
 #endif
 
-  // Give the backend a moment to install its hook/tap or scan devices. The
-  // worker remains asynchronous; failure is reported through the logger.
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   return true;
 }
@@ -850,14 +1126,41 @@ bool isPressed(SDL_Scancode scancode) {
 
 const char *backendName() {
 #ifdef _WIN32
-  return "Windows low-level keyboard hook";
+  return "Windows low-level keyboard + mouse hooks";
 #elif defined(__APPLE__)
-  return "macOS CGEventTap";
+  return "macOS CGEventTap (keyboard + mouse + scroll)";
 #elif defined(__linux__)
-  return "Linux evdev";
+  return "Linux evdev (keyboard + mouse + scroll)";
 #else
   return "unsupported platform";
 #endif
+}
+
+void getMousePosition(int &x, int &y) {
+  x = g_mouse_x.load();
+  y = g_mouse_y.load();
+}
+
+void getMouseDelta(float &dx, float &dy) {
+  std::lock_guard<std::mutex> lock(g_mouse_delta_mutex);
+  dx = g_mouse_dx_accum;
+  dy = g_mouse_dy_accum;
+  g_mouse_dx_accum = 0.0f;
+  g_mouse_dy_accum = 0.0f;
+}
+
+bool isMouseButtonPressed(int button) {
+  if (button < 0 || button >= 8)
+    return false;
+  return g_mouse_buttons[button].load();
+}
+
+void getScrollDelta(float &dx, float &dy) {
+  std::lock_guard<std::mutex> lock(g_scroll_mutex);
+  dx = g_scroll_x_accum;
+  dy = g_scroll_y_accum;
+  g_scroll_x_accum = 0.0f;
+  g_scroll_y_accum = 0.0f;
 }
 
 } // namespace GlobalKeyboard

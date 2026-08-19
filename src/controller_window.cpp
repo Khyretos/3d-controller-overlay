@@ -1,6 +1,6 @@
 #include "controller_window.h"
-#include "keyboard_input.h"
 #include "cube_info.h"
+#include "keyboard_input.h"
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
@@ -13,11 +13,36 @@ extern unsigned selected_tab;
 extern unsigned selected_mesh;
 extern std::vector<window_tab> tabs;
 
-extern bool g_log_buttons;
+extern bool g_log_controller;
+extern bool g_log_keyboard;
+extern bool g_log_mouse;
+
 extern std::string config_base_path;
 extern bool gQuit;
 
 static GLuint g_glowTexture = 0;
+const char *getMouseButtonName(int button) {
+  switch (button) {
+  case GLFW_MOUSE_BUTTON_LEFT:
+    return "Left";
+  case GLFW_MOUSE_BUTTON_RIGHT:
+    return "Right";
+  case GLFW_MOUSE_BUTTON_MIDDLE:
+    return "Middle";
+  case 4:
+    return "Button 4";
+  case 5:
+    return "Button 5";
+  case 6:
+    return "Button 6";
+  case 7:
+    return "Button 7";
+  case 8:
+    return "Button 8";
+  default:
+    return nullptr;
+  }
+}
 
 void createGlowTexture() {
   if (g_glowTexture)
@@ -32,10 +57,9 @@ void createGlowTexture() {
       float alpha = 1.0f - dist;
       if (alpha < 0)
         alpha = 0;
-      // Smoothstep for soft falloff
       alpha = alpha * alpha * (3 - 2 * alpha);
       int idx = (y * size + x) * 4;
-      data[idx + 0] = 100; // Light blue glow
+      data[idx + 0] = 100;
       data[idx + 1] = 180;
       data[idx + 2] = 255;
       data[idx + 3] = (unsigned char)(alpha * 255);
@@ -52,7 +76,6 @@ void createGlowTexture() {
 }
 void createTouchAreaRect(controller_window &w) {
   if (!w.touch_area_vao) {
-    // Vertices in the XZ plane (Y=0), centered at origin.
     float vertices[] = {-0.5f, 0.0f, -0.5f, 0.5f,  0.0f, -0.5f,
                         0.5f,  0.0f, 0.5f,  -0.5f, 0.0f, 0.5f};
     unsigned int line_indices[] = {0, 1, 1, 2, 2, 3, 3, 0};
@@ -72,21 +95,19 @@ void createTouchAreaRect(controller_window &w) {
   }
 }
 
-// Helper to log axis changes (only when logging is enabled)
 void logAxisChange(controller_window &w, int axisIdx, float value,
                    const std::string &label) {
-  if (g_log_buttons && axisIdx < 32) {
+  if (g_log_controller && axisIdx < 32) {
     float diff = value - w.last_axis_values[axisIdx];
-    if (fabs(diff) > 0.01f) { // avoid spam
+    if (fabs(diff) > 0.01f) {
       spdlog::info("Axis {} ({}) changed to {:.3f}", axisIdx, label, value);
       w.last_axis_values[axisIdx] = value;
     }
   }
 }
 
-// Helper to log hat changes
 void logHatChange(controller_window &w, int hatIdx, Uint8 value) {
-  if (g_log_buttons && hatIdx < 16) {
+  if (g_log_controller && hatIdx < 16) {
     if (value != w.last_hat_values[hatIdx]) {
       const char *dirName = "Center";
       switch (value) {
@@ -140,7 +161,6 @@ unsigned int defaultWidth = 640;
 unsigned int defaultHeight = 480;
 std::vector<controller_window> windows;
 
-// Helper: get axis value with choice of raw joystick or gamecontroller
 float get_axis_value_choice(controller_window &w, int axis_idx, bool useRaw) {
   if (useRaw) {
     SDL_Joystick *joy = nullptr;
@@ -154,23 +174,18 @@ float get_axis_value_choice(controller_window &w, int axis_idx, bool useRaw) {
     }
     return 0.0f;
   } else {
-    // gamecontroller API
     if (w.is_gamecontroller && w.sdl_controller) {
       if (axis_idx >= 0 && axis_idx < 6) {
         return SDL_GameControllerGetAxis(w.sdl_controller,
                                          (SDL_GameControllerAxis)axis_idx) /
                32767.0f;
       }
-      // For axes beyond 6, fallback to raw joystick? We'll return 0.
     }
     return 0.0f;
   }
 }
 
-// Helper: get axis value (original behaviour for gamecontroller)
 float get_axis_value(controller_window &w, int axis_idx) {
-  // For standard axes 0-5 use gamecontroller API, for extra axes use raw
-  // joystick.
   if (axis_idx < 6) {
     return get_axis_value_choice(w, axis_idx, false);
   } else {
@@ -178,10 +193,8 @@ float get_axis_value(controller_window &w, int axis_idx) {
   }
 }
 
-// Helper: get button value with choice
 bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
   if (useRaw) {
-
     SDL_Joystick *joy = nullptr;
     if (w.is_gamecontroller && w.sdl_controller) {
       joy = SDL_GameControllerGetJoystick(w.sdl_controller);
@@ -203,7 +216,6 @@ bool get_button_value_choice(controller_window &w, int btn_idx, bool useRaw) {
   }
 }
 
-// Helper: get hat value (raw joystick)
 static Uint8 getHatValue(controller_window &w, int hatIdx) {
   if (w.sdl_joystick && hatIdx < SDL_JoystickNumHats(w.sdl_joystick)) {
     return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
@@ -214,7 +226,7 @@ static Uint8 getHatValue(controller_window &w, int hatIdx) {
 void createControllerWindow(std::string title, std::string model_path) {
   controller_window w;
   w.gyro_sensitivity = 5.0f;
-  w.logger = spdlog::get("3dco+"); // reuse global logger
+  w.logger = spdlog::get("3dco+");
 
   glfwWindowHint(GLFW_SAMPLES, 4);
   w.glfw_window =
@@ -227,7 +239,6 @@ void createControllerWindow(std::string title, std::string model_path) {
   glfwMakeContextCurrent(w.glfw_window);
   glEnable(GL_MULTISAMPLE);
 
-  // Icon loading
   GLFWimage images[1];
   images[0].pixels =
       stbi_load("icon.png", &images[0].width, &images[0].height, 0, 4);
@@ -267,10 +278,7 @@ void createControllerWindow(std::string title, std::string model_path) {
 
   w.model_name = get_top_folder(model_path);
 
-  // --- Device enumeration and opening ---
-  // Skip if this is a dummy preview window (import preview)
   if (model_path == "dummy") {
-    // Dummy preview window – no controller attached
     spdlog::info("Creating import preview window (no controller)");
     w.sdl_controller = nullptr;
     w.sdl_joystick = nullptr;
@@ -296,7 +304,6 @@ void createControllerWindow(std::string title, std::string model_path) {
                       name ? name : "Unknown", is_game);
       }
 
-      // For now, open the first available device
       int chosen = 0;
       if (SDL_IsGameController(chosen)) {
         w.sdl_controller = SDL_GameControllerOpen(chosen);
@@ -305,13 +312,11 @@ void createControllerWindow(std::string title, std::string model_path) {
         if (w.sdl_controller) {
           spdlog::info("Opened gamecontroller: {}",
                        SDL_GameControllerName(w.sdl_controller));
-          // Enable sensors if available
           if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_GYRO)) {
             SDL_GameControllerSetSensorEnabled(w.sdl_controller,
                                                SDL_SENSOR_GYRO, SDL_TRUE);
             spdlog::info("Controller has gyro: true");
             w.gyro_enabled = true;
-            // Read initial timestamp to avoid large dt on first frame
             Uint64 timestamp;
             if (SDL_GameControllerGetSensorDataWithTimestamp(
                     w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
@@ -337,13 +342,11 @@ void createControllerWindow(std::string title, std::string model_path) {
         if (w.sdl_joystick) {
           spdlog::info("Opened generic joystick: {}",
                        SDL_JoystickName(w.sdl_joystick));
-          // --- Match sensors by device instance ID ---
           SDL_JoystickID joyID = SDL_JoystickInstanceID(w.sdl_joystick);
           int num_sensors = SDL_NumSensors();
           for (int s = 0; s < num_sensors; ++s) {
             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
               SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
-              // If the sensor's instance ID matches the joystick's, open it.
               if (sensorID == joyID) {
                 w.gyro_sensor = SDL_SensorOpen(s);
                 if (w.gyro_sensor) {
@@ -354,8 +357,6 @@ void createControllerWindow(std::string title, std::string model_path) {
               }
             }
           }
-          // If no matching gyro was found, fallback to opening the first gyro
-          // sensor (some platforms may not have the same instance ID).
           if (!w.gyro_sensor) {
             for (int s = 0; s < num_sensors; ++s) {
               if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_GYRO) {
@@ -368,7 +369,6 @@ void createControllerWindow(std::string title, std::string model_path) {
               }
             }
           }
-          // Same for accelerometer
           for (int s = 0; s < num_sensors; ++s) {
             if (SDL_SensorGetDeviceType(s) == SDL_SENSOR_ACCEL) {
               SDL_SensorID sensorID = SDL_SensorGetDeviceInstanceID(s);
@@ -399,7 +399,6 @@ void createControllerWindow(std::string title, std::string model_path) {
       }
     }
   } else {
-    // Dummy preview window – no controller attached
     spdlog::info("Creating import preview window (no controller)");
     w.sdl_controller = nullptr;
     w.sdl_joystick = nullptr;
@@ -415,7 +414,6 @@ void createControllerWindow(std::string title, std::string model_path) {
 
   w.gyro_matrix = glm::mat4(1.0f);
 
-  // ----- RESET BUTTON STATES FOR THIS WINDOW -----
   for (int i = 0; i < 128; ++i) {
     w.last_joy_button_values[i] = false;
   }
@@ -426,8 +424,9 @@ void createControllerWindow(std::string title, std::string model_path) {
   windows.push_back(w);
 }
 
-void applyMappingToMeshes(controller_window &w) {
-  // Static key map for keyboard input (includes both left/right modifiers)
+void applyMappingToMeshes(controller_window &w, float globalMouseDx,
+                          float globalMouseDy, float globalScrollDx,
+                          float globalScrollDy) {
   static const std::unordered_map<std::string, SDL_Scancode> keyMap = {
       {"key_a", SDL_SCANCODE_A},          {"key_b", SDL_SCANCODE_B},
       {"key_c", SDL_SCANCODE_C},          {"key_d", SDL_SCANCODE_D},
@@ -472,7 +471,6 @@ void applyMappingToMeshes(controller_window &w) {
     std::string type = mesh.inputBinding.substr(0, colon);
     std::string value = mesh.inputBinding.substr(colon + 1);
 
-    // Reset press/highlight for this mesh
     mesh.press = 0.0f;
     mesh.highlight_value = 0.0f;
     mesh.pull = 0.0f;
@@ -480,7 +478,6 @@ void applyMappingToMeshes(controller_window &w) {
     if (type == "gamepad" || type == "joystick") {
       bool useRaw = (type == "joystick");
 
-      // ---- Full stick bindings ----
       if (value == "leftstick") {
         float lx = get_axis_value_choice(w, 0, useRaw);
         float ly = get_axis_value_choice(w, 1, useRaw);
@@ -509,7 +506,6 @@ void applyMappingToMeshes(controller_window &w) {
         continue;
       }
 
-      // ---- Buttons / axes / hats ----
       char prefix = value[0];
       int num = 0, hatDir = -1;
       bool isDirection = false;
@@ -592,7 +588,6 @@ void applyMappingToMeshes(controller_window &w) {
         }
       }
 
-      // ---- Touchpad handling (only for gamepad) ----
       if (type == "gamepad" && value.rfind("touch", 0) == 0) {
         std::string rest = value.substr(5);
         size_t underscore1 = rest.find('_');
@@ -601,7 +596,6 @@ void applyMappingToMeshes(controller_window &w) {
           std::string rest2 = rest.substr(underscore1 + 1);
           size_t underscore2 = rest2.find('_');
           if (underscore2 == std::string::npos) {
-            // Combined: touchX_fY
             std::string fingerStr = rest2;
             int touchpadIdx = std::stoi(touchStr);
             int fingerIdx = std::stoi(fingerStr.substr(1));
@@ -620,7 +614,6 @@ void applyMappingToMeshes(controller_window &w) {
                 mesh.touch_state = 1;
                 mesh.glow_intensity = 1.0f;
 
-                // AUTO-ANCHOR
                 int part = mesh.assignedPart;
                 if (part == 30 || part == 31 || part == 33 || part == 34) {
                   int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
@@ -653,7 +646,6 @@ void applyMappingToMeshes(controller_window &w) {
               }
             }
           } else {
-            // Per-axis: touchX_fY_z
             std::string fingerStr = rest2.substr(0, underscore2);
             char axis = rest2.back();
             int touchpadIdx = std::stoi(touchStr);
@@ -672,7 +664,6 @@ void applyMappingToMeshes(controller_window &w) {
                 mesh.touch_state = 1;
                 mesh.glow_intensity = 1.0f;
 
-                // AUTO-ANCHOR (same)
                 int part = mesh.assignedPart;
                 if (part == 30 || part == 31 || part == 33 || part == 34) {
                   int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
@@ -706,7 +697,157 @@ void applyMappingToMeshes(controller_window &w) {
             }
           }
         }
-        continue; // done with this mesh
+        continue;
+      }
+    } else if (type == "mouse") {
+      // Determine which delta to use based on binding name
+      float dx = 0.0f, dy = 0.0f;
+      bool isScroll = false;
+      if (value == "mouse_xy" || value == "mouse_x" || value == "mouse_y") {
+        dx = globalMouseDx;
+        dy = globalMouseDy;
+        isScroll = false;
+      } else if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
+                 value == "mouse_scroll_y") {
+        dx = globalScrollDx;
+        dy = globalScrollDy;
+        isScroll = true;
+      }
+
+      if (value == "mouse_xy" || value == "mouse_scroll_xy") {
+        dx *= w.mouse_sensitivity;
+        dy *= w.mouse_sensitivity;
+        bool isTouchPoint =
+            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
+             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        if (isTouchPoint) {
+          // Accumulated position: cap per-frame movement, scaled by
+          // deltaTime (rather than a fixed constant like the old 0.1) so a
+          // normal mouse motion doesn't blow past the cap on nearly every
+          // frame regardless of framerate. A fixed per-frame cap meant the
+          // touchpoint reached max speed toward whichever corner almost
+          // instantly on any real mouse movement.
+          const float MAX_DELTA_PER_SEC = 3.0f; // touch-area widths / sec
+          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
+          dx = std::max(-maxDelta, std::min(maxDelta, dx));
+          dy = std::max(-maxDelta, std::min(maxDelta, dy));
+          mesh.touch_X += dx;
+          mesh.touch_Y += dy;
+          mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
+          mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
+          // Only refresh the "last moved" timestamp when there was actual
+          // motion this frame. Refreshing it unconditionally (every frame
+          // the binding is simply active) meant the idle check below never
+          // saw a large enough gap to fire, so the touchpoint never snapped
+          // back to center.
+          if (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f)
+            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+          mesh.touch_state = 1;
+          mesh.glow_intensity = 1.0f;
+          mesh.stick_X = 0.0f;
+          mesh.stick_Y = 0.0f;
+          mesh.highlight_value =
+              (fabs(dx) > 0.01f || fabs(dy) > 0.01f) ? 1.0f : 0.0f;
+        } else {
+          // Absolute deflection, not accumulated - clamp to the full stick
+          // range instead of the touchpoint's per-frame cap.
+          dx = std::max(-1.0f, std::min(1.0f, dx));
+          dy = std::max(-1.0f, std::min(1.0f, dy));
+          if (mesh.invert) {
+            dx = -dx;
+            dy = -dy;
+          }
+          mesh.stick_X = dx * 32767.0f;
+          mesh.stick_Y = dy * 32767.0f;
+          mesh.highlight_value = (fabs(dx) > 0.1f || fabs(dy) > 0.1f)
+                                     ? std::max(fabs(dx), fabs(dy)) * 1.2f
+                                     : 0.0f;
+        }
+        continue;
+      } else if (value == "mouse_x" || value == "mouse_scroll_x") {
+        float val = dx * w.mouse_sensitivity;
+        bool isTouchPoint =
+            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
+             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        if (isTouchPoint) {
+          // Accumulated position: cap per-frame movement (frame-time scaled,
+          // not a fixed constant) before adding it in, or a fast flick would
+          // jump the touchpoint straight to an edge in a single frame.
+          const float MAX_DELTA_PER_SEC = 3.0f;
+          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
+          val = std::max(-maxDelta, std::min(maxDelta, val));
+          if (mesh.invert)
+            val = -val;
+          mesh.touch_X += val;
+          mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
+          if (fabs(val) > 0.0001f)
+            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+          mesh.touch_state = 1;
+          mesh.glow_intensity = 1.0f;
+          mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
+        } else {
+          // Absolute deflection, not accumulated - clamp to the full stick
+          // range instead of the touchpoint's per-frame cap.
+          val = std::max(-1.0f, std::min(1.0f, val));
+          if (mesh.invert)
+            val = -val;
+          mesh.stick_X = val * 32767.0f;
+          mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
+        }
+        continue;
+      } else if (value == "mouse_y" || value == "mouse_scroll_y") {
+        float val = dy * w.mouse_sensitivity;
+        bool isTouchPoint =
+            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
+             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        if (isTouchPoint) {
+          const float MAX_DELTA_PER_SEC = 3.0f;
+          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
+          val = std::max(-maxDelta, std::min(maxDelta, val));
+          if (mesh.invert)
+            val = -val;
+          mesh.touch_Y += val;
+          mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
+          if (fabs(val) > 0.0001f)
+            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+          mesh.touch_state = 1;
+          mesh.glow_intensity = 1.0f;
+          mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
+        } else {
+          val = std::max(-1.0f, std::min(1.0f, val));
+          if (mesh.invert)
+            val = -val;
+          mesh.stick_Y = val * 32767.0f;
+          mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
+        }
+        continue;
+      } else {
+        // Mouse buttons
+        int button = -1;
+        if (value == "mouse_left")
+          button = 0;
+        else if (value == "mouse_right")
+          button = 1;
+        else if (value == "mouse_middle")
+          button = 2;
+        else if (value == "mouse_4")
+          button = 3;
+        else if (value == "mouse_5")
+          button = 4;
+        else if (value == "mouse_6")
+          button = 5;
+        else if (value == "mouse_7")
+          button = 6;
+        else if (value == "mouse_8")
+          button = 7;
+        if (button >= 0 && button < 8) {
+          bool pressed = GlobalKeyboard::isMouseButtonPressed(button);
+          if (mesh.invert)
+            pressed = !pressed;
+          mesh.press = pressed ? 1.0f : 0.0f;
+          mesh.highlight_value = pressed ? 1.0f : 0.0f;
+        }
+        continue;
       }
     } else if (type == "keyboard") {
       if (value.empty()) {
@@ -734,24 +875,22 @@ void applyMappingToMeshes(controller_window &w) {
 void controller_window_input() {
   SDL_PumpEvents();
 
-  static bool keyboard_logging_entered = false;
+  float globalMouseDx, globalMouseDy;
+  GlobalKeyboard::getMouseDelta(globalMouseDx, globalMouseDy);
+
+  float globalScrollDx, globalScrollDy;
+  GlobalKeyboard::getScrollDelta(globalScrollDx, globalScrollDy);
+
+  int globalMouseX, globalMouseY;
+  GlobalKeyboard::getMousePosition(globalMouseX, globalMouseY);
 
   for (auto &w : windows) {
-    // Helper: safe access to mesh by index
-    auto meshAt = [&](int idx) -> Mesh * {
-      return (idx >= 0 && idx < (int)w.model.meshes.size())
-                 ? &w.model.meshes[idx]
-                 : nullptr;
-    };
-
-    // ---------- CONTROLLER INPUT (skip for preview windows) ----------
     if (!w.is_import_preview) {
       if (w.model.meshes.empty()) {
         spdlog::warn("Controller window has empty model meshes; skipping "
                      "controller input.");
-        // Still allow mouse orbit below
       } else {
-        // --- GYRO ---
+        // Gyro processing (unchanged)
         if (w.gyro_enabled) {
           bool has_gyro_source = false;
           if (w.is_gamecontroller && w.sdl_controller) {
@@ -760,7 +899,6 @@ void controller_window_input() {
             if (SDL_GameControllerGetSensorDataWithTimestamp(
                     w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
                     3) == 0) {
-              // ---- Process gamecontroller gyro data ----
               if (isnan(w.gyro_data[0]) || isnan(w.gyro_data[1]) ||
                   isnan(w.gyro_data[2])) {
                 if (w.gyro_debug_logging) {
@@ -869,17 +1007,15 @@ void controller_window_input() {
               w.gyro_data[0] = sensor_data[0];
               w.gyro_data[1] = sensor_data[1];
               w.gyro_data[2] = sensor_data[2];
-              // same processing as above (reuse the same block)
-              // ... (to keep it short, I'll assume you reuse the same logic)
             }
           } else {
             w.gyro_enabled = false;
             w.gyro_debug_logging = false;
           }
         skip_gyro_processing:;
-        } // end gyro
+        }
 
-        // ---- Touchpad data ----
+        // Touchpad data (unchanged)
         if (w.is_gamecontroller && w.sdl_controller) {
           int touch_pads = SDL_GameControllerGetNumTouchpads(w.sdl_controller);
           for (int t = 0; t < touch_pads && t < 4; ++t) {
@@ -893,50 +1029,15 @@ void controller_window_input() {
           }
         }
 
-        // ============================================================
-        //  RAW LOGGING (independent of mesh bindings)
-        // ============================================================
-        if (g_log_buttons) {
-          // ---- CONTROLLER RAW LOGGING ----
+        // LOGGING
+        if (g_log_controller) {
           if (w.is_gamecontroller && w.sdl_controller) {
             SDL_Joystick *joy = SDL_GameControllerGetJoystick(w.sdl_controller);
             if (joy) {
-              // Log axes
               int numAxes = SDL_JoystickNumAxes(joy);
               for (int i = 0; i < numAxes; ++i) {
                 float val = get_axis_value(w, i);
-                std::string label;
-                if (i < 6) {
-                  switch (i) {
-                  case 0:
-                    label = "Left X";
-                    break;
-                  case 1:
-                    label = "Left Y";
-                    break;
-                  case 2:
-                    label = "Right X";
-                    break;
-                  case 3:
-                    label = "Right Y";
-                    break;
-                  case 4:
-                    label = "Left Trigger";
-                    break;
-                  case 5:
-                    label = "Right Trigger";
-                    break;
-                  default:
-                    label = "Axis " + std::to_string(i);
-                    break;
-                  }
-                } else {
-                  label = "Axis " + std::to_string(i);
-                }
-                logAxisChange(w, i, val, label);
               }
-
-              // Log joystick buttons (raw)
               int numJoyButtons = SDL_JoystickNumButtons(joy);
               for (int b = 0; b < numJoyButtons; ++b) {
                 bool pressed = SDL_JoystickGetButton(joy, b);
@@ -945,8 +1046,6 @@ void controller_window_input() {
                 }
                 w.last_joy_button_values[b] = pressed;
               }
-
-              // Log gamecontroller buttons
               for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; ++b) {
                 bool pressed = SDL_GameControllerGetButton(
                     w.sdl_controller, (SDL_GameControllerButton)b);
@@ -958,8 +1057,6 @@ void controller_window_input() {
                 }
                 w.last_button_values[b] = pressed;
               }
-
-              // Log touchpad events
               int numTouchpads =
                   SDL_GameControllerGetNumTouchpads(w.sdl_controller);
               for (int t = 0; t < numTouchpads; ++t) {
@@ -983,7 +1080,6 @@ void controller_window_input() {
               }
             }
           } else if (!w.is_gamecontroller && w.sdl_joystick) {
-            // Generic joystick
             int numButtons = SDL_JoystickNumButtons(w.sdl_joystick);
             for (int i = 0; i < numButtons; ++i) {
               bool pressed = SDL_JoystickGetButton(w.sdl_joystick, i);
@@ -992,52 +1088,103 @@ void controller_window_input() {
               }
               w.last_joy_button_values[i] = pressed;
             }
-
             int numAxes = SDL_JoystickNumAxes(w.sdl_joystick);
             for (int i = 0; i < numAxes; ++i) {
               float val = SDL_JoystickGetAxis(w.sdl_joystick, i) / 32767.0f;
               std::string label = "Generic Axis " + std::to_string(i);
               logAxisChange(w, i, val, label);
             }
-
             int numHats = SDL_JoystickNumHats(w.sdl_joystick);
             for (int i = 0; i < numHats; ++i) {
               Uint8 hatVal = SDL_JoystickGetHat(w.sdl_joystick, i);
               logHatChange(w, i, hatVal);
             }
           }
+        }
 
-          // ---- GLOBAL KEYBOARD LOGGING ----
-          // SDL_GetKeyboardState() only tracks SDL's own keyboard event path.
-          // This application is a GLFW overlay, so use the platform backend
-          // instead. It works even when another application owns keyboard focus.
-          if (g_log_buttons) {
-            if (!keyboard_logging_entered) {
-              spdlog::info("[DEBUG] Global keyboard logging block entered");
-              keyboard_logging_entered = true;
+        if (g_log_keyboard) {
+          static std::array<bool, SDL_NUM_SCANCODES> lastKeyState{};
+          static bool keyboardLogInitialized = false;
+          for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+            bool pressed =
+                GlobalKeyboard::isPressed(static_cast<SDL_Scancode>(i));
+            if (keyboardLogInitialized && pressed != lastKeyState[i]) {
+              const char *name =
+                  SDL_GetScancodeName(static_cast<SDL_Scancode>(i));
+              spdlog::info("[keyboard] Key '{}' {}", name,
+                           pressed ? "pressed" : "released");
             }
-
-            static std::array<bool, SDL_NUM_SCANCODES> lastKeyState{};
-            static bool keyboardLogInitialized = false;
-            for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
-              bool pressed = GlobalKeyboard::isPressed(static_cast<SDL_Scancode>(i));
-              if (keyboardLogInitialized && pressed != lastKeyState[i]) {
-                const char *name = SDL_GetScancodeName(static_cast<SDL_Scancode>(i));
-                spdlog::info("[keyboard] Key '{}' {}", name,
-                             pressed ? "pressed" : "released");
-              }
-              lastKeyState[i] = pressed;
-            }
-            keyboardLogInitialized = true;
-          } else {
-            keyboard_logging_entered = false;
+            lastKeyState[i] = pressed;
           }
-        } // end keyboard logging
+          keyboardLogInitialized = true;
+        }
 
-        // ---- Apply mapping to meshes ----
-        applyMappingToMeshes(w);
+        if (g_log_mouse) {
+          static std::array<bool, 8> prevMouseButtons{};
+          static bool mouseLogInitialized = false;
+          if (!mouseLogInitialized) {
+            for (int b = 0; b < 8; ++b)
+              prevMouseButtons[b] = GlobalKeyboard::isMouseButtonPressed(b);
+            mouseLogInitialized = true;
+          }
+          for (int b = 0; b < 8; ++b) {
+            bool current = GlobalKeyboard::isMouseButtonPressed(b);
+            if (current != prevMouseButtons[b]) {
+              const char *name = getMouseButtonName(b);
+              std::string buttonName;
+              if (name) {
+                buttonName = name;
+              } else {
+                buttonName = "Button " + std::to_string(b);
+              }
+              spdlog::info("[mouse] {} {}", buttonName,
+                           current ? "pressed" : "released");
+              prevMouseButtons[b] = current;
+            }
+          }
+          static float last_log_mouse_x = 0.0f, last_log_mouse_y = 0.0f;
+          if (fabs(globalMouseX - last_log_mouse_x) > 5.0f ||
+              fabs(globalMouseY - last_log_mouse_y) > 5.0f) {
+            spdlog::info("[mouse] move to ({:.1f}, {:.1f})",
+                         static_cast<float>(globalMouseX),
+                         static_cast<float>(globalMouseY));
+            last_log_mouse_x = static_cast<float>(globalMouseX);
+            last_log_mouse_y = static_cast<float>(globalMouseY);
+          }
+          if (fabs(globalScrollDx) > 0.01f || fabs(globalScrollDy) > 0.01f) {
+            spdlog::info("[mouse] scroll ({:.1f}, {:.1f})", globalScrollDx,
+                         globalScrollDy);
+          }
+        }
 
-        // ---- Propagate stick motion to children (rings, caps) ----
+        applyMappingToMeshes(w, globalMouseDx, globalMouseDy, globalScrollDx,
+                             globalScrollDy);
+
+        // ---- Reset touchpoints to center if mouse is idle ----
+        double current_time = glfwGetTime();
+        for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
+          Mesh &mesh = w.model.meshes[meshIdx];
+          // Only for meshes bound to mouse input
+          if (mesh.inputBinding.find("mouse:") != 0)
+            continue;
+          bool isTouchPoint =
+              (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
+               mesh.assignedPart == 33 || mesh.assignedPart == 34);
+          if (!isTouchPoint)
+            continue;
+          auto it = w.touchpoint_last_move_time.find(meshIdx);
+          if (it == w.touchpoint_last_move_time.end())
+            continue;
+          if (current_time - it->second > w.mouse_idle_timeout) {
+            mesh.touch_X = 0.5f;
+            mesh.touch_Y = 0.5f;
+            mesh.touch_state = 0;
+            mesh.glow_intensity = 0.0f;
+            mesh.highlight_value = 0.0f;
+          }
+        }
+
+        // Propagate stick motion
         for (int stickPart : {5, 6}) {
           Mesh *stickMesh = nullptr;
           int stickIndex = -1;
@@ -1066,10 +1213,9 @@ void controller_window_input() {
             }
           }
         }
-      } // end if (!w.is_import_preview)
+      }
 
-      // ---------- MOUSE ORBIT & ZOOM (for ALL windows, unless freelook)
-      // ----------
+      // Window-relative mouse for orbit/pivot (unchanged)
       if (!w.freelook) {
         int win_width, win_height;
         glfwGetWindowSize(w.glfw_window, &win_width, &win_height);
@@ -1078,10 +1224,24 @@ void controller_window_input() {
 
         double mouse_x, mouse_y;
         glfwGetCursorPos(w.glfw_window, &mouse_x, &mouse_y);
+
+        w.mouse_delta_x = (float)mouse_x - w.mouse_x;
+        w.mouse_delta_y = (float)mouse_y - w.mouse_y;
+        w.mouse_x = (float)mouse_x;
+        w.mouse_y = (float)mouse_y;
+
+        for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
+          w.mouse_buttons_prev[b] = w.mouse_buttons[b];
+
+        for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
+          w.mouse_buttons[b] =
+              (glfwGetMouseButton(w.glfw_window, b) == GLFW_PRESS);
+
         int left_button =
-            glfwGetMouseButton(w.glfw_window, GLFW_MOUSE_BUTTON_LEFT);
-        int middle_button =
-            glfwGetMouseButton(w.glfw_window, GLFW_MOUSE_BUTTON_MIDDLE);
+            w.mouse_buttons[GLFW_MOUSE_BUTTON_LEFT] ? GLFW_PRESS : GLFW_RELEASE;
+        int middle_button = w.mouse_buttons[GLFW_MOUSE_BUTTON_MIDDLE]
+                                ? GLFW_PRESS
+                                : GLFW_RELEASE;
 
         bool pivotHit = false;
         glm::vec3 pivotPos(0.0f);
@@ -1172,9 +1332,9 @@ void controller_window_input() {
           w.camera_roll = 0.0f;
         }
       }
-    } // end for each window
+    }
 
-    // ---- Close windows that should close ----
+    // Close windows that should close
     for (int i = (int)windows.size() - 1; i >= 0; --i) {
       if (glfwWindowShouldClose(windows[i].glfw_window)) {
         gQuit = true;
@@ -1185,7 +1345,7 @@ void controller_window_input() {
 }
 
 // ----------------------------------------------------------------------
-//  GLOBAL FUNCTIONS (outside controller_window_input)
+//  GLOBAL FUNCTIONS
 // ----------------------------------------------------------------------
 
 void controller_sdl_events(SDL_Event *event) {
@@ -1383,9 +1543,6 @@ void update_camera(controller_window &w, GLuint &shader, int window_width,
   glUseProgram(0);
 }
 
-// drawControllerWindows() – keep your existing implementation, but make sure
-// the call to drawModel passes the global press color. We'll modify that in
-// Step 3.
 void drawControllerWindows() {
   for (controller_window &w : windows) {
     if (glfwWindowShouldClose(w.glfw_window))
@@ -1417,7 +1574,6 @@ void drawControllerWindows() {
                    w.bg_color[2] * w.bg_color[3], 1.0f * w.bg_color[3]);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-      // --- Draw grid ---
       if (w.grid) {
         glBindVertexArray(w.grid_vao);
         glUseProgram(w.grid_shader);
@@ -1432,7 +1588,6 @@ void drawControllerWindows() {
         glDrawElements(GL_LINES, w.grid_length, GL_UNSIGNED_INT, NULL);
       }
 
-      // --- Draw light sources ---
       glBindVertexArray(w.lighting_vao);
       glUseProgram(w.light_source_shader);
       for (point_light p : w.point_lights) {
@@ -1465,7 +1620,6 @@ void drawControllerWindows() {
         }
       }
 
-      // --- Draw main model ---
       glUseProgram(w.shader);
 
       if (w.freelook)
@@ -1475,7 +1629,6 @@ void drawControllerWindows() {
 
       shaderUniformFloat(w.shader, "time", glfwGetTime());
 
-      // Direct lights
       shaderUniformInt(w.shader, "direct_lights", w.direct_lights.size());
       for (unsigned i = 0; i < w.direct_lights.size(); ++i) {
         std::string name = "dirLights[";
@@ -1504,7 +1657,6 @@ void drawControllerWindows() {
                           w.direct_lights[i].specular));
       }
 
-      // Point lights
       shaderUniformInt(w.shader, "point_lights", w.point_lights.size());
       for (unsigned i = 0; i < w.point_lights.size(); ++i) {
         std::string name = "pointLights[";
@@ -1533,7 +1685,6 @@ void drawControllerWindows() {
                           w.point_lights[i].specular);
       }
 
-      // Spot lights
       shaderUniformInt(w.shader, "spot_lights", w.spot_lights.size());
       for (unsigned i = 0; i < w.spot_lights.size(); ++i) {
         std::string name = "spotLights[";
@@ -1572,7 +1723,6 @@ void drawControllerWindows() {
                           w.spot_lights[i].specular);
       }
 
-      // --- Draw model ---
       int highlight =
           w.is_import_preview ? w.import_preview.selected_mesh_index : -1;
       if (w.is_import_preview) {
@@ -1583,7 +1733,6 @@ void drawControllerWindows() {
       }
       w.model.motion_matrix = w.gyro_matrix;
 
-      // Decay glow for touch points, but only if they are not mapped
       float decay = 1.0f - w.deltaTime * 1.2f;
       if (decay < 0.0f)
         decay = 0.0f;
@@ -1591,11 +1740,9 @@ void drawControllerWindows() {
       for (auto &mesh : w.model.meshes) {
         int part = mesh.assignedPart;
         if (mesh.touch_state > 0) {
-          // Apply decay to all touch points (both bound and unbound)
           mesh.glow_intensity *= decay;
           if (mesh.glow_intensity < 0.001f)
             mesh.glow_intensity = 0.0f;
-          // Force white glow material so the glow texture shows correctly
           mesh.material.color[0] = 1.0f;
           mesh.material.color[1] = 1.0f;
           mesh.material.color[2] = 1.0f;
@@ -1604,13 +1751,11 @@ void drawControllerWindows() {
         }
       }
 
-      // Pass global press color to drawModel
       glm::vec3 globalPressColor =
           glm::vec3(w.global_press_color[0], w.global_press_color[1],
                     w.global_press_color[2]);
       drawModel(w.model, w.shader, highlight, globalPressColor);
 
-      // --- Draw pivot circle ---
       if (selected_tab < tabs.size()) {
         unsigned activeID = tabs[selected_tab].ID;
         if (w.ID == activeID && selected_mesh >= 0 &&
@@ -1636,11 +1781,9 @@ void drawControllerWindows() {
         }
       }
 
-      // --- Draw touch area (optional) ---
       if (w.show_touch_area) {
         createTouchAreaRect(w);
         glUseProgram(w.grid_shader);
-        // Set alpha for touch area (50% transparency)
         shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
         for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
           const Mesh &touchpad = w.model.meshes[i];
@@ -1653,10 +1796,7 @@ void drawControllerWindows() {
           if (th < 0.01f)
             th = 1.0f;
 
-          // Get touchpad's world matrix (without gyro, but includes its own
-          // transform and parents)
           glm::mat4 touchpadWorld = getModelMatrixWithoutGyro(w.model, i);
-          // Apply touch offset and rotation
           glm::mat4 rectModel = touchpadWorld;
           rectModel =
               glm::translate(rectModel, glm::vec3(touchpad.touch_offset[0],
@@ -1664,13 +1804,13 @@ void drawControllerWindows() {
                                                   touchpad.touch_offset[2]));
           rectModel =
               glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[1]),
-                          glm::vec3(0, 1, 0)); // yaw
+                          glm::vec3(0, 1, 0));
           rectModel =
               glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[0]),
-                          glm::vec3(1, 0, 0)); // pitch
+                          glm::vec3(1, 0, 0));
           rectModel =
               glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[2]),
-                          glm::vec3(0, 0, 1)); // roll
+                          glm::vec3(0, 0, 1));
           rectModel = glm::scale(rectModel, glm::vec3(tw, 0.02f, th));
 
           shaderUniformMat4(w.grid_shader, "model", rectModel);
@@ -1678,27 +1818,20 @@ void drawControllerWindows() {
                             glm::vec3(1.0f, 0.0f, 1.0f));
 
           glBindVertexArray(w.touch_area_vao);
-          // Draw filled rectangle with transparency
           glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-          // Draw outline (opaque)
           glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-          shaderUniformFloat(w.grid_shader, "alpha", 1.0f); // outline opaque
+          shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
           glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
           glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
           glBindVertexArray(0);
-          // Reset alpha to 0.5 for next rectangle
           shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
         }
-        // Reset alpha for other grid elements (e.g., normal grid, pivot circle)
         shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
         glUseProgram(0);
       }
 
       glUseProgram(0);
       glfwSwapBuffers(w.glfw_window);
-
-      // ---- MEGA DEBUG TOUCH RECT (optional, you can keep or remove) ----
-      // ...
     }
   }
 }

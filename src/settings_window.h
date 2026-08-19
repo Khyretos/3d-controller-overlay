@@ -50,6 +50,8 @@ bool check_filename_valid(const char *name);
 std::string get_top_folder(std::string path);
 std::string get_first_model();
 
-extern bool g_log_buttons;
+extern bool g_log_controller;
+extern bool g_log_keyboard;
+extern bool g_log_mouse;
 
 #endif

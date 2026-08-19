@@ -40,7 +40,10 @@ static bool HasTouchpadFinger(controller_window *w, int touchpadIdx,
   return fingerIdx < numFingers;
 }
 
-bool g_log_buttons = false;
+bool g_log_controller = false;
+bool g_log_keyboard = false;
+bool g_log_mouse = false;
+
 static int last_logged_device_index = -1;
 
 // Actual filenames of OBJ meshes (used for file I/O)
@@ -1147,11 +1150,21 @@ void drawSettingsWindow() {
       ImGui::NewLine();
 
       // ---- Logging toggle ----
-      ImGui::Checkbox("Log Button Presses", &g_log_buttons);
+      ImGui::Checkbox("Log Controller/Joystick", &g_log_controller);
+      ImGui::SameLine();
+      ImGui::Checkbox("Log Keyboard", &g_log_keyboard);
+      ImGui::SameLine();
+      ImGui::Checkbox("Log Mouse", &g_log_mouse);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Log controller inputs to console.");
+        ImGui::SetTooltip("Toggle logging for each device type.");
       ImGui::NewLine();
-
+      ImGui::SliderFloat("Mouse Sensitivity",
+                         &current_window->mouse_sensitivity, 0.001f, 0.5f,
+                         "%.3f");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Scale factor for mouse movement -> touchpoint "
+                          "displacement. Lower = slower, higher = faster.");
+      ImGui::NewLine();
       if (ImGui::BeginTable("MeshTable", 7,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_SizingStretchSame)) {
@@ -1324,6 +1337,36 @@ void drawSettingsWindow() {
                       return raw + " (" + dirNames[dir] + ")";
                   }
                 }
+              } else if (type == "mouse") {
+                if (raw == "mouse_xy")
+                  return "Mouse XY (relative)";
+                if (raw == "mouse_x")
+                  return "Mouse X (relative)";
+                if (raw == "mouse_y")
+                  return "Mouse Y (relative)";
+                if (raw == "mouse_scroll_xy")
+                  return "Scroll XY (combined)";
+                if (raw == "mouse_scroll_x")
+                  return "Scroll X (horizontal)";
+                if (raw == "mouse_scroll_y")
+                  return "Scroll Y (vertical)";
+                if (raw == "mouse_left")
+                  return "Left Button";
+                if (raw == "mouse_right")
+                  return "Right Button";
+                if (raw == "mouse_middle")
+                  return "Middle Button";
+                if (raw == "mouse_4")
+                  return "Button 4";
+                if (raw == "mouse_5")
+                  return "Button 5";
+                if (raw == "mouse_6")
+                  return "Button 6";
+                if (raw == "mouse_7")
+                  return "Button 7";
+                if (raw == "mouse_8")
+                  return "Button 8";
+                return raw;
               }
               return raw; // fallback
             };
@@ -1415,11 +1458,26 @@ void drawSettingsWindow() {
               for (auto k : keys)
                 inputOptions.push_back(k);
             } else if (currentType == "mouse") {
+              // Combined axes (like a stick)
+              inputOptions.push_back("mouse_xy");
+              // Individual axes (absolute position or delta? we'll treat as
+              // delta)
+              inputOptions.push_back("mouse_x");
+              inputOptions.push_back("mouse_y");
+              // Scroll
+              inputOptions.push_back("mouse_scroll_xy");
+              inputOptions.push_back("mouse_scroll_x");
+              inputOptions.push_back("mouse_scroll_y");
+              // Buttons
               inputOptions.push_back("mouse_left");
               inputOptions.push_back("mouse_right");
               inputOptions.push_back("mouse_middle");
-              inputOptions.push_back("mouse_x");
-              inputOptions.push_back("mouse_y");
+              // Extra buttons (GLFW supports up to 8)
+              inputOptions.push_back("mouse_4");
+              inputOptions.push_back("mouse_5");
+              inputOptions.push_back("mouse_6");
+              inputOptions.push_back("mouse_7");
+              inputOptions.push_back("mouse_8");
             }
 
             // Build friendly label for the selected binding
@@ -1458,23 +1516,56 @@ void drawSettingsWindow() {
           // Column 3: Parent
           ImGui::TableSetColumnIndex(3);
           if (hasMesh) {
-            int current_parent = mesh.parentIndex + 1; // +1 for "None"
-            const char *parent_names[36];
-            parent_names[0] = "None";
-            for (int j = 0; j < 35; ++j)
-              parent_names[j + 1] = mesh_names[j].c_str();
+            // Build the candidate list from the ACTUAL meshes in this model
+            // (real vector indices), not the fixed 35-entry part-name table.
+            // mesh.parentIndex is a raw index into current_window->model.meshes
+            // everywhere else it's used (model.cpp), so the combo must deal
+            // in that same space - a controller-part number like 31 ("touch
+            // point 2") is not interchangeable with it except by coincidence
+            // on the legacy default model.
+            std::vector<int> candidateIndices; // real mesh-vector indices
+            std::vector<std::string> candidateLabels;
+            candidateIndices.push_back(-1);
+            candidateLabels.push_back("None");
+            for (int k = 0; k < (int)current_window->model.meshes.size(); ++k) {
+              if (k == i)
+                continue; // can't parent to itself
+              const Mesh &candidate = current_window->model.meshes[k];
+              if (candidate.elements == 0)
+                continue; // no geometry loaded for this slot
+              std::string label = !candidate.name.empty()
+                                      ? candidate.name
+                                      : ("Mesh " + std::to_string(k));
+              if (candidate.assignedPart >= 0 && candidate.assignedPart < 35)
+                label += " (" + mesh_names[candidate.assignedPart] + ")";
+              candidateIndices.push_back(k);
+              candidateLabels.push_back(label);
+            }
+
+            // Map the mesh's current parentIndex to a position in this list.
+            int current_pos = 0; // "None" by default
+            for (int pos = 0; pos < (int)candidateIndices.size(); ++pos) {
+              if (candidateIndices[pos] == mesh.parentIndex) {
+                current_pos = pos;
+                break;
+              }
+            }
+
+            std::vector<const char *> parent_names;
+            for (auto &label : candidateLabels)
+              parent_names.push_back(label.c_str());
+
             ImGui::PushID(i + 2000);
-            if (ImGui::Combo("##parent", &current_parent, parent_names, 36)) {
-              int newParent = current_parent - 1; // -1 means "None"
+            if (ImGui::Combo("##parent", &current_pos, parent_names.data(),
+                             (int)parent_names.size())) {
+              int newParent = candidateIndices[current_pos];
 
               // Prevent cycles
               if (newParent != -1 &&
                   wouldCreateCycle(current_window->model, i, newParent)) {
                 spdlog::warn("Cannot set parent: would create a cycle.");
-                // Do not update parent; leave current_parent unchanged.
-                // Revert the combo selection by setting it back to the old
-                // value.
-                current_parent = mesh.parentIndex + 1;
+                // Do not update parent; the combo will simply re-derive
+                // current_pos from mesh.parentIndex next frame.
               } else {
                 // Get current world position WITHOUT gyro
                 glm::vec3 worldPos =
@@ -1496,7 +1587,7 @@ void drawSettingsWindow() {
                   mesh.position[2] = localPos.z;
                 }
 
-                // Update parent index
+                // Update parent index (a real mesh-vector index now)
                 mesh.parentIndex = newParent;
                 // Save changes
                 writeJson(current_window->model,
@@ -1871,11 +1962,11 @@ void drawSettingsWindow() {
               ImGui::TableSetColumnIndex(1);
               ImGui::Text("Rotation (degrees)");
               ImGui::SliderAngle("Yaw", &selectedMesh.touch_rotation[1],
-                                 -180.0f, 180.0f);
+                                 -360.0f, 360.0f);
               ImGui::SliderAngle("Pitch", &selectedMesh.touch_rotation[0],
-                                 -180.0f, 180.0f);
+                                 -360.0f, 360.0f);
               ImGui::SliderAngle("Roll", &selectedMesh.touch_rotation[2],
-                                 -180.0f, 180.0f);
+                                 -360.0f, 360.0f);
               ImGui::EndTable();
             }
 
@@ -3034,6 +3125,40 @@ void SaveImportedModel(controller_window &w) {
     w.model.meshes.push_back(std::move(mesh));
     spdlog::info("Added mesh '{}' with {} vertices.", assign.mesh_name,
                  mesh.elements);
+  }
+
+  // ---- Resolve parent_part (a controller-PART index, 0-34) into the
+  // actual index within w.model.meshes ----
+  // Above, mesh.parentIndex was set to assign.parent_part, which is a part
+  // number (e.g. 31 = "touch point 2"), not a raw index into
+  // w.model.meshes. For a custom/imported model the mesh that ended up
+  // holding a given part is very rarely at that same vector position (the
+  // legacy built-in models happened to line these up 1:1, which is why this
+  // only breaks for custom imports). Using the part number directly as a
+  // vector index either silently parents to the wrong mesh or, if the
+  // model has fewer meshes than the part number, crashes with an
+  // out-of-bounds vector access. Resolve it properly here instead.
+  for (auto &mesh : w.model.meshes) {
+    int wantedPart = mesh.parentIndex; // currently holds a PART index, or -1
+    if (wantedPart < 0) {
+      mesh.parentIndex = -1;
+      continue;
+    }
+    int resolved = -1;
+    for (int k = 0; k < (int)w.model.meshes.size(); ++k) {
+      if (&w.model.meshes[k] == &mesh)
+        continue;
+      if (w.model.meshes[k].assignedPart == wantedPart) {
+        resolved = k;
+        break;
+      }
+    }
+    if (resolved == -1) {
+      spdlog::warn("Mesh '{}' requested parent part {} but no mesh in this "
+                   "model has that part assigned; leaving unparented.",
+                   mesh.name, wantedPart);
+    }
+    mesh.parentIndex = resolved;
   }
 
   // Write info.json

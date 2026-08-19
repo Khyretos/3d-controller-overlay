@@ -91,13 +91,23 @@ typedef struct controller_window_struct {
   // Logging
   std::shared_ptr<spdlog::logger> logger;
 
-  // ... rest of existing members (window settings, camera, lights, model, etc.)
-  // unchanged ... I'll copy them verbatim from your original, but to save space
-  // I'll omit here; you can keep your original members, just add the above new
-  // ones. However, for completeness, I'll include all of them below.
+  // Mouse state (updated every frame)
+  float mouse_x = 0.0f;       // current cursor X (window coords)
+  float mouse_y = 0.0f;       // current cursor Y
+  float last_mouse_x = 0.0f;  // previous frame X
+  float last_mouse_y = 0.0f;  // previous frame Y
+  float mouse_delta_x = 0.0f; // movement since last frame
+  float mouse_delta_y = 0.0f;
+  bool mouse_buttons[GLFW_MOUSE_BUTTON_LAST + 1] = {
+      false}; // current button states
+  bool mouse_buttons_prev[GLFW_MOUSE_BUTTON_LAST + 1] = {
+      false};                       // for edge detection
+  float mouse_sensitivity = 0.005f; // scale factor for mouse->stick mapping
 
-  // (All the original members from your header go here – I'll copy them from
-  // your provided file)
+  // ---- Touchpoint mouse tracking ----
+  std::unordered_map<int, double> touchpoint_last_move_time;
+  double mouse_idle_timeout = 0.05; // seconds (~2-3 frames @ 60fps)
+
   bool left_click = false;
   double left_click_x = 0;
   double left_click_y = 0;

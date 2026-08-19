@@ -277,6 +277,51 @@ void readInfoJson(Model &m, const std::string &path) {
 
   if (data.contains("source"))
     m.source = data["source"].get<std::string>();
+
+  // ---- Sanitize parentIndex ----
+  // parentIndex is read directly from the file above with no validation.
+  // It can be invalid for two reasons: (1) it was written by older code
+  // that stored a controller-part number instead of a real mesh-vector
+  // index, or (2) any earlier part in the file failed to load (missing/
+  // empty filename, bad OBJ) and was skipped via `continue` above, which
+  // shifts every subsequent mesh's real position in m.meshes relative to
+  // what was recorded when the file was written. Either way, an
+  // out-of-range or cyclic parentIndex will crash the first time something
+  // walks the parent chain (e.g. getTouchpadAncestor), so clamp it here
+  // instead of trusting the file.
+  for (size_t i = 0; i < m.meshes.size(); ++i) {
+    int p = m.meshes[i].parentIndex;
+    if (p == -1)
+      continue;
+    if (p < 0 || p >= (int)m.meshes.size() || p == (int)i) {
+      spdlog::warn("Mesh '{}' had an invalid parent index {} in {}; "
+                   "clearing it.",
+                   m.meshes[i].name, p, path);
+      m.meshes[i].parentIndex = -1;
+      continue;
+    }
+  }
+  // Second pass: break any cycles that are individually valid indices but
+  // form a loop (A parents to B, B parents to A, etc.) - walk each chain
+  // with a visited set and cut it at the point it would revisit a node.
+  for (size_t i = 0; i < m.meshes.size(); ++i) {
+    std::vector<bool> visited(m.meshes.size(), false);
+    int current = (int)i;
+    visited[current] = true;
+    int next = m.meshes[current].parentIndex;
+    while (next != -1) {
+      if (next < 0 || next >= (int)m.meshes.size() || visited[next]) {
+        spdlog::warn("Mesh '{}' had a cyclic parent chain in {}; "
+                     "clearing its parent.",
+                     m.meshes[i].name, path);
+        m.meshes[i].parentIndex = -1;
+        break;
+      }
+      visited[next] = true;
+      current = next;
+      next = m.meshes[current].parentIndex;
+    }
+  }
 }
 // ------------------------------------------------------------------
 // LEGACY OBJ LOADER (32 meshes from folder)
@@ -780,16 +825,24 @@ int getTouchpadAncestor(const Model &m, int meshIndex) {
   if (meshIndex < 0 || meshIndex >= (int)m.meshes.size())
     return -1;
   int current = meshIndex;
+  int steps = 0;
+  int maxSteps = (int)m.meshes.size() + 1; // cycle guard
   while (current != -1) {
+    if (current < 0 || current >= (int)m.meshes.size())
+      return -1; // broken/stale parent chain - fail safe instead of crashing
     if (m.meshes[current].isTouchpad)
       return current;
     current = m.meshes[current].parentIndex;
+    if (++steps > maxSteps)
+      return -1; // parentIndex cycle - bail out instead of looping forever
   }
   return -1;
 }
 
 glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
                                const glm::mat4 &parentMatrix) {
+  if (meshIndex < 0 || meshIndex >= (int)m.meshes.size())
+    return parentMatrix;
   const Mesh &mesh = m.meshes[meshIndex];
   glm::mat4 model = parentMatrix;
 
