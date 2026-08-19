@@ -1516,23 +1516,16 @@ void drawSettingsWindow() {
           // Column 3: Parent
           ImGui::TableSetColumnIndex(3);
           if (hasMesh) {
-            // Build the candidate list from the ACTUAL meshes in this model
-            // (real vector indices), not the fixed 35-entry part-name table.
-            // mesh.parentIndex is a raw index into current_window->model.meshes
-            // everywhere else it's used (model.cpp), so the combo must deal
-            // in that same space - a controller-part number like 31 ("touch
-            // point 2") is not interchangeable with it except by coincidence
-            // on the legacy default model.
             std::vector<int> candidateIndices; // real mesh-vector indices
             std::vector<std::string> candidateLabels;
             candidateIndices.push_back(-1);
             candidateLabels.push_back("None");
             for (int k = 0; k < (int)current_window->model.meshes.size(); ++k) {
               if (k == i)
-                continue; // can't parent to itself
+                continue;
               const Mesh &candidate = current_window->model.meshes[k];
               if (candidate.elements == 0)
-                continue; // no geometry loaded for this slot
+                continue;
               std::string label = !candidate.name.empty()
                                       ? candidate.name
                                       : ("Mesh " + std::to_string(k));
@@ -1542,8 +1535,7 @@ void drawSettingsWindow() {
               candidateLabels.push_back(label);
             }
 
-            // Map the mesh's current parentIndex to a position in this list.
-            int current_pos = 0; // "None" by default
+            int current_pos = 0;
             for (int pos = 0; pos < (int)candidateIndices.size(); ++pos) {
               if (candidateIndices[pos] == mesh.parentIndex) {
                 current_pos = pos;
@@ -1560,24 +1552,18 @@ void drawSettingsWindow() {
                              (int)parent_names.size())) {
               int newParent = candidateIndices[current_pos];
 
-              // Prevent cycles
               if (newParent != -1 &&
                   wouldCreateCycle(current_window->model, i, newParent)) {
                 spdlog::warn("Cannot set parent: would create a cycle.");
-                // Do not update parent; the combo will simply re-derive
-                // current_pos from mesh.parentIndex next frame.
               } else {
-                // Get current world position WITHOUT gyro
                 glm::vec3 worldPos =
                     getModelWorldPositionWithoutGyro(current_window->model, i);
 
                 if (newParent == -1) {
-                  // Unparent: store world position directly
                   mesh.position[0] = worldPos.x;
                   mesh.position[1] = worldPos.y;
                   mesh.position[2] = worldPos.z;
                 } else {
-                  // Compute parent's world matrix WITHOUT gyro
                   glm::mat4 parentMat = getModelMatrixWithoutGyro(
                       current_window->model, newParent);
                   glm::mat4 invParentMat = glm::inverse(parentMat);
@@ -1587,9 +1573,7 @@ void drawSettingsWindow() {
                   mesh.position[2] = localPos.z;
                 }
 
-                // Update parent index (a real mesh-vector index now)
                 mesh.parentIndex = newParent;
-                // Save changes
                 writeJson(current_window->model,
                           current_window->model.path + "/info.json");
               }
@@ -1652,7 +1636,6 @@ void drawSettingsWindow() {
         if (ImGui::Button("Confirm")) {
           if (mesh_to_delete >= 0 &&
               mesh_to_delete < (int)current_window->model.meshes.size()) {
-            // Erase from vector and rewrite JSON
             current_window->model.meshes.erase(
                 current_window->model.meshes.begin() + mesh_to_delete);
             writeJson(current_window->model,
@@ -1681,7 +1664,7 @@ void drawSettingsWindow() {
           // ---- Highlight variables ----
           static std::map<int, std::array<float, 3>> original_colors;
           static bool highlight_selected = false;
-          static float highlight_color[3] = {1.0f, 0.0f, 0.0f}; // red default
+          static float highlight_color[3] = {1.0f, 0.0f, 0.0f};
 
           ImGui::Text("Editing: %s", selectedMesh.name.c_str());
 
@@ -1737,7 +1720,7 @@ void drawSettingsWindow() {
                   "Sets the pivot to the geometric centre of the mesh.");
             ImGui::SameLine();
             if (selectedMesh.assignedPart == 5 ||
-                selectedMesh.assignedPart == 6) { // stick parts
+                selectedMesh.assignedPart == 6) {
               if (ImGui::Button("Set Pivot to Stick Base")) {
                 float px =
                     (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
@@ -1773,6 +1756,45 @@ void drawSettingsWindow() {
                             1.0f, "%.1f");
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
+
+          // ---- Restored movement & animation controls ----
+          ImGui::Separator();
+          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                             "Movement & Animation");
+          // Travel (button press offset)
+          ImGui::InputFloat("Travel X", &selectedMesh.travel[0], 0.01f, 1.0f,
+                            "%.3f");
+          ImGui::InputFloat("Travel Y", &selectedMesh.travel[1], 0.01f, 1.0f,
+                            "%.3f");
+          ImGui::InputFloat("Travel Z", &selectedMesh.travel[2], 0.01f, 1.0f,
+                            "%.3f");
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Movement when the button is pressed.");
+          // Popup offset/rotation
+          ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
+                            0.01f, 1.0f, "%.3f");
+          ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
+                            0.01f, 1.0f, "%.3f");
+          ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
+                            0.01f, 1.0f, "%.3f");
+          ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1], -180,
+                             180);
+          ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
+                             -180, 180);
+          ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
+                             -180, 180);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Offset and rotation when the part 'pops up' (e.g. bumper).");
+          // Stick and trigger max angles
+          ImGui::SliderAngle("Stick Max Angle", &selectedMesh.stick_max, 0.0f,
+                             45.0f);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Maximum deflection angle for sticks.");
+          ImGui::SliderAngle("Trigger Max Angle", &selectedMesh.trigger_max,
+                             0.0f, 90.0f);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Maximum pull angle for triggers.");
 
           // ---- Reset Transform ----
           ImGui::Separator();
@@ -1836,22 +1858,8 @@ void drawSettingsWindow() {
             }
           }
 
-          // ---- Travel (for buttons/triggers) ----
-          int part = selectedMesh.assignedPart;
-          if (part > 8 && part < 30) {
-            ImGui::Separator();
-            ImGui::Text("Travel (button press offset)");
-            ImGui::InputFloat("X Travel", &selectedMesh.travel[0], 0.01f, 1.0f,
-                              "%.3f");
-            ImGui::InputFloat("Y Travel", &selectedMesh.travel[1], 0.01f, 1.0f,
-                              "%.3f");
-            ImGui::InputFloat("Z Travel", &selectedMesh.travel[2], 0.01f, 1.0f,
-                              "%.3f");
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Movement when the button is pressed.");
-          }
-
           // ---- Touchpoint anchoring (if this mesh is a touch point part) ----
+          int part = selectedMesh.assignedPart;
           bool isTouchPoint =
               (part == 30 || part == 31 || part == 33 || part == 34);
           if (isTouchPoint) {
@@ -1913,13 +1921,12 @@ void drawSettingsWindow() {
             selectedMesh.useCustomScale = false;
           }
 
-          // ---- NEW: Touchpad configuration (independent of assignedPart) ----
+          // ---- Touchpad configuration (independent of assignedPart) ----
           ImGui::Separator();
           bool isTouchpad = selectedMesh.isTouchpad;
           if (ImGui::Checkbox("Is Touchpad", &isTouchpad)) {
             selectedMesh.isTouchpad = isTouchpad;
             if (isTouchpad) {
-              // Ensure default dimensions if they are zero
               if (selectedMesh.touch_width <= 0.01f)
                 selectedMesh.touch_width = 1.0f;
               if (selectedMesh.touch_height <= 0.01f)
@@ -1939,7 +1946,6 @@ void drawSettingsWindow() {
               ImGui::SetTooltip("Width and height of the touch-sensitive area "
                                 "in world units.");
 
-            // ---- Add this line ----
             ImGui::Checkbox("Show Touch Area",
                             &current_window->show_touch_area);
 
@@ -1981,95 +1987,6 @@ void drawSettingsWindow() {
                 "set its parent to the touchpad, and position it at (0,0,0) "
                 "relative\n"
                 "to the touchpad. It will then move within the touch area.");
-          }
-
-          // ---- Popup offsets ----
-          if ((part == 18 || part == 19) || (part > 24 && part < 29) ||
-              (part == 3 || part == 4)) {
-            ImGui::Separator();
-            ImGui::Text("Popup animation");
-            ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
-                              0.01f, 1.0f, "%.3f");
-            ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1],
-                               -180, 180);
-            ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
-                               -180, 180);
-            ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
-                               -180, 180);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip(
-                  "Offset and rotation when the part 'pops up' (e.g. bumper).");
-          }
-
-          // ---- Stick max ----
-          if (part == 5 || part == 6) {
-            ImGui::Separator();
-            if (ImGui::SliderAngle("Max Angle", &selectedMesh.stick_max, 0.0f,
-                                   45.0f)) {
-              // Propagate to ring and cap if they exist
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == 7 || m.assignedPart == 16 ||
-                    m.assignedPart == 8 || m.assignedPart == 17) {
-                  m.stick_max = selectedMesh.stick_max;
-                }
-              }
-            }
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Maximum deflection angle for the stick.");
-          }
-
-          // ---- Trigger max ----
-          if (part == 3 || part == 4) {
-            ImGui::Separator();
-            ImGui::SliderAngle("Max Angle", &selectedMesh.trigger_max, 0.0f,
-                               90.0f);
-            if (ImGui::IsItemHovered())
-              ImGui::SetTooltip("Maximum pull angle for the trigger.");
-          }
-
-          // ---- Touchpad dimensions ----
-          if (part == 29 || part == 32) {
-            ImGui::Separator();
-            ImGui::Text("Touchpad dimensions");
-            selectedMesh.visible = true;
-            // Find associated touch point meshes
-            int tp1, tp2;
-            if (part == 29) {
-              tp1 = 30;
-              tp2 = 31;
-            } else {
-              tp1 = 33;
-              tp2 = 34;
-            }
-            for (auto &m : current_window->model.meshes) {
-              if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                m.visible = true;
-                m.touch_width = selectedMesh.touch_width;
-                m.touch_height = selectedMesh.touch_height;
-              }
-            }
-            if (ImGui::SliderFloat("Touch Area Width",
-                                   &selectedMesh.touch_width, 0.01f, 5.0f,
-                                   "%.2f")) {
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                  m.touch_width = selectedMesh.touch_width;
-                }
-              }
-            }
-            if (ImGui::SliderFloat("Touch Area Height",
-                                   &selectedMesh.touch_height, 0.01f, 5.0f,
-                                   "%.2f")) {
-              for (auto &m : current_window->model.meshes) {
-                if (m.assignedPart == tp1 || m.assignedPart == tp2) {
-                  m.touch_height = selectedMesh.touch_height;
-                }
-              }
-            }
           }
 
           // ---- Custom scale ----
@@ -2640,7 +2557,6 @@ void drawSettingsWindow() {
     } else {
       std::cout << "Selected filename : " << model_dialog.GetSelected().string()
                 << std::endl;
-      // 1. Copy the OBJ file into the model folder with the correct name
       const auto copy_options =
           std::filesystem::copy_options::overwrite_existing;
       std::filesystem::path from_path = model_dialog.GetSelected();
@@ -2649,20 +2565,11 @@ void drawSettingsWindow() {
       to_path.append(mesh_filenames[selected_mesh]);
       std::filesystem::copy(from_path, to_path, copy_options);
 
-      // 2. Load the OBJ into the selected mesh slot
       glfwMakeContextCurrent(ctrl_win->glfw_window);
       loadMesh(ctrl_win->model.meshes[selected_mesh], to_path.string());
       glfwMakeContextCurrent(glfw_settings_window);
 
-      // 3. Save the updated model (including the newly loaded geometry)
       writeJson(ctrl_win->model, ctrl_win->model.path + "/info.json");
-
-      // 4. (Optional) Reload the model to ensure everything is consistent
-      //    You can uncomment this if you want to refresh all meshes, but it's
-      //    not needed
-      // glfwMakeContextCurrent(ctrl_win->glfw_window);
-      // loadModel(ctrl_win->model, ctrl_win->model.path);
-      // glfwMakeContextCurrent(glfw_settings_window);
     }
     model_dialog.ClearSelected();
   }
@@ -2685,6 +2592,11 @@ void drawSettingsWindow() {
       controller_window *preview_window = getLastWindow();
       preview_window->model = temp_model;
       convertImportedToMeshes(preview_window->model);
+      // Ensure all meshes are visible
+      for (auto &mesh : preview_window->model.meshes) {
+        mesh.visible = true;
+        mesh.material.alpha = 1.0f;
+      }
       preview_window->is_import_preview = true;
       preview_window->import_preview.is_open = true;
       preview_window->import_preview.imported_model = temp_model;
@@ -2746,6 +2658,8 @@ void DrawImportPreviewControls(controller_window &w) {
   for (auto &assign : w.import_preview.assignments) {
     if (assign.assigned_part >= 0 && assign.assigned_part < 35) {
       Mesh &mesh = w.model.meshes[assign.assigned_part];
+      mesh.visible = true;
+      mesh.material.alpha = 1.0f;
       bool isTouchPart =
           (assign.assigned_part == 29 || assign.assigned_part == 30 ||
            assign.assigned_part == 31 || assign.assigned_part == 32 ||
@@ -2755,11 +2669,9 @@ void DrawImportPreviewControls(controller_window &w) {
         mesh.material.color[1] = 0.2f;
         mesh.material.color[2] = 0.2f;
         mesh.highlight_value = 0.3f;
-        // Apply touch dimensions to the mesh
         mesh.touch_width = assign.touch_width;
         mesh.touch_height = assign.touch_height;
       } else {
-        // Restore default color for non‑touch parts
         mesh.material.color[0] = 0.8f;
         mesh.material.color[1] = 0.8f;
         mesh.material.color[2] = 0.8f;
@@ -2789,9 +2701,7 @@ void DrawImportPreviewControls(controller_window &w) {
       ImGui::Text("%s", assign.mesh_name.c_str());
       ImGui::TableSetColumnIndex(1);
 
-      // ---- Part assignment combo ----
-      int current_part =
-          assign.assigned_part + 1; // +1 because "Unassigned" is at index 0
+      int current_part = assign.assigned_part + 1;
       const char *part_names[36];
       part_names[0] = "Unassigned";
       for (int j = 0; j < 35; ++j)
@@ -2799,14 +2709,12 @@ void DrawImportPreviewControls(controller_window &w) {
 
       ImGui::PushID(i);
       if (ImGui::Combo("##part", &current_part, part_names, 36)) {
-        // Update assignment
         assign.assigned_part = current_part - 1;
         assign.max_angle = 0.0f;
         assign.parent_part = -1;
         assign.touch_width = 1.0f;
         assign.touch_height = 1.0f;
         w.import_preview.selected_mesh_index = -1;
-        // Reset stick/trigger max on the mesh
         if (assign.assigned_part >= 0 &&
             assign.assigned_part < (int)w.model.meshes.size()) {
           w.model.meshes[assign.assigned_part].stick_max = 0.0f;
@@ -2820,7 +2728,6 @@ void DrawImportPreviewControls(controller_window &w) {
       }
       ImGui::PopID();
 
-      // ---- Max Angle Column ----
       ImGui::TableSetColumnIndex(2);
       bool isStick = (assign.assigned_part == 5 || assign.assigned_part == 6);
       bool isTrigger = (assign.assigned_part == 3 || assign.assigned_part == 4);
@@ -2850,7 +2757,6 @@ void DrawImportPreviewControls(controller_window &w) {
         ImGui::TextDisabled("N/A");
       }
 
-      // ---- Parent Part Column ----
       ImGui::TableSetColumnIndex(3);
       if (assign.assigned_part >= 0 && assign.assigned_part < 35) {
         int current_parent = assign.parent_part + 1;
@@ -2870,7 +2776,6 @@ void DrawImportPreviewControls(controller_window &w) {
         ImGui::TextDisabled("N/A");
       }
 
-      // ---- Touch Width Column ----
       ImGui::TableSetColumnIndex(4);
       bool isTouchPart =
           (assign.assigned_part == 29 || assign.assigned_part == 30 ||
@@ -2884,7 +2789,6 @@ void DrawImportPreviewControls(controller_window &w) {
             assign.touch_width = 0.01f;
           if (assign.touch_width > 5.0f)
             assign.touch_width = 5.0f;
-          // Immediately update the mesh
           if (assign.assigned_part >= 0 &&
               assign.assigned_part < (int)w.model.meshes.size()) {
             w.model.meshes[assign.assigned_part].touch_width =
@@ -2899,7 +2803,6 @@ void DrawImportPreviewControls(controller_window &w) {
         ImGui::TextDisabled("N/A");
       }
 
-      // ---- Touch Height Column ----
       ImGui::TableSetColumnIndex(5);
       if (isTouchPart) {
         ImGui::PushID(i + 4000);
@@ -2909,7 +2812,6 @@ void DrawImportPreviewControls(controller_window &w) {
             assign.touch_height = 0.01f;
           if (assign.touch_height > 5.0f)
             assign.touch_height = 5.0f;
-          // Immediately update the mesh
           if (assign.assigned_part >= 0 &&
               assign.assigned_part < (int)w.model.meshes.size()) {
             w.model.meshes[assign.assigned_part].touch_height =
@@ -2924,7 +2826,6 @@ void DrawImportPreviewControls(controller_window &w) {
         ImGui::TextDisabled("N/A");
       }
 
-      // ---- Actions Column ----
       ImGui::TableSetColumnIndex(6);
       ImGui::PushID(i);
       if (ImGui::Button("Highlight")) {
@@ -2932,7 +2833,6 @@ void DrawImportPreviewControls(controller_window &w) {
       }
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Highlight this mesh in the 3D view.");
-      // Add a note about unassigned meshes
       if (assign.assigned_part == -1) {
         ImGui::SameLine();
         ImGui::TextDisabled("(?)");
@@ -3048,7 +2948,13 @@ void SaveImportedModel(controller_window &w) {
   }
 
   std::string new_model_path = get_models_root() + "/" + model_name;
-  std::filesystem::create_directories(new_model_path);
+  try {
+    std::filesystem::create_directories(new_model_path);
+  } catch (const std::exception &e) {
+    spdlog::error("Failed to create directory {}: {}", new_model_path,
+                  e.what());
+    return;
+  }
   spdlog::info("Saving imported model to: {}", new_model_path);
 
   // Clear any existing meshes
@@ -3056,7 +2962,6 @@ void SaveImportedModel(controller_window &w) {
 
   // For each assignment, create a Mesh and upload geometry
   for (auto &assign : w.import_preview.assignments) {
-    // Find the imported mesh data
     auto it =
         std::find_if(w.import_preview.imported_model.imported_meshes.begin(),
                      w.import_preview.imported_model.imported_meshes.end(),
@@ -3068,7 +2973,6 @@ void SaveImportedModel(controller_window &w) {
       continue;
     }
 
-    // Generate a filename (safe)
     std::string safe_name = assign.mesh_name;
     for (char &c : safe_name) {
       if (c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' ||
@@ -3083,32 +2987,17 @@ void SaveImportedModel(controller_window &w) {
     writeOBJ(full_path, *it);
 
     // Check if the file was written
-    if (!std::filesystem::exists(full_path)) {
-      spdlog::error("Failed to write OBJ file: {}", full_path);
-      // Fallback: build mesh directly from imported data
-      Mesh mesh;
-      buildMeshFromImported(mesh, *it); // see below
-      mesh.filename = obj_filename;
-      mesh.name = assign.mesh_name;
-      mesh.assignedPart = assign.assigned_part;
-      mesh.parentIndex = assign.parent_part;
-      mesh.stick_max = assign.max_angle;
-      mesh.trigger_max = assign.max_angle;
-      mesh.touch_width = assign.touch_width;
-      mesh.touch_height = assign.touch_height;
-      w.model.meshes.push_back(std::move(mesh));
-      spdlog::info("Added mesh '{}' directly from imported data (no OBJ).",
-                   assign.mesh_name);
-      continue;
-    }
-
-    // Try to load the OBJ via the standard loader
     Mesh mesh;
-    loadMesh(mesh, full_path);
-    if (mesh.elements == 0) {
-      spdlog::error("Failed to load OBJ: {}, falling back to direct import.",
-                    full_path);
-      // Fallback: build mesh directly from imported data
+    if (std::filesystem::exists(full_path)) {
+      loadMesh(mesh, full_path);
+      if (mesh.elements == 0) {
+        spdlog::warn("Failed to load OBJ: {}, falling back to direct import.",
+                     full_path);
+        buildMeshFromImported(mesh, *it);
+      }
+    } else {
+      spdlog::warn("OBJ file not written: {}, falling back to direct import.",
+                   full_path);
       buildMeshFromImported(mesh, *it);
     }
 
@@ -3121,25 +3010,17 @@ void SaveImportedModel(controller_window &w) {
     mesh.trigger_max = assign.max_angle;
     mesh.touch_width = assign.touch_width;
     mesh.touch_height = assign.touch_height;
+    mesh.visible = true;
+    mesh.material.alpha = 1.0f;
 
     w.model.meshes.push_back(std::move(mesh));
     spdlog::info("Added mesh '{}' with {} vertices.", assign.mesh_name,
                  mesh.elements);
   }
 
-  // ---- Resolve parent_part (a controller-PART index, 0-34) into the
-  // actual index within w.model.meshes ----
-  // Above, mesh.parentIndex was set to assign.parent_part, which is a part
-  // number (e.g. 31 = "touch point 2"), not a raw index into
-  // w.model.meshes. For a custom/imported model the mesh that ended up
-  // holding a given part is very rarely at that same vector position (the
-  // legacy built-in models happened to line these up 1:1, which is why this
-  // only breaks for custom imports). Using the part number directly as a
-  // vector index either silently parents to the wrong mesh or, if the
-  // model has fewer meshes than the part number, crashes with an
-  // out-of-bounds vector access. Resolve it properly here instead.
+  // Resolve parent part indices
   for (auto &mesh : w.model.meshes) {
-    int wantedPart = mesh.parentIndex; // currently holds a PART index, or -1
+    int wantedPart = mesh.parentIndex;
     if (wantedPart < 0) {
       mesh.parentIndex = -1;
       continue;
@@ -3163,7 +3044,12 @@ void SaveImportedModel(controller_window &w) {
 
   // Write info.json
   w.model.path = new_model_path;
-  writeJson(w.model, new_model_path + "/info.json");
+  try {
+    writeJson(w.model, new_model_path + "/info.json");
+  } catch (const std::exception &e) {
+    spdlog::error("Failed to write JSON: {}", e.what());
+    return;
+  }
 
   spdlog::info("New model saved successfully: {} meshes.",
                w.model.meshes.size());
@@ -3561,9 +3447,6 @@ std::string get_top_folder(std::string path) {
 std::string get_first_model() {
   std::string dir_path = get_models_root();
   dir_path.append("/");
-  // get_models_root() already guarantees the directory exists (creating
-  // and, on first run, seeding it from the bundled/installed defaults),
-  // so no separate exists()/create_directories() check is needed here.
   std::vector<std::string> model_folders;
   struct stat sb;
   for (const auto &entry : std::filesystem::directory_iterator(dir_path)) {

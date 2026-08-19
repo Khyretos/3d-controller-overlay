@@ -74,6 +74,7 @@ void createGlowTexture() {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 }
+
 void createTouchAreaRect(controller_window &w) {
   if (!w.touch_area_vao) {
     float vertices[] = {-0.5f, 0.0f, -0.5f, 0.5f,  0.0f, -0.5f,
@@ -721,13 +722,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
             (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
              mesh.assignedPart == 33 || mesh.assignedPart == 34);
         if (isTouchPoint) {
-          // Accumulated position: cap per-frame movement, scaled by
-          // deltaTime (rather than a fixed constant like the old 0.1) so a
-          // normal mouse motion doesn't blow past the cap on nearly every
-          // frame regardless of framerate. A fixed per-frame cap meant the
-          // touchpoint reached max speed toward whichever corner almost
-          // instantly on any real mouse movement.
-          const float MAX_DELTA_PER_SEC = 3.0f; // touch-area widths / sec
+          const float MAX_DELTA_PER_SEC = 1.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
           dx = std::max(-maxDelta, std::min(maxDelta, dx));
           dy = std::max(-maxDelta, std::min(maxDelta, dy));
@@ -735,11 +730,6 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           mesh.touch_Y += dy;
           mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
           mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
-          // Only refresh the "last moved" timestamp when there was actual
-          // motion this frame. Refreshing it unconditionally (every frame
-          // the binding is simply active) meant the idle check below never
-          // saw a large enough gap to fire, so the touchpoint never snapped
-          // back to center.
           if (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f)
             w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
           mesh.touch_state = 1;
@@ -749,8 +739,6 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           mesh.highlight_value =
               (fabs(dx) > 0.01f || fabs(dy) > 0.01f) ? 1.0f : 0.0f;
         } else {
-          // Absolute deflection, not accumulated - clamp to the full stick
-          // range instead of the touchpoint's per-frame cap.
           dx = std::max(-1.0f, std::min(1.0f, dx));
           dy = std::max(-1.0f, std::min(1.0f, dy));
           if (mesh.invert) {
@@ -770,9 +758,6 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
             (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
              mesh.assignedPart == 33 || mesh.assignedPart == 34);
         if (isTouchPoint) {
-          // Accumulated position: cap per-frame movement (frame-time scaled,
-          // not a fixed constant) before adding it in, or a fast flick would
-          // jump the touchpoint straight to an edge in a single frame.
           const float MAX_DELTA_PER_SEC = 3.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
           val = std::max(-maxDelta, std::min(maxDelta, val));
@@ -786,8 +771,6 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           mesh.glow_intensity = 1.0f;
           mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
         } else {
-          // Absolute deflection, not accumulated - clamp to the full stick
-          // range instead of the touchpoint's per-frame cap.
           val = std::max(-1.0f, std::min(1.0f, val));
           if (mesh.invert)
             val = -val;
@@ -1029,7 +1012,7 @@ void controller_window_input() {
           }
         }
 
-        // LOGGING
+        // LOGGING (unchanged)
         if (g_log_controller) {
           if (w.is_gamecontroller && w.sdl_controller) {
             SDL_Joystick *joy = SDL_GameControllerGetJoystick(w.sdl_controller);
@@ -1164,7 +1147,6 @@ void controller_window_input() {
         double current_time = glfwGetTime();
         for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
           Mesh &mesh = w.model.meshes[meshIdx];
-          // Only for meshes bound to mouse input
           if (mesh.inputBinding.find("mouse:") != 0)
             continue;
           bool isTouchPoint =
@@ -1214,134 +1196,127 @@ void controller_window_input() {
           }
         }
       }
+    } // end if (!w.is_import_preview)
 
-      // Window-relative mouse for orbit/pivot (unchanged)
-      if (!w.freelook) {
-        int win_width, win_height;
-        glfwGetWindowSize(w.glfw_window, &win_width, &win_height);
-        if (win_width == 0 || win_height == 0)
-          continue;
+    // Window-relative mouse for orbit/pivot (now allowed for import preview
+    // too)
+    int win_width, win_height;
+    glfwGetWindowSize(w.glfw_window, &win_width, &win_height);
+    if (win_width == 0 || win_height == 0)
+      continue;
 
-        double mouse_x, mouse_y;
-        glfwGetCursorPos(w.glfw_window, &mouse_x, &mouse_y);
+    double mouse_x, mouse_y;
+    glfwGetCursorPos(w.glfw_window, &mouse_x, &mouse_y);
 
-        w.mouse_delta_x = (float)mouse_x - w.mouse_x;
-        w.mouse_delta_y = (float)mouse_y - w.mouse_y;
-        w.mouse_x = (float)mouse_x;
-        w.mouse_y = (float)mouse_y;
+    w.mouse_delta_x = (float)mouse_x - w.mouse_x;
+    w.mouse_delta_y = (float)mouse_y - w.mouse_y;
+    w.mouse_x = (float)mouse_x;
+    w.mouse_y = (float)mouse_y;
 
-        for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
-          w.mouse_buttons_prev[b] = w.mouse_buttons[b];
+    for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
+      w.mouse_buttons_prev[b] = w.mouse_buttons[b];
 
-        for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
-          w.mouse_buttons[b] =
-              (glfwGetMouseButton(w.glfw_window, b) == GLFW_PRESS);
+    for (int b = 0; b <= GLFW_MOUSE_BUTTON_LAST; ++b)
+      w.mouse_buttons[b] = (glfwGetMouseButton(w.glfw_window, b) == GLFW_PRESS);
 
-        int left_button =
-            w.mouse_buttons[GLFW_MOUSE_BUTTON_LEFT] ? GLFW_PRESS : GLFW_RELEASE;
-        int middle_button = w.mouse_buttons[GLFW_MOUSE_BUTTON_MIDDLE]
-                                ? GLFW_PRESS
-                                : GLFW_RELEASE;
+    int left_button =
+        w.mouse_buttons[GLFW_MOUSE_BUTTON_LEFT] ? GLFW_PRESS : GLFW_RELEASE;
+    int middle_button =
+        w.mouse_buttons[GLFW_MOUSE_BUTTON_MIDDLE] ? GLFW_PRESS : GLFW_RELEASE;
 
-        bool pivotHit = false;
-        glm::vec3 pivotPos(0.0f);
-        if (selected_tab < tabs.size()) {
-          unsigned activeID = tabs[selected_tab].ID;
-          if (w.ID == activeID && selected_mesh >= 0 &&
-              selected_mesh < (int)w.model.meshes.size()) {
-            const Mesh &mesh = w.model.meshes[selected_mesh];
-            if (mesh.elements > 0) {
-              glm::mat4 pivotMat =
-                  getMeshFinalMatrix(w.model, selected_mesh, w.gyro_matrix);
-              pivotPos = glm::vec3(pivotMat[3]);
-              glm::vec4 clipPos = w.projection_matrix * w.view_matrix *
-                                  glm::vec4(pivotPos, 1.0f);
-              if (clipPos.w > 0.0f) {
-                clipPos /= clipPos.w;
-                float screenX = (clipPos.x * 0.5f + 0.5f) * win_width;
-                float screenY = (1.0f - (clipPos.y * 0.5f + 0.5f)) * win_height;
-                double dist = sqrt((mouse_x - screenX) * (mouse_x - screenX) +
-                                   (mouse_y - screenY) * (mouse_y - screenY));
-                if (dist < 20.0)
-                  pivotHit = true;
-              }
-            }
+    bool pivotHit = false;
+    glm::vec3 pivotPos(0.0f);
+    if (selected_tab < tabs.size()) {
+      unsigned activeID = tabs[selected_tab].ID;
+      if (w.ID == activeID && selected_mesh >= 0 &&
+          selected_mesh < (int)w.model.meshes.size()) {
+        const Mesh &mesh = w.model.meshes[selected_mesh];
+        if (mesh.elements > 0) {
+          glm::mat4 pivotMat =
+              getMeshFinalMatrix(w.model, selected_mesh, w.gyro_matrix);
+          pivotPos = glm::vec3(pivotMat[3]);
+          glm::vec4 clipPos =
+              w.projection_matrix * w.view_matrix * glm::vec4(pivotPos, 1.0f);
+          if (clipPos.w > 0.0f) {
+            clipPos /= clipPos.w;
+            float screenX = (clipPos.x * 0.5f + 0.5f) * win_width;
+            float screenY = (1.0f - (clipPos.y * 0.5f + 0.5f)) * win_height;
+            double dist = sqrt((mouse_x - screenX) * (mouse_x - screenX) +
+                               (mouse_y - screenY) * (mouse_y - screenY));
+            if (dist < 20.0)
+              pivotHit = true;
           }
         }
+      }
+    }
 
-        if (left_button == GLFW_PRESS && !w.drag_to_move) {
-          if (pivotHit && !w.pivot_dragging) {
-            w.pivot_dragging = true;
-            w.pivot_drag_start_screen_x = mouse_x;
-            w.pivot_drag_start_screen_y = mouse_y;
-            w.pivot_drag_mesh_index = selected_mesh;
-            w.pivot_drag_start_world = pivotPos;
-          }
+    if (left_button == GLFW_PRESS && !w.drag_to_move) {
+      if (pivotHit && !w.pivot_dragging) {
+        w.pivot_dragging = true;
+        w.pivot_drag_start_screen_x = mouse_x;
+        w.pivot_drag_start_screen_y = mouse_y;
+        w.pivot_drag_mesh_index = selected_mesh;
+        w.pivot_drag_start_world = pivotPos;
+      }
 
-          if (w.pivot_dragging) {
-            if (w.pivot_drag_mesh_index >= 0 &&
-                w.pivot_drag_mesh_index < (int)w.model.meshes.size()) {
-              Mesh &mesh = w.model.meshes[w.pivot_drag_mesh_index];
-              glm::vec3 camRight = glm::normalize(
-                  glm::vec3(w.view_matrix[0][0], w.view_matrix[1][0],
-                            w.view_matrix[2][0]));
-              glm::vec3 camUp = glm::normalize(glm::vec3(w.view_matrix[0][1],
-                                                         w.view_matrix[1][1],
-                                                         w.view_matrix[2][1]));
-              float distance = glm::length(w.camera_position - pivotPos);
-              float scale = distance * 0.001f;
-              double dx = mouse_x - w.pivot_drag_start_screen_x;
-              double dy = mouse_y - w.pivot_drag_start_screen_y;
-              glm::vec3 deltaWorld =
-                  (float)dx * scale * camRight - (float)dy * scale * camUp;
-              mesh.pivot_offset[0] += deltaWorld.x;
-              mesh.pivot_offset[1] += deltaWorld.y;
-              mesh.pivot_offset[2] += deltaWorld.z;
-              w.pivot_drag_start_screen_x = mouse_x;
-              w.pivot_drag_start_screen_y = mouse_y;
-            }
-          } else {
-            if (w.mouse_first_click) {
-              w.prev_mouse_x = mouse_x;
-              w.prev_mouse_y = mouse_y;
-              w.mouse_first_click = false;
-            }
-            double delta_x = mouse_x - w.prev_mouse_x;
-            double delta_y = mouse_y - w.prev_mouse_y;
-            float sensitivity = 0.5f;
-            if (glfwGetKey(w.glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                glfwGetKey(w.glfw_window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
-              w.camera_roll += delta_x * sensitivity;
-            } else {
-              w.camera_yaw -= delta_x * sensitivity;
-              w.camera_pitch += delta_y * sensitivity;
-            }
-            w.prev_mouse_x = mouse_x;
-            w.prev_mouse_y = mouse_y;
-          }
+      if (w.pivot_dragging) {
+        if (w.pivot_drag_mesh_index >= 0 &&
+            w.pivot_drag_mesh_index < (int)w.model.meshes.size()) {
+          Mesh &mesh = w.model.meshes[w.pivot_drag_mesh_index];
+          glm::vec3 camRight = glm::normalize(glm::vec3(
+              w.view_matrix[0][0], w.view_matrix[1][0], w.view_matrix[2][0]));
+          glm::vec3 camUp = glm::normalize(glm::vec3(
+              w.view_matrix[0][1], w.view_matrix[1][1], w.view_matrix[2][1]));
+          float distance = glm::length(w.camera_position - pivotPos);
+          float scale = distance * 0.001f;
+          double dx = mouse_x - w.pivot_drag_start_screen_x;
+          double dy = mouse_y - w.pivot_drag_start_screen_y;
+          glm::vec3 deltaWorld =
+              (float)dx * scale * camRight - (float)dy * scale * camUp;
+          mesh.pivot_offset[0] += deltaWorld.x;
+          mesh.pivot_offset[1] += deltaWorld.y;
+          mesh.pivot_offset[2] += deltaWorld.z;
+          w.pivot_drag_start_screen_x = mouse_x;
+          w.pivot_drag_start_screen_y = mouse_y;
+        }
+      } else {
+        if (w.mouse_first_click) {
+          w.prev_mouse_x = mouse_x;
+          w.prev_mouse_y = mouse_y;
+          w.mouse_first_click = false;
+        }
+        double delta_x = mouse_x - w.prev_mouse_x;
+        double delta_y = mouse_y - w.prev_mouse_y;
+        float sensitivity = 0.5f;
+        if (glfwGetKey(w.glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+            glfwGetKey(w.glfw_window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+          w.camera_roll += delta_x * sensitivity;
         } else {
-          w.pivot_dragging = false;
-          w.pivot_drag_mesh_index = -1;
-          w.mouse_first_click = true;
+          w.camera_yaw -= delta_x * sensitivity;
+          w.camera_pitch += delta_y * sensitivity;
         }
-
-        if (middle_button == GLFW_PRESS) {
-          w.camera_yaw = 0.0f;
-          w.camera_pitch = 89.999f;
-          w.camera_distance = 3.5f;
-          w.camera_roll = 0.0f;
-        }
+        w.prev_mouse_x = mouse_x;
+        w.prev_mouse_y = mouse_y;
       }
+    } else {
+      w.pivot_dragging = false;
+      w.pivot_drag_mesh_index = -1;
+      w.mouse_first_click = true;
     }
 
-    // Close windows that should close
-    for (int i = (int)windows.size() - 1; i >= 0; --i) {
-      if (glfwWindowShouldClose(windows[i].glfw_window)) {
-        gQuit = true;
-        break;
-      }
+    if (middle_button == GLFW_PRESS) {
+      w.camera_yaw = 0.0f;
+      w.camera_pitch = 89.999f;
+      w.camera_distance = 3.5f;
+      w.camera_roll = 0.0f;
     }
-  }
+
+    // Check if window should close – if so, quit the entire program
+    if (glfwWindowShouldClose(w.glfw_window)) {
+      gQuit = true;
+      break;
+    }
+  } // end for windows
 }
 
 // ----------------------------------------------------------------------
@@ -1781,53 +1756,62 @@ void drawControllerWindows() {
         }
       }
 
+      // ---- Show Touch Area (only for the selected mesh) ----
       if (w.show_touch_area) {
-        createTouchAreaRect(w);
-        glUseProgram(w.grid_shader);
-        shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
-        for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
-          const Mesh &touchpad = w.model.meshes[i];
-          if (!touchpad.isTouchpad || touchpad.elements == 0)
-            continue;
-          float tw = touchpad.touch_width;
-          float th = touchpad.touch_height;
-          if (tw < 0.01f)
-            tw = 1.0f;
-          if (th < 0.01f)
-            th = 1.0f;
+        unsigned activeID = tabs[selected_tab].ID;
+        if (w.ID == activeID && selected_mesh >= 0 &&
+            selected_mesh < (int)w.model.meshes.size()) {
+          const Mesh &touchpad = w.model.meshes[selected_mesh];
+          if (touchpad.isTouchpad && touchpad.elements > 0) {
+            createTouchAreaRect(w);
+            glUseProgram(w.grid_shader);
+            shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
 
-          glm::mat4 touchpadWorld = getModelMatrixWithoutGyro(w.model, i);
-          glm::mat4 rectModel = touchpadWorld;
-          rectModel =
-              glm::translate(rectModel, glm::vec3(touchpad.touch_offset[0],
-                                                  touchpad.touch_offset[1],
-                                                  touchpad.touch_offset[2]));
-          rectModel =
-              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[1]),
-                          glm::vec3(0, 1, 0));
-          rectModel =
-              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[0]),
-                          glm::vec3(1, 0, 0));
-          rectModel =
-              glm::rotate(rectModel, glm::radians(touchpad.touch_rotation[2]),
-                          glm::vec3(0, 0, 1));
-          rectModel = glm::scale(rectModel, glm::vec3(tw, 0.02f, th));
+            float tw = touchpad.touch_width;
+            float th = touchpad.touch_height;
+            if (tw < 0.01f)
+              tw = 1.0f;
+            if (th < 0.01f)
+              th = 1.0f;
 
-          shaderUniformMat4(w.grid_shader, "model", rectModel);
-          shaderUniformVec3(w.grid_shader, "gridColor",
-                            glm::vec3(1.0f, 0.0f, 1.0f));
+            // Build local transform first, then apply touchpad world matrix
+            glm::mat4 localTransform = glm::mat4(1.0f);
+            localTransform = glm::translate(
+                localTransform,
+                glm::vec3(touchpad.touch_offset[0], touchpad.touch_offset[1],
+                          touchpad.touch_offset[2]));
+            localTransform = glm::rotate(
+                localTransform, glm::radians(touchpad.touch_rotation[1]),
+                glm::vec3(0, 1, 0));
+            localTransform = glm::rotate(
+                localTransform, glm::radians(touchpad.touch_rotation[0]),
+                glm::vec3(1, 0, 0));
+            localTransform = glm::rotate(
+                localTransform, glm::radians(touchpad.touch_rotation[2]),
+                glm::vec3(0, 0, 1));
+            localTransform =
+                glm::scale(localTransform, glm::vec3(tw, 0.02f, th));
 
-          glBindVertexArray(w.touch_area_vao);
-          glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-          glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-          shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
-          glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-          glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-          glBindVertexArray(0);
-          shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
+            glm::mat4 touchpadWorld =
+                getModelMatrixWithoutGyro(w.model, selected_mesh);
+            glm::mat4 rectModel = touchpadWorld * localTransform;
+
+            shaderUniformMat4(w.grid_shader, "model", rectModel);
+            shaderUniformVec3(w.grid_shader, "gridColor",
+                              glm::vec3(1.0f, 0.0f, 1.0f));
+
+            glBindVertexArray(w.touch_area_vao);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
+            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glBindVertexArray(0);
+            shaderUniformFloat(w.grid_shader, "alpha", 0.5f);
+
+            glUseProgram(0);
+          }
         }
-        shaderUniformFloat(w.grid_shader, "alpha", 1.0f);
-        glUseProgram(0);
       }
 
       glUseProgram(0);
