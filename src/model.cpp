@@ -930,34 +930,43 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
       const Mesh &touchpad = m.meshes[touchpadIdx];
       float tw = touchpad.touch_width;
       float th = touchpad.touch_height;
-      // Base movement in local space (centered)
-      glm::vec3 move = glm::vec3((mesh.touch_X * tw) - tw * 0.5f, 0.0f,
-                                 (mesh.touch_Y * th) - th * 0.5f);
-      // Apply touchpad's touch rotation (yaw, pitch, roll)
-      glm::mat4 rotMat = glm::mat4(1.0f);
-      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[1]),
-                           glm::vec3(0, 1, 0)); // yaw
-      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[0]),
-                           glm::vec3(1, 0, 0)); // pitch
-      rotMat = glm::rotate(rotMat, glm::radians(touchpad.touch_rotation[2]),
-                           glm::vec3(0, 0, 1)); // roll
-      move = glm::vec3(rotMat * glm::vec4(move, 1.0f));
-      // Add touchpad's offset
-      move += glm::vec3(touchpad.touch_offset[0], touchpad.touch_offset[1],
-                        touchpad.touch_offset[2]);
-      // Lift the touchpoint 0.1 units above the surface (local Y)
-      move.y += 0.02f;
-      // Apply translation
-      model = glm::translate(model, move);
+
+      // Build the touchpad's full transform (without parent matrix)
+      glm::mat4 touchpadTransform = glm::mat4(1.0f);
+      touchpadTransform = glm::translate(touchpadTransform,
+                                         glm::vec3(touchpad.touch_offset[0],
+                                                   touchpad.touch_offset[1],
+                                                   touchpad.touch_offset[2]));
+      touchpadTransform = glm::rotate(touchpadTransform,
+                                      glm::radians(touchpad.touch_rotation[1]),
+                                      glm::vec3(0, 1, 0));
+      touchpadTransform = glm::rotate(touchpadTransform,
+                                      glm::radians(touchpad.touch_rotation[0]),
+                                      glm::vec3(1, 0, 0));
+      touchpadTransform = glm::rotate(touchpadTransform,
+                                      glm::radians(touchpad.touch_rotation[2]),
+                                      glm::vec3(0, 0, 1));
+
+      // Calculate the touch position within the touchpad area (centered)
+      glm::vec3 localPos = glm::vec3((mesh.touch_X * tw) - tw * 0.5f,
+                                     0.02f, // Lift above surface
+                                     (mesh.touch_Y * th) - th * 0.5f);
+
+      // Apply the touchpad's transform to the local position
+      glm::vec4 worldPos = touchpadTransform * glm::vec4(localPos, 1.0f);
+
+      // Apply the translation to the model
+      model = glm::translate(model, glm::vec3(worldPos));
     } else {
       // Fallback: use own dimensions and zero offset/rotation
       model = glm::translate(
           model,
           glm::vec3(
-              (mesh.touch_X * mesh.touch_width) - mesh.touch_width * 0.5, 0.1f,
+              (mesh.touch_X * mesh.touch_width) - mesh.touch_width * 0.5, 0.02f,
               (mesh.touch_Y * mesh.touch_height) - mesh.touch_height * 0.5));
     }
   }
+
   return model;
 }
 
@@ -1227,10 +1236,7 @@ void convertImportedToMeshes(Model &m) {
 
     m.meshes.push_back(mesh);
   }
-
   m.has_imported_meshes = true;
-
-  m.meshes.resize(35);
 }
 
 glm::vec3 computeMeshCenter(const Mesh &mesh) {

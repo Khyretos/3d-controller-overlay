@@ -19,6 +19,7 @@ extern bool g_log_mouse;
 
 extern std::string config_base_path;
 extern bool gQuit;
+extern GLFWwindow *glfw_settings_window;
 
 static GLuint g_glowTexture = 0;
 const char *getMouseButtonName(int button) {
@@ -743,7 +744,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         dy *= w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 1.0f;
+          const float MAX_DELTA_PER_SEC = 10.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
           dx = std::max(-maxDelta, std::min(maxDelta, dx));
           dy = std::max(-maxDelta, std::min(maxDelta, dy));
@@ -777,7 +778,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         float val = dx * w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 3.0f;
+          const float MAX_DELTA_PER_SEC = 20.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
           val = std::max(-maxDelta, std::min(maxDelta, val));
           if (mesh.invert)
@@ -801,7 +802,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         float val = dy * w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 3.0f;
+          const float MAX_DELTA_PER_SEC = 20.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
           val = std::max(-maxDelta, std::min(maxDelta, val));
           if (mesh.invert)
@@ -1142,15 +1143,45 @@ void controller_window_input() {
               prevMouseButtons[b] = current;
             }
           }
+
+          // ---- Log mouse movement direction using ASCII arrows ----
           static float last_log_mouse_x = 0.0f, last_log_mouse_y = 0.0f;
-          if (fabs(globalMouseX - last_log_mouse_x) > 5.0f ||
-              fabs(globalMouseY - last_log_mouse_y) > 5.0f) {
-            spdlog::info("[mouse] move to ({:.1f}, {:.1f})",
-                         static_cast<float>(globalMouseX),
-                         static_cast<float>(globalMouseY));
+          float dx = globalMouseX - last_log_mouse_x;
+          float dy = -(globalMouseY -
+                       last_log_mouse_y); // Invert Y for screen coordinates
+          float distance = sqrt(dx * dx + dy * dy);
+
+          if (distance > 5.0f) {
+            const char *direction = "";
+            float angle = atan2(dy, dx) * 180.0f / 3.14159265f;
+
+            // Normalize angle to 0-360
+            if (angle < 0)
+              angle += 360.0f;
+
+            // Determine direction (8 directions)
+            if (angle >= 22.5f && angle < 67.5f)
+              direction = "↗"; // Up-Right
+            else if (angle >= 67.5f && angle < 112.5f)
+              direction = "↑"; // Up
+            else if (angle >= 112.5f && angle < 157.5f)
+              direction = "↖"; // Up-Left
+            else if (angle >= 157.5f && angle < 202.5f)
+              direction = "←"; // Left
+            else if (angle >= 202.5f && angle < 247.5f)
+              direction = "↙"; // Down-Left
+            else if (angle >= 247.5f && angle < 292.5f)
+              direction = "↓"; // Down
+            else if (angle >= 292.5f && angle < 337.5f)
+              direction = "↘"; // Down-Right
+            else
+              direction = "→"; // Right
+
+            spdlog::info("[mouse] moved {}", direction);
             last_log_mouse_x = static_cast<float>(globalMouseX);
             last_log_mouse_y = static_cast<float>(globalMouseY);
           }
+
           if (fabs(globalScrollDx) > 0.01f || fabs(globalScrollDy) > 0.01f) {
             spdlog::info("[mouse] scroll ({:.1f}, {:.1f})", globalScrollDx,
                          globalScrollDy);
@@ -1172,12 +1203,14 @@ void controller_window_input() {
           auto it = w.touchpoint_last_move_time.find(meshIdx);
           if (it == w.touchpoint_last_move_time.end())
             continue;
-          if (current_time - it->second > w.mouse_idle_timeout) {
+          if (current_time - it->second > 0.5) { // 0.5 seconds idle timeout
+            // Reset to center
             mesh.touch_X = 0.5f;
             mesh.touch_Y = 0.5f;
             mesh.touch_state = 0;
-            // glow will decay; do not reset glow_intensity here, let it fade
+            mesh.glow_intensity = 0.0f; // Immediately disappear
             mesh.highlight_value = 0.0f;
+            mesh.visible = false;
           }
         }
 
@@ -1326,10 +1359,31 @@ void controller_window_input() {
       w.camera_roll = 0.0f;
     }
 
-    // Check if window should close – if so, quit the entire program
+    // Check if window should close
     if (glfwWindowShouldClose(w.glfw_window)) {
-      gQuit = true;
-      break;
+      if (w.is_import_preview) {
+        // For import preview windows, just close the window and remove its tab
+        unsigned id = w.ID;
+        // Close the window and remove from windows vector
+        glfwDestroyWindow(w.glfw_window);
+        // Remove from windows vector
+        for (unsigned i = 0; i < windows.size(); ++i) {
+          if (windows[i].ID == id) {
+            windows.erase(windows.begin() + i);
+            break;
+          }
+        }
+        // Remove the tab
+        removeTab(id);
+        // Mark the preview as closed
+        w.is_import_preview = false;
+        w.import_preview.is_open = false;
+        break;
+      } else {
+        // For normal controller windows, quit the entire program
+        gQuit = true;
+        break;
+      }
     }
   } // end for windows
 }
@@ -1724,24 +1778,19 @@ void drawControllerWindows() {
       }
       w.model.motion_matrix = w.gyro_matrix;
 
-      float decay = 1.0f - w.deltaTime * 1.2f;
-      if (decay < 0.0f)
-        decay = 0.0f;
-
-      for (auto &mesh : w.model.meshes) {
+      // Apply glow intensity to touchpoints
+      for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
+        Mesh &mesh = w.model.meshes[meshIdx];
         if (mesh.isTouchpoint) {
-          // Always decay if it's a touchpoint
-          mesh.glow_intensity *= decay;
-          if (mesh.glow_intensity < 0.001f) {
-            mesh.glow_intensity = 0.0f;
-            mesh.touch_state = 0; // fully faded
-            mesh.visible = false;
-          } else {
+          // Apply the glow intensity to the material
+          if (mesh.glow_intensity > 0.001f) {
             mesh.material.color[0] = 1.0f;
             mesh.material.color[1] = 1.0f;
             mesh.material.color[2] = 1.0f;
             mesh.material.alpha = mesh.glow_intensity;
             mesh.visible = true;
+          } else {
+            mesh.visible = false;
           }
         }
       }

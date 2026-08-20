@@ -1201,7 +1201,7 @@ void drawSettingsWindow() {
         ImGui::SetTooltip("Toggle logging for each device type.");
       ImGui::NewLine();
       ImGui::SliderFloat("Mouse Sensitivity",
-                         &current_window->mouse_sensitivity, 0.001f, 0.5f,
+                         &current_window->mouse_sensitivity, 0.001f, 1.0f,
                          "%.3f");
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Scale factor for mouse movement -> touchpoint "
@@ -2082,12 +2082,12 @@ void drawSettingsWindow() {
                                  2.0f, "%.2f");
               ImGui::TableSetColumnIndex(1);
               ImGui::Text("Rotation (degrees)");
-              ImGui::SliderAngle("Yaw", &selectedMesh.touch_rotation[1],
-                                 -360.0f, 360.0f);
-              ImGui::SliderAngle("Pitch", &selectedMesh.touch_rotation[0],
-                                 -360.0f, 360.0f);
-              ImGui::SliderAngle("Roll", &selectedMesh.touch_rotation[2],
-                                 -360.0f, 360.0f);
+              ImGui::SliderFloat("Yaw", &selectedMesh.touch_rotation[1],
+                                 -360.0f, 360.0f, "%.1f deg");
+              ImGui::SliderFloat("Pitch", &selectedMesh.touch_rotation[0],
+                                 -360.0f, 360.0f, "%.1f deg");
+              ImGui::SliderFloat("Roll", &selectedMesh.touch_rotation[2],
+                                 -360.0f, 360.0f, "%.1f deg");
               ImGui::EndTable();
             }
 
@@ -3181,7 +3181,17 @@ void SaveImportedModel(controller_window &w) {
   // Close the preview window
   w.is_import_preview = false;
   w.import_preview.is_open = false;
-  glfwSetWindowShouldClose(w.glfw_window, true);
+  // Destroy the window properly
+  glfwDestroyWindow(w.glfw_window);
+  // Remove from windows vector
+  for (unsigned i = 0; i < windows.size(); ++i) {
+    if (windows[i].ID == w.ID) {
+      windows.erase(windows.begin() + i);
+      break;
+    }
+  }
+  // Remove the tab
+  removeTab(w.ID);
 }
 
 void writeOBJ(const std::string &path, const ImportedMesh &mesh) {
