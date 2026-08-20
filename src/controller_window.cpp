@@ -5,6 +5,7 @@
 #include "shader.h"
 #include "shaders.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <spdlog/spdlog.h>
 #include <unordered_map>
@@ -456,109 +457,20 @@ void createControllerWindow(std::string title, std::string model_path) {
 void applyMappingToMeshes(controller_window &w, float globalMouseDx,
                           float globalMouseDy, float globalScrollDx,
                           float globalScrollDy) {
-  static const std::unordered_map<std::string, SDL_Scancode> keyMap = {
-      {"key_a", SDL_SCANCODE_A},
-      {"key_b", SDL_SCANCODE_B},
-      {"key_c", SDL_SCANCODE_C},
-      {"key_d", SDL_SCANCODE_D},
-      {"key_e", SDL_SCANCODE_E},
-      {"key_f", SDL_SCANCODE_F},
-      {"key_g", SDL_SCANCODE_G},
-      {"key_h", SDL_SCANCODE_H},
-      {"key_i", SDL_SCANCODE_I},
-      {"key_j", SDL_SCANCODE_J},
-      {"key_k", SDL_SCANCODE_K},
-      {"key_l", SDL_SCANCODE_L},
-      {"key_m", SDL_SCANCODE_M},
-      {"key_n", SDL_SCANCODE_N},
-      {"key_o", SDL_SCANCODE_O},
-      {"key_p", SDL_SCANCODE_P},
-      {"key_q", SDL_SCANCODE_Q},
-      {"key_r", SDL_SCANCODE_R},
-      {"key_s", SDL_SCANCODE_S},
-      {"key_t", SDL_SCANCODE_T},
-      {"key_u", SDL_SCANCODE_U},
-      {"key_v", SDL_SCANCODE_V},
-      {"key_w", SDL_SCANCODE_W},
-      {"key_x", SDL_SCANCODE_X},
-      {"key_y", SDL_SCANCODE_Y},
-      {"key_z", SDL_SCANCODE_Z},
-      {"key_0", SDL_SCANCODE_0},
-      {"key_1", SDL_SCANCODE_1},
-      {"key_2", SDL_SCANCODE_2},
-      {"key_3", SDL_SCANCODE_3},
-      {"key_4", SDL_SCANCODE_4},
-      {"key_5", SDL_SCANCODE_5},
-      {"key_6", SDL_SCANCODE_6},
-      {"key_7", SDL_SCANCODE_7},
-      {"key_8", SDL_SCANCODE_8},
-      {"key_9", SDL_SCANCODE_9},
-      {"key_space", SDL_SCANCODE_SPACE},
-      {"key_enter", SDL_SCANCODE_RETURN},
-      {"key_shift", SDL_SCANCODE_LSHIFT},
-      {"key_rshift", SDL_SCANCODE_RSHIFT},
-      {"key_ctrl", SDL_SCANCODE_LCTRL},
-      {"key_rctrl", SDL_SCANCODE_RCTRL},
-      {"key_alt", SDL_SCANCODE_LALT},
-      {"key_ralt", SDL_SCANCODE_RALT},
-      {"key_tab", SDL_SCANCODE_TAB},
-      {"key_escape", SDL_SCANCODE_ESCAPE},
-      {"key_up", SDL_SCANCODE_UP},
-      {"key_down", SDL_SCANCODE_DOWN},
-      {"key_left", SDL_SCANCODE_LEFT},
-      {"key_right", SDL_SCANCODE_RIGHT},
-      {"key_f1", SDL_SCANCODE_F1},
-      {"key_f2", SDL_SCANCODE_F2},
-      {"key_f3", SDL_SCANCODE_F3},
-      {"key_f4", SDL_SCANCODE_F4},
-      {"key_f5", SDL_SCANCODE_F5},
-      {"key_f6", SDL_SCANCODE_F6},
-      {"key_f7", SDL_SCANCODE_F7},
-      {"key_f8", SDL_SCANCODE_F8},
-      {"key_f9", SDL_SCANCODE_F9},
-      {"key_f10", SDL_SCANCODE_F10},
-      {"key_f11", SDL_SCANCODE_F11},
-      {"key_f12", SDL_SCANCODE_F12},
-      {"key_delete", SDL_SCANCODE_DELETE},
-      {"key_pageup", SDL_SCANCODE_PAGEUP},
-      {"key_pagedown", SDL_SCANCODE_PAGEDOWN},
-      {"key_home", SDL_SCANCODE_HOME},
-      {"key_end", SDL_SCANCODE_END},
-      {"key_insert", SDL_SCANCODE_INSERT},
-      {"key_printscreen", SDL_SCANCODE_PRINTSCREEN},
-      {"key_scrolllock", SDL_SCANCODE_SCROLLLOCK},
-      {"key_pause", SDL_SCANCODE_PAUSE},
-      {"key_kp_0", SDL_SCANCODE_KP_0},
-      {"key_kp_1", SDL_SCANCODE_KP_1},
-      {"key_kp_2", SDL_SCANCODE_KP_2},
-      {"key_kp_3", SDL_SCANCODE_KP_3},
-      {"key_kp_4", SDL_SCANCODE_KP_4},
-      {"key_kp_5", SDL_SCANCODE_KP_5},
-      {"key_kp_6", SDL_SCANCODE_KP_6},
-      {"key_kp_7", SDL_SCANCODE_KP_7},
-      {"key_kp_8", SDL_SCANCODE_KP_8},
-      {"key_kp_9", SDL_SCANCODE_KP_9},
-      {"key_kp_divide", SDL_SCANCODE_KP_DIVIDE},
-      {"key_kp_multiply", SDL_SCANCODE_KP_MULTIPLY},
-      {"key_kp_minus", SDL_SCANCODE_KP_MINUS},
-      {"key_kp_plus", SDL_SCANCODE_KP_PLUS},
-      {"key_kp_enter", SDL_SCANCODE_KP_ENTER},
-      {"key_kp_period", SDL_SCANCODE_KP_PERIOD},
-      {"key_kp_equals", SDL_SCANCODE_KP_EQUALS},
-      {"key_f13", SDL_SCANCODE_F13},
-      {"key_f14", SDL_SCANCODE_F14},
-      {"key_f15", SDL_SCANCODE_F15},
-      {"key_f16", SDL_SCANCODE_F16},
-      {"key_f17", SDL_SCANCODE_F17},
-      {"key_f18", SDL_SCANCODE_F18},
-      {"key_f19", SDL_SCANCODE_F19},
-      {"key_f20", SDL_SCANCODE_F20},
-      {"key_f21", SDL_SCANCODE_F21},
-      {"key_f22", SDL_SCANCODE_F22},
-      {"key_f23", SDL_SCANCODE_F23},
-      {"key_f24", SDL_SCANCODE_F24},
-  };
-
+  static const std::unordered_map<std::string, SDL_Scancode> keyMap = []() {
+    std::unordered_map<std::string, SDL_Scancode> map;
+    for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+      SDL_Scancode sc = static_cast<SDL_Scancode>(i);
+      const char *name = SDL_GetScancodeName(sc);
+      if (name && strcmp(name, "UNKNOWN") != 0) {
+        std::string key = "key_";
+        for (const char *p = name; *p; ++p)
+          key.push_back(tolower(*p));
+        map[key] = sc;
+      }
+    }
+    return map;
+  }();
   for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
     Mesh &mesh = w.model.meshes[meshIdx];
     if (mesh.inputBinding.empty())
