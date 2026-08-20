@@ -534,18 +534,15 @@ void loadMesh(Mesh &m, std::string path) {
     }
 
     if (words.size() > 3 && words[0] == "f") {
-      for (unsigned long i = 1; i < words.size() - 2; i++) {
-        int num_verts = vertices.size();
-        indices.push_back(num_verts);
-        indices.push_back(num_verts + i);
-        indices.push_back(num_verts + i + 1);
-      }
+      // Parse all vertex indices for this face
+      std::vector<int> posIndices, texIndices, normIndices;
+
       for (unsigned long i = 1; i < words.size(); i++) {
         std::vector<int> ind;
         std::string value;
         std::stringstream word_stream(words[i]);
         while (std::getline(word_stream, value, '/')) {
-          if (value == "") {
+          if (value.empty()) {
             ind.push_back(-1);
           } else {
             try {
@@ -555,11 +552,62 @@ void loadMesh(Mesh &m, std::string path) {
             }
           }
         }
-        Vertex v;
-        v.position = ind[0];
-        v.texcoord = (ind.size() > 1 && ind[1] >= 0) ? ind[1] : 0;
-        v.normal = (ind.size() > 2 && ind[2] >= 0) ? ind[2] : 0;
-        vertices.push_back(v);
+
+        // Store indices (position, texture, normal)
+        int posIdx =
+            (ind.size() > 0 && ind[0] >= 0 && ind[0] < (int)positions.size())
+                ? ind[0]
+                : -1;
+        int texIdx =
+            (ind.size() > 1 && ind[1] >= 0 && ind[1] < (int)texcoords.size())
+                ? ind[1]
+                : -1;
+        int normIdx =
+            (ind.size() > 2 && ind[2] >= 0 && ind[2] < (int)normals.size())
+                ? ind[2]
+                : -1;
+
+        // Skip invalid faces
+        if (posIdx < 0)
+          continue;
+
+        posIndices.push_back(posIdx);
+        texIndices.push_back(texIdx);
+        normIndices.push_back(normIdx);
+      }
+
+      // Need at least 3 vertices for a face
+      if (posIndices.size() < 3)
+        continue;
+
+      // Triangulate - handle quads, ngons, etc.
+      for (size_t i = 1; i < posIndices.size() - 1; ++i) {
+        // Create triangle: 0, i, i+1
+        Vertex v0, v1, v2;
+
+        // First vertex (always the first vertex of the face)
+        v0.position = posIndices[0];
+        v0.texcoord = texIndices[0];
+        v0.normal = normIndices[0];
+
+        // Second vertex (i)
+        v1.position = posIndices[i];
+        v1.texcoord = texIndices[i];
+        v1.normal = normIndices[i];
+
+        // Third vertex (i+1)
+        v2.position = posIndices[i + 1];
+        v2.texcoord = texIndices[i + 1];
+        v2.normal = normIndices[i + 1];
+
+        // Add the triangle
+        int baseIndex = vertices.size();
+        vertices.push_back(v0);
+        vertices.push_back(v1);
+        vertices.push_back(v2);
+        indices.push_back(baseIndex);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 2);
       }
     }
   }

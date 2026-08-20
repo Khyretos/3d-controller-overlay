@@ -3455,20 +3455,63 @@ void writeOBJ(const std::string &path, const ImportedMesh &mesh) {
     spdlog::error("Failed to write OBJ: {}", path);
     return;
   }
+
+  spdlog::debug("Writing OBJ with {} vertices, {} indices",
+                mesh.positions.size(), mesh.indices.size());
+
+  // Write vertices
   for (auto &p : mesh.positions) {
     f << "v " << p.x << " " << p.y << " " << p.z << "\n";
   }
+
+  // Write normals
   for (auto &n : mesh.normals) {
     f << "vn " << n.x << " " << n.y << " " << n.z << "\n";
   }
+
+  // Write texture coordinates
   for (auto &t : mesh.texcoords) {
     f << "vt " << t.x << " " << t.y << "\n";
   }
+
   f << "s off\n";
-  for (size_t i = 0; i < mesh.indices.size(); i += 3) {
-    int i0 = mesh.indices[i] + 1;
-    int i1 = mesh.indices[i + 1] + 1;
-    int i2 = mesh.indices[i + 2] + 1;
+
+  // Check if we have valid indices
+  if (mesh.indices.empty()) {
+    spdlog::warn("No indices found in imported mesh '{}'", mesh.name);
+    return;
+  }
+
+  // Ensure we have a multiple of 3 (triangles)
+  size_t numIndices = mesh.indices.size();
+  size_t numTriangles = numIndices / 3;
+
+  if (numTriangles * 3 != numIndices) {
+    spdlog::warn("Index count {} is not a multiple of 3 for mesh '{}'",
+                 numIndices, mesh.name);
+    // Just use whatever we have
+  }
+
+  // Write faces
+  for (size_t i = 0; i < numIndices && i + 2 < numIndices; i += 3) {
+    // Get indices safely
+    unsigned int idx0 = mesh.indices[i];
+    unsigned int idx1 = mesh.indices[i + 1];
+    unsigned int idx2 = mesh.indices[i + 2];
+
+    // Check if indices are valid (within vertex range)
+    if (idx0 >= mesh.positions.size() || idx1 >= mesh.positions.size() ||
+        idx2 >= mesh.positions.size()) {
+      spdlog::warn("Invalid face indices in mesh '{}' ({} {} {}), skipping",
+                   mesh.name, idx0, idx1, idx2);
+      continue;
+    }
+
+    // OBJ indices are 1-based
+    int i0 = idx0 + 1;
+    int i1 = idx1 + 1;
+    int i2 = idx2 + 1;
+
     f << "f " << i0 << "/" << i0 << "/" << i0 << " " << i1 << "/" << i1 << "/"
       << i1 << " " << i2 << "/" << i2 << "/" << i2 << "\n";
   }
