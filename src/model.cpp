@@ -258,25 +258,34 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.assignedPart = p["assigned_part"].get<int>();
     mesh.name = p.value("name", filename);
 
-    if (p.contains("material")) {
-      auto &mat = p["material"];
-      if (mat.contains("ambient"))
-        mesh.material.ambient = mat["ambient"].get<float>();
-      if (mat.contains("diffuse"))
-        mesh.material.diffuse = mat["diffuse"].get<float>();
-      if (mat.contains("specular"))
-        mesh.material.specular = mat["specular"].get<float>();
-      if (mat.contains("shininess"))
-        mesh.material.shininess = mat["shininess"].get<float>();
-      if (mat.contains("color")) {
-        auto arr = mat["color"].get<std::array<float, 3>>();
-        mesh.material.color[0] = arr[0];
-        mesh.material.color[1] = arr[1];
-        mesh.material.color[2] = arr[2];
+    // Read material properties – top‑level (new format) with fallback to nested
+    // "material" (legacy)
+    auto getFloat = [&](const std::string &key, float &dest) {
+      if (p.contains(key)) {
+        dest = p[key].get<float>();
+      } else if (p.contains("material") && p["material"].contains(key)) {
+        dest = p["material"][key].get<float>();
       }
-      if (mat.contains("alpha"))
-        mesh.material.alpha = mat["alpha"].get<float>();
-    }
+    };
+    auto getColor = [&](const std::string &key, float dest[3]) {
+      if (p.contains(key)) {
+        auto arr = p[key].get<std::array<float, 3>>();
+        dest[0] = arr[0];
+        dest[1] = arr[1];
+        dest[2] = arr[2];
+      } else if (p.contains("material") && p["material"].contains(key)) {
+        auto arr = p["material"][key].get<std::array<float, 3>>();
+        dest[0] = arr[0];
+        dest[1] = arr[1];
+        dest[2] = arr[2];
+      }
+    };
+    getFloat("ambient", mesh.material.ambient);
+    getFloat("diffuse", mesh.material.diffuse);
+    getFloat("specular", mesh.material.specular);
+    getFloat("shininess", mesh.material.shininess);
+    getColor("color", mesh.material.color);
+    getFloat("alpha", mesh.material.alpha);
 
     // per-mesh highlight override
     mesh.use_custom_highlight = p.value("use_custom_highlight", false);
