@@ -102,29 +102,40 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"rotation\": [" << mesh.rotation[0] << ", "
          << mesh.rotation[1] << ", " << mesh.rotation[2] << "],\n";
     json << "      \"parent\": " << mesh.parentIndex << ",\n";
-    json << "      \"press_color\": [" << mesh.press_color[0] << ", "
-         << mesh.press_color[1] << ", " << mesh.press_color[2] << "],\n";
     json << "      \"input_type\": " << mesh.inputType << ",\n";
     json << "      \"input_binding\": \"" << escapeJson(mesh.inputBinding)
          << "\",\n";
     json << "      \"invert\": " << (mesh.invert ? "true" : "false") << ",\n";
     json << "      \"isTouchpad\": " << (mesh.isTouchpad ? "true" : "false")
          << ",\n";
-    json << "      \"material\": {\n";
-    json << "        \"ambient\": " << mesh.material.ambient << ",\n";
-    json << "        \"diffuse\": " << mesh.material.diffuse << ",\n";
-    json << "        \"specular\": " << mesh.material.specular << ",\n";
-    json << "        \"shininess\": " << mesh.material.shininess << ",\n";
-    json << "        \"color\": [" << mesh.material.color[0] << ", "
+    json << "      \"isTouchpoint\": " << (mesh.isTouchpoint ? "true" : "false")
+         << ",\n";
+    json << "      \"isBumper\": " << (mesh.isBumper ? "true" : "false")
+         << ",\n";
+    json << "      \"isTrigger\": " << (mesh.isTrigger ? "true" : "false")
+         << ",\n";
+    json << "      \"isPaddle\": " << (mesh.isPaddle ? "true" : "false")
+         << ",\n";
+    json << "      \"ambient\": " << mesh.material.ambient << ",\n";
+    json << "      \"diffuse\": " << mesh.material.diffuse << ",\n";
+    json << "      \"specular\": " << mesh.material.specular << ",\n";
+    json << "      \"shininess\": " << mesh.material.shininess << ",\n";
+    json << "      \"color\": [" << mesh.material.color[0] << ", "
          << mesh.material.color[1] << ", " << mesh.material.color[2] << "],\n";
-    json << "        \"alpha\": " << mesh.material.alpha << "\n";
-    json << "      }\n";
+    json << "      \"alpha\": " << mesh.material.alpha << ",\n";
+    json << "      \"use_custom_highlight\": "
+         << (mesh.use_custom_highlight ? "true" : "false") << ",\n";
+    json << "      \"custom_highlight_color\": ["
+         << mesh.custom_highlight_color[0] << ", "
+         << mesh.custom_highlight_color[1] << ", "
+         << mesh.custom_highlight_color[2] << "]\n";
     json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
   }
   json << "  ],\n";
   json << "  \"source\": \"" << escapeJson(m.source) << "\"\n";
   json << "}\n";
 }
+
 void readInfoJson(Model &m, const std::string &path) {
   std::ifstream f(path);
   if (!f)
@@ -233,18 +244,19 @@ void readInfoJson(Model &m, const std::string &path) {
       mesh.isTouchpad = p["isTouchpad"].get<bool>();
     else
       mesh.isTouchpad = false; // default
+    if (p.contains("isTouchpoint"))
+      mesh.isTouchpoint = p["isTouchpoint"].get<bool>();
+    else
+      mesh.isTouchpoint = false;
+    if (p.contains("isBumper"))
+      mesh.isBumper = p["isBumper"].get<bool>();
+    if (p.contains("isTrigger"))
+      mesh.isTrigger = p["isTrigger"].get<bool>();
+    if (p.contains("isPaddle"))
+      mesh.isPaddle = p["isPaddle"].get<bool>();
     if (p.contains("assigned_part"))
       mesh.assignedPart = p["assigned_part"].get<int>();
     mesh.name = p.value("name", filename);
-    if (p.contains("press_color")) {
-      auto arr = p["press_color"].get<std::array<float, 3>>();
-      mesh.press_color[0] = arr[0];
-      mesh.press_color[1] = arr[1];
-      mesh.press_color[2] = arr[2];
-    } else {
-      // default to zero (use global)
-      mesh.press_color[0] = mesh.press_color[1] = mesh.press_color[2] = 0.0f;
-    }
 
     if (p.contains("material")) {
       auto &mat = p["material"];
@@ -264,6 +276,20 @@ void readInfoJson(Model &m, const std::string &path) {
       }
       if (mat.contains("alpha"))
         mesh.material.alpha = mat["alpha"].get<float>();
+    }
+
+    // per-mesh highlight override
+    mesh.use_custom_highlight = p.value("use_custom_highlight", false);
+    if (p.contains("custom_highlight_color")) {
+      auto arr = p["custom_highlight_color"].get<std::array<float, 3>>();
+      mesh.custom_highlight_color[0] = arr[0];
+      mesh.custom_highlight_color[1] = arr[1];
+      mesh.custom_highlight_color[2] = arr[2];
+    } else {
+      // default to red
+      mesh.custom_highlight_color[0] = 1.0f;
+      mesh.custom_highlight_color[1] = 0.0f;
+      mesh.custom_highlight_color[2] = 0.0f;
     }
 
     // After setting mesh.material.color (possibly from JSON)
@@ -323,6 +349,7 @@ void readInfoJson(Model &m, const std::string &path) {
     }
   }
 }
+
 // ------------------------------------------------------------------
 // LEGACY OBJ LOADER (32 meshes from folder)
 // ------------------------------------------------------------------
@@ -763,7 +790,7 @@ void loadTexture(GLuint &id, std::string path) {
 }
 
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &pressColor) {
+              const glm::vec3 &highlightColor) {
   if (!mesh.vao || mesh.elements == 0)
     return;
 
@@ -800,21 +827,15 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   shaderUniformFloat(shader, "material.shininess", mesh.material.shininess);
   shaderUniformFloat(shader, "material.alpha", mesh.material.alpha);
 
-  shaderUniformVec3(shader, "highlight_color",
-                    glm::vec3(mesh.material.highlight[0],
-                              mesh.material.highlight[1],
-                              mesh.material.highlight[2]));
+  // Use the passed highlightColor (already overridden per mesh if custom)
+  shaderUniformVec3(shader, "highlight_color", highlightColor);
   shaderUniformFloat(shader, "highlight_value", mesh.highlight_value);
+  shaderUniformFloat(shader, "pressValue", mesh.press);
 
   shaderUniformMat4(shader, "model", modelMatrix);
   glm::mat3 normal = glm::mat3(modelMatrix);
   shaderUniformMat3(shader, "normal_model",
                     glm::transpose(glm::inverse(normal)));
-
-  shaderUniformVec3(
-      shader, "pressColor",
-      glm::vec3(mesh.press_color[0], mesh.press_color[1], mesh.press_color[2]));
-  shaderUniformFloat(shader, "pressValue", mesh.press);
 
   if (mesh.visible) {
     glDrawElements(GL_TRIANGLES, mesh.elements, GL_UNSIGNED_INT, 0);
@@ -925,7 +946,7 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
       move += glm::vec3(touchpad.touch_offset[0], touchpad.touch_offset[1],
                         touchpad.touch_offset[2]);
       // Lift the touchpoint 0.1 units above the surface (local Y)
-      move.y += 0.1f;
+      move.y += 0.02f;
       // Apply translation
       model = glm::translate(model, move);
     } else {
@@ -953,22 +974,17 @@ glm::mat4 getMeshFinalMatrix(const Model &m, int idx, const glm::mat4 &parent) {
 }
 
 void drawModel(Model m, GLuint shader, int highlight_mesh_index,
-               const glm::vec3 &globalPressColor) {
+               const glm::vec3 &globalHighlightColor) {
   int num_meshes = (int)m.meshes.size();
   std::vector<glm::mat4> finalMatrices(num_meshes, glm::mat4(1.0f));
   std::vector<bool> computed(num_meshes, false);
 
-  // ---- Set popup flags and highlight colours ----
+  // ---- Set popup flags and highlight colors ----
   for (int i = 0; i < num_meshes; ++i) {
     Mesh &mesh = m.meshes[i];
-    mesh.popup = false;
-    int part = mesh.assignedPart;
-    if (m.popup_bumpers && (part == 18 || part == 19))
-      mesh.popup = true;
-    if (m.popup_triggers && (part == 3 || part == 4))
-      mesh.popup = true;
-    if (m.popup_paddles && (part >= 25 && part <= 28))
-      mesh.popup = true;
+    mesh.popup = (mesh.isBumper && m.popup_bumpers) ||
+                 (mesh.isTrigger && m.popup_triggers) ||
+                 (mesh.isPaddle && m.popup_paddles);
     if (i == highlight_mesh_index) {
       mesh.material.color[0] = 0.0f;
       mesh.material.color[1] = 1.0f;
@@ -1003,25 +1019,25 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index,
 
   // ---- Draw ----
   for (int i = 0; i < num_meshes; ++i) {
-    Mesh &mesh = m.meshes[i]; // use reference so we can modify temporarily
+    Mesh &mesh = m.meshes[i];
 
-    // ---- Compute effective press color ----
-    glm::vec3 pressCol;
-    if (mesh.press_color[0] != 0.0f || mesh.press_color[1] != 0.0f ||
-        mesh.press_color[2] != 0.0f) {
-      pressCol = glm::vec3(mesh.press_color[0], mesh.press_color[1],
-                           mesh.press_color[2]);
+    // ---- Determine effective highlight color ----
+    glm::vec3 highlightCol;
+    if (mesh.use_custom_highlight) {
+      highlightCol = glm::vec3(mesh.custom_highlight_color[0],
+                               mesh.custom_highlight_color[1],
+                               mesh.custom_highlight_color[2]);
     } else {
-      pressCol = globalPressColor;
+      highlightCol = globalHighlightColor;
     }
 
     // ---- Draw the mesh ----
-    drawMesh(mesh, finalMatrices[i], shader, pressCol);
+    drawMesh(mesh, finalMatrices[i], shader, highlightCol);
   }
 }
 
 // ------------------------------------------------------------------
-// NEW: CUSTOM MODEL IMPORT (using Assimp) and MAPPING
+// CUSTOM MODEL IMPORT (using Assimp) and MAPPING
 // ------------------------------------------------------------------
 
 void importModelFile(Model &m, const std::string &filepath) {

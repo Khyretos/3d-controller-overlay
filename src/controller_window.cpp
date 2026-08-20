@@ -10,7 +10,7 @@
 #include <unordered_map>
 
 extern unsigned selected_tab;
-extern unsigned selected_mesh;
+extern int selected_mesh;
 extern std::vector<window_tab> tabs;
 
 extern bool g_log_controller;
@@ -222,6 +222,33 @@ static Uint8 getHatValue(controller_window &w, int hatIdx) {
     return SDL_JoystickGetHat(w.sdl_joystick, hatIdx);
   }
   return SDL_HAT_CENTERED;
+}
+
+// ------------------------------------------------------------------
+// Create axis indicator (RGB cross at pivot)
+// ------------------------------------------------------------------
+void createAxisIndicator(controller_window &w) {
+  if (w.axis_vao)
+    return;
+  float vertices[] = {
+      // X axis (red)
+      0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+      // Y axis (green)
+      0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.0f, 0.0f, 1.0f, 0.0f,
+      // Z axis (blue)
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.0f, 0.0f, 1.0f};
+  glGenVertexArrays(1, &w.axis_vao);
+  glGenBuffers(1, &w.axis_vbo);
+  glBindVertexArray(w.axis_vao);
+  glBindBuffer(GL_ARRAY_BUFFER, w.axis_vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                        (void *)(3 * sizeof(float)));
+  glEnableVertexAttribArray(1);
+  glBindVertexArray(0);
+  w.axis_elements = 6; // 3 lines * 2 vertices each
 }
 
 void createControllerWindow(std::string title, std::string model_path) {
@@ -616,29 +643,27 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
                 mesh.glow_intensity = 1.0f;
 
                 int part = mesh.assignedPart;
-                if (part == 30 || part == 31 || part == 33 || part == 34) {
-                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
-                  if (touchpadIdxFound == -1) {
-                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
-                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
-                        touchpadIdxFound = i;
-                        break;
-                      }
+                int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                if (touchpadIdxFound == -1) {
+                  for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                    if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                      touchpadIdxFound = i;
+                      break;
                     }
                   }
-                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
-                    if (mesh.parentIndex != touchpadIdxFound ||
-                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
-                        mesh.position[2] != 0.0f) {
-                      mesh.parentIndex = touchpadIdxFound;
-                      mesh.position[0] = 0.0f;
-                      mesh.position[1] = 0.0f;
-                      mesh.position[2] = 0.0f;
-                      mesh.useCustomScale = false;
-                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
-                                   mesh.name,
-                                   w.model.meshes[touchpadIdxFound].name);
-                    }
+                }
+                if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                  if (mesh.parentIndex != touchpadIdxFound ||
+                      mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                      mesh.position[2] != 0.0f) {
+                    mesh.parentIndex = touchpadIdxFound;
+                    mesh.position[0] = 0.0f;
+                    mesh.position[1] = 0.0f;
+                    mesh.position[2] = 0.0f;
+                    mesh.useCustomScale = false;
+                    spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                 mesh.name,
+                                 w.model.meshes[touchpadIdxFound].name);
                   }
                 }
               } else {
@@ -666,29 +691,27 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
                 mesh.glow_intensity = 1.0f;
 
                 int part = mesh.assignedPart;
-                if (part == 30 || part == 31 || part == 33 || part == 34) {
-                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
-                  if (touchpadIdxFound == -1) {
-                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
-                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
-                        touchpadIdxFound = i;
-                        break;
-                      }
+                int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                if (touchpadIdxFound == -1) {
+                  for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                    if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                      touchpadIdxFound = i;
+                      break;
                     }
                   }
-                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
-                    if (mesh.parentIndex != touchpadIdxFound ||
-                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
-                        mesh.position[2] != 0.0f) {
-                      mesh.parentIndex = touchpadIdxFound;
-                      mesh.position[0] = 0.0f;
-                      mesh.position[1] = 0.0f;
-                      mesh.position[2] = 0.0f;
-                      mesh.useCustomScale = false;
-                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
-                                   mesh.name,
-                                   w.model.meshes[touchpadIdxFound].name);
-                    }
+                }
+                if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                  if (mesh.parentIndex != touchpadIdxFound ||
+                      mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                      mesh.position[2] != 0.0f) {
+                    mesh.parentIndex = touchpadIdxFound;
+                    mesh.position[0] = 0.0f;
+                    mesh.position[1] = 0.0f;
+                    mesh.position[2] = 0.0f;
+                    mesh.useCustomScale = false;
+                    spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                 mesh.name,
+                                 w.model.meshes[touchpadIdxFound].name);
                   }
                 }
               } else {
@@ -718,9 +741,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
       if (value == "mouse_xy" || value == "mouse_scroll_xy") {
         dx *= w.mouse_sensitivity;
         dy *= w.mouse_sensitivity;
-        bool isTouchPoint =
-            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
           const float MAX_DELTA_PER_SEC = 1.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
@@ -754,9 +775,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         continue;
       } else if (value == "mouse_x" || value == "mouse_scroll_x") {
         float val = dx * w.mouse_sensitivity;
-        bool isTouchPoint =
-            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
           const float MAX_DELTA_PER_SEC = 3.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
@@ -780,9 +799,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         continue;
       } else if (value == "mouse_y" || value == "mouse_scroll_y") {
         float val = dy * w.mouse_sensitivity;
-        bool isTouchPoint =
-            (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-             mesh.assignedPart == 33 || mesh.assignedPart == 34);
+        bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
           const float MAX_DELTA_PER_SEC = 3.0f;
           float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
@@ -1149,9 +1166,7 @@ void controller_window_input() {
           Mesh &mesh = w.model.meshes[meshIdx];
           if (mesh.inputBinding.find("mouse:") != 0)
             continue;
-          bool isTouchPoint =
-              (mesh.assignedPart == 30 || mesh.assignedPart == 31 ||
-               mesh.assignedPart == 33 || mesh.assignedPart == 34);
+          bool isTouchPoint = mesh.isTouchpoint;
           if (!isTouchPoint)
             continue;
           auto it = w.touchpoint_last_move_time.find(meshIdx);
@@ -1161,7 +1176,7 @@ void controller_window_input() {
             mesh.touch_X = 0.5f;
             mesh.touch_Y = 0.5f;
             mesh.touch_state = 0;
-            mesh.glow_intensity = 0.0f;
+            // glow will decay; do not reset glow_intensity here, let it fade
             mesh.highlight_value = 0.0f;
           }
         }
@@ -1595,6 +1610,7 @@ void drawControllerWindows() {
         }
       }
 
+      // ---- Draw model ----
       glUseProgram(w.shader);
 
       if (w.freelook)
@@ -1713,23 +1729,31 @@ void drawControllerWindows() {
         decay = 0.0f;
 
       for (auto &mesh : w.model.meshes) {
-        int part = mesh.assignedPart;
-        if (mesh.touch_state > 0) {
+        if (mesh.isTouchpoint) {
+          // Always decay if it's a touchpoint
           mesh.glow_intensity *= decay;
-          if (mesh.glow_intensity < 0.001f)
+          if (mesh.glow_intensity < 0.001f) {
             mesh.glow_intensity = 0.0f;
-          mesh.material.color[0] = 1.0f;
-          mesh.material.color[1] = 1.0f;
-          mesh.material.color[2] = 1.0f;
-          mesh.material.alpha = mesh.glow_intensity;
-          mesh.visible = (mesh.glow_intensity > 0.001f);
+            mesh.touch_state = 0; // fully faded
+            mesh.visible = false;
+          } else {
+            mesh.material.color[0] = 1.0f;
+            mesh.material.color[1] = 1.0f;
+            mesh.material.color[2] = 1.0f;
+            mesh.material.alpha = mesh.glow_intensity;
+            mesh.visible = true;
+          }
         }
       }
 
-      glm::vec3 globalPressColor =
-          glm::vec3(w.global_press_color[0], w.global_press_color[1],
-                    w.global_press_color[2]);
-      drawModel(w.model, w.shader, highlight, globalPressColor);
+      // Pass global highlight color (will be overridden per mesh if custom)
+      glm::vec3 globalHighlight = glm::vec3(
+          w.highlight_color[0], w.highlight_color[1], w.highlight_color[2]);
+      drawModel(w.model, w.shader, highlight, globalHighlight);
+
+      // ---- Draw Pivot Circle, Axis, and Text Overlay (always on top) ----
+      // Disable depth test so they appear on top
+      glDisable(GL_DEPTH_TEST);
 
       if (selected_tab < tabs.size()) {
         unsigned activeID = tabs[selected_tab].ID;
@@ -1740,6 +1764,8 @@ void drawControllerWindows() {
             glm::mat4 pivotMat =
                 getMeshFinalMatrix(w.model, selected_mesh, w.gyro_matrix);
             glm::vec3 pivotPos = glm::vec3(pivotMat[3]);
+
+            // ---- Pivot Circle ----
             createPivotCircle(w);
             glUseProgram(w.grid_shader);
             shaderUniformMat4(
@@ -1750,6 +1776,31 @@ void drawControllerWindows() {
                               glm::vec3(1.0f, 0.6f, 0.0f));
             glBindVertexArray(w.pivot_vao);
             glDrawArrays(GL_LINE_LOOP, 0, w.pivot_segments + 1);
+            glBindVertexArray(0);
+            glUseProgram(0);
+
+            // ---- Axis Indicator ----
+            createAxisIndicator(w);
+            glUseProgram(w.shader);
+            glUseProgram(w.light_source_shader);
+            glm::mat4 axisModel = glm::translate(glm::mat4(1.0f), pivotPos);
+            shaderUniformMat4(w.light_source_shader, "model", axisModel);
+            shaderUniformMat4(w.light_source_shader, "view", w.view_matrix);
+            shaderUniformMat4(w.light_source_shader, "projection",
+                              w.projection_matrix);
+            glBindVertexArray(w.axis_vao);
+            // X axis (red)
+            shaderUniformVec3(w.light_source_shader, "lightColor",
+                              glm::vec3(1.0f, 0.0f, 0.0f));
+            glDrawArrays(GL_LINES, 0, 2);
+            // Y axis (green)
+            shaderUniformVec3(w.light_source_shader, "lightColor",
+                              glm::vec3(0.0f, 1.0f, 0.0f));
+            glDrawArrays(GL_LINES, 2, 2);
+            // Z axis (blue)
+            shaderUniformVec3(w.light_source_shader, "lightColor",
+                              glm::vec3(0.0f, 0.0f, 1.0f));
+            glDrawArrays(GL_LINES, 4, 2);
             glBindVertexArray(0);
             glUseProgram(0);
           }

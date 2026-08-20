@@ -103,7 +103,7 @@ typedef struct controller_window_struct {
   bool mouse_buttons_prev[GLFW_MOUSE_BUTTON_LAST + 1] = {
       false}; // for edge detection
   float mouse_sensitivity =
-      0.005f; // scale factor for mouse->stick mapping (reduced from 0.005)
+      0.1f; // scale factor for mouse->stick mapping (reduced from 0.005)
 
   // ---- Touchpoint mouse tracking ----
   std::unordered_map<int, double> touchpoint_last_move_time;
@@ -210,12 +210,16 @@ typedef struct controller_window_struct {
   GLuint pivot_vbo = 0;
   int pivot_segments = 20;
 
+  GLuint axis_vao = 0;
+  GLuint axis_vbo = 0;
+  GLuint axis_elements = 0;
+
   bool pivot_dragging = false;
   double pivot_drag_start_screen_x = 0.0;
   double pivot_drag_start_screen_y = 0.0;
   glm::vec3 pivot_drag_start_world = glm::vec3(0.0f);
   int pivot_drag_mesh_index = -1;
-  float global_press_color[3] = {0.0f, 1.0f, 0.0f}; // default green
+
 } controller_window;
 
 // Function declarations (unchanged)

@@ -46,6 +46,47 @@ bool g_log_mouse = false;
 
 static int last_logged_device_index = -1;
 
+// ------------------------------------------------------------------
+// Shaded submenu helper
+// ------------------------------------------------------------------
+static void BeginShadedGroup() {
+  ImGui::GetWindowDrawList()->ChannelsSplit(2);
+  ImGui::GetWindowDrawList()->ChannelsSetCurrent(1); // draw widgets on top
+  ImGui::Indent(6.0f);
+  ImGui::Dummy(ImVec2(0.0f, 2.0f)); // top padding
+  ImGui::BeginGroup();
+}
+
+static void EndShadedGroup(ImU32 bgColor, ImU32 borderColor) {
+  ImGui::EndGroup();
+
+  // Capture the group's bounding box before any further layout calls move
+  // the "last item rect" that GetItemRectMin/Max reports.
+  ImVec2 pad(8.0f, 4.0f);
+  ImVec2 rectMin = ImVec2(ImGui::GetItemRectMin().x - pad.x,
+                          ImGui::GetItemRectMin().y - pad.y);
+  ImVec2 rectMax = ImVec2(ImGui::GetItemRectMax().x + pad.x,
+                          ImGui::GetItemRectMax().y + pad.y);
+
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  dl->ChannelsSetCurrent(0); // background, drawn behind channel 1's widgets
+  dl->AddRectFilled(rectMin, rectMax, bgColor, 6.0f);
+  dl->AddRect(rectMin, rectMax, borderColor, 6.0f);
+  dl->ChannelsMerge();
+
+  ImGui::Dummy(ImVec2(0.0f, 2.0f)); // bottom padding
+  ImGui::Unindent(6.0f);
+}
+
+// Fitting purple/black themed accent shades - each submenu gets its own
+// tint so the UI reads as colorful while staying on-theme.
+static ImU32 ShadeColor(float r, float g, float b, float a = 0.30f) {
+  return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a));
+}
+static ImU32 ShadeBorder(float r, float g, float b, float a = 0.65f) {
+  return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a));
+}
+
 // Actual filenames of OBJ meshes (used for file I/O)
 std::string mesh_filenames[35] = {
     "top_shell.obj",    "bottom_shell.obj",  "extra.obj",
@@ -115,7 +156,7 @@ std::string rebind_string = "";
 
 unsigned int tabs_made = 0;
 unsigned selected_tab = 0;
-unsigned selected_mesh = 0;
+int selected_mesh = -1; // -1 == no row selected
 unsigned material_mesh = 0;
 unsigned texture_mesh = 0;
 
@@ -218,6 +259,11 @@ void createSettingsWindow() {
   style.Colors[ImGuiCol_ResizeGrip] = purple;
   style.Colors[ImGuiCol_ResizeGripHovered] = purple_light;
   style.Colors[ImGuiCol_ResizeGripActive] = purple_dark;
+
+  // ---- Additional styling for tree nodes and combo boxes ----
+  style.Colors[ImGuiCol_FrameBg] = purple_dark;
+  style.Colors[ImGuiCol_FrameBgHovered] = purple_light;
+  style.Colors[ImGuiCol_FrameBgActive] = purple;
 
   ImGui_ImplGlfw_InitForOpenGL(glfw_settings_window, true);
   if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
@@ -632,6 +678,8 @@ void drawSettingsWindow() {
         ImGui::SetTooltip("Select a gamepad or joystick.");
 
       if (ImGui::TreeNode("Settings")) {
+        // Apply a dark purple background for the tree node
+        BeginShadedGroup();
         ImGui::Checkbox("Popup Bumpers", &current_window->model.popup_bumpers);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Animate bumpers when pressed.");
@@ -657,24 +705,13 @@ void drawSettingsWindow() {
         }
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Deadzone for right stick highlight ring.");
-        ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
-        ImGui::ColorEdit3("Press Color", current_window->global_press_color);
+        ImGui::ColorEdit3("Highlight Color (Global)",
+                          current_window->highlight_color);
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(
-              "Color used when a button is pressed (if no per‑mesh override).");
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(
-              "Colour used for highlights on buttons and sticks.");
-        for (int i = 3; i < (int)current_window->model.meshes.size(); i++) {
-          if (i != 5 && i != 6) {
-            current_window->model.meshes[i].material.highlight[0] =
-                current_window->highlight_color[0];
-            current_window->model.meshes[i].material.highlight[1] =
-                current_window->highlight_color[1];
-            current_window->model.meshes[i].material.highlight[2] =
-                current_window->highlight_color[2];
-          }
-        }
+          ImGui::SetTooltip("Default highlight color for all meshes. Can be "
+                            "overridden per mesh.");
+        EndShadedGroup(ShadeColor(0.42f, 0.28f, 0.62f),
+                       ShadeBorder(0.42f, 0.28f, 0.62f));
         ImGui::TreePop();
       }
     } // end Controller
@@ -686,19 +723,18 @@ void drawSettingsWindow() {
     static int mesh_to_delete = -1; // for per‑row delete confirmation
 
     if (ImGui::CollapsingHeader("Model")) {
-
       ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.2f, 1.0f), "Model Selection");
       ImGui::Separator();
 
       // ---- Clamp all mesh indices to valid range ----
       size_t meshCount = current_window->model.meshes.size();
       if (meshCount == 0) {
-        selected_mesh = 0;
+        selected_mesh = -1;
         material_mesh = 0;
         texture_mesh = 0;
       } else {
-        if (selected_mesh >= meshCount)
-          selected_mesh = meshCount - 1;
+        if (selected_mesh >= 0 && selected_mesh >= (int)meshCount)
+          selected_mesh = (int)meshCount - 1;
         if (material_mesh >= meshCount)
           material_mesh = meshCount - 1;
         if (texture_mesh >= meshCount)
@@ -858,6 +894,7 @@ void drawSettingsWindow() {
       if (!current_window->model.meshes.empty()) {
         // ---- Materials ----
         if (ImGui::TreeNode("Materials")) {
+          BeginShadedGroup();
           // Ensure material_mesh is valid
           if (material_mesh >= (int)current_window->model.meshes.size())
             material_mesh = (int)current_window->model.meshes.size() - 1;
@@ -904,11 +941,14 @@ void drawSettingsWindow() {
           matMesh.original_color[1] = matMesh.material.color[1];
           matMesh.original_color[2] = matMesh.material.color[2];
           matMesh.original_alpha = matMesh.material.alpha;
+          EndShadedGroup(ShadeColor(0.55f, 0.18f, 0.45f),
+                         ShadeBorder(0.55f, 0.18f, 0.45f));
           ImGui::TreePop();
         }
 
         // ---- Textures ----
         if (ImGui::TreeNode("Textures")) {
+          BeginShadedGroup();
           if (texture_mesh >= (int)current_window->model.meshes.size())
             texture_mesh = (int)current_window->model.meshes.size() - 1;
           std::string previewName =
@@ -1111,6 +1151,8 @@ void drawSettingsWindow() {
             if (ImGui::IsItemHovered())
               ImGui::SetTooltip("Texture rotation angle.");
           }
+          EndShadedGroup(ShadeColor(0.22f, 0.38f, 0.58f),
+                         ShadeBorder(0.22f, 0.38f, 0.58f));
           ImGui::TreePop();
         }
       } else {
@@ -1181,6 +1223,7 @@ void drawSettingsWindow() {
           Mesh &mesh = current_window->model.meshes[i];
           bool hasMesh = (mesh.elements > 0);
           ImGui::TableNextRow();
+          // Highlight selected row if any
           if (selected_mesh == i) {
             ImGui::TableSetBgColor(
                 ImGuiTableBgTarget_RowBg0,
@@ -1201,8 +1244,15 @@ void drawSettingsWindow() {
                                   ImVec4(0.2f, 0.05f, 0.3f, 0.5f));
             ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
                                 ImVec2(0.0f, 0.5f));
+            // Toggle selection: if clicked and already selected, deselect; else
+            // select
+            bool isSelected = (selected_mesh == i);
             if (ImGui::Button(mesh.name.c_str(), ImVec2(-1, 0))) {
-              selected_mesh = i;
+              if (isSelected) {
+                selected_mesh = -1; // deselect
+              } else {
+                selected_mesh = i;
+              }
             }
             ImGui::PopStyleVar();
             ImGui::PopStyleColor(3);
@@ -1661,140 +1711,210 @@ void drawSettingsWindow() {
         if (selectedMesh.elements == 0) {
           ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
         } else {
-          // ---- Highlight variables ----
-          static std::map<int, std::array<float, 3>> original_colors;
-          static bool highlight_selected = false;
-          static float highlight_color[3] = {1.0f, 0.0f, 0.0f};
-
+          // ---- Header with mesh name and Save button ----
           ImGui::Text("Editing: %s", selectedMesh.name.c_str());
+          ImGui::SameLine();
+          if (ImGui::Button("Save Model")) {
+            writeJson(current_window->model,
+                      current_window->model.path + "/info.json");
+            spdlog::info("Model saved to {}", current_window->model.path);
+          }
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Write current settings to info.json.");
 
-          // ---- Position Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "Position");
-          ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the X axis.");
-          ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the Y axis.");
-          ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Move the mesh along the Z axis.");
+          // ---- Position Section (collapsible) ----
+          if (ImGui::TreeNode("Position")) {
+            BeginShadedGroup();
+            ImGui::InputFloat("X Position", &selectedMesh.position[0], 0.01f,
+                              1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Move the mesh along the X axis.");
+            ImGui::InputFloat("Y Position", &selectedMesh.position[1], 0.01f,
+                              1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Move the mesh along the Y axis.");
+            ImGui::InputFloat("Z Position", &selectedMesh.position[2], 0.01f,
+                              1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Move the mesh along the Z axis.");
+            EndShadedGroup(ShadeColor(0.20f, 0.40f, 0.62f),
+                           ShadeBorder(0.20f, 0.40f, 0.62f));
+            ImGui::TreePop();
+          }
 
-          // ---- Pivot Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f), "Pivot Point");
-          ImGui::TextWrapped(
-              "The pivot is the point around which the mesh rotates "
-              "(for sticks, triggers, buttons). The orange circle shows its "
-              "current position.");
-          ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (X).");
-          ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Y).");
-          ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f,
-                            1.0f, "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Offset of the pivot from the mesh origin (Z).");
-
-          // ---- Auto-center buttons ----
-          if (selectedMesh.hasBBox) {
-            ImGui::Text("Auto‑set pivot:");
-            if (ImGui::Button("Center of Mass")) {
-              glm::vec3 center = computeMeshCenter(selectedMesh);
-              spdlog::info("Center of Mass: ({:.3f}, {:.3f}, {:.3f})", center.x,
-                           center.y, center.z);
-              selectedMesh.pivot_offset[0] = center.x;
-              selectedMesh.pivot_offset[1] = center.y;
-              selectedMesh.pivot_offset[2] = center.z;
-            }
+          // ---- Pivot Section (collapsible) ----
+          if (ImGui::TreeNode("Pivot Point")) {
+            BeginShadedGroup();
+            ImGui::TextWrapped(
+                "The pivot is the point around which the mesh rotates "
+                "(for sticks, triggers, buttons). The orange circle shows its "
+                "current position.");
+            ImGui::InputFloat("Pivot X", &selectedMesh.pivot_offset[0], 0.01f,
+                              1.0f, "%.3f");
             if (ImGui::IsItemHovered())
               ImGui::SetTooltip(
-                  "Sets the pivot to the geometric centre of the mesh.");
-            ImGui::SameLine();
-            if (selectedMesh.assignedPart == 5 ||
-                selectedMesh.assignedPart == 6) {
-              if (ImGui::Button("Set Pivot to Stick Base")) {
-                float px =
-                    (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
-                float py = selectedMesh.bboxMin.y;
-                float pz =
-                    (selectedMesh.bboxMin.z + selectedMesh.bboxMax.z) * 0.5f;
-                selectedMesh.pivot_offset[0] = px;
-                selectedMesh.pivot_offset[1] = py;
-                selectedMesh.pivot_offset[2] = pz;
+                  "Offset of the pivot from the mesh origin (X).");
+            ImGui::InputFloat("Pivot Y", &selectedMesh.pivot_offset[1], 0.01f,
+                              1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Offset of the pivot from the mesh origin (Y).");
+            ImGui::InputFloat("Pivot Z", &selectedMesh.pivot_offset[2], 0.01f,
+                              1.0f, "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Offset of the pivot from the mesh origin (Z).");
+
+            // ---- Auto-center buttons ----
+            if (selectedMesh.hasBBox) {
+              ImGui::Text("Auto‑set pivot:");
+              if (ImGui::Button("Center of Mass")) {
+                glm::vec3 center = computeMeshCenter(selectedMesh);
+                spdlog::info("Center of Mass: ({:.3f}, {:.3f}, {:.3f})",
+                             center.x, center.y, center.z);
+                selectedMesh.pivot_offset[0] = center.x;
+                selectedMesh.pivot_offset[1] = center.y;
+                selectedMesh.pivot_offset[2] = center.z;
               }
               if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(
-                    "Sets the pivot to the bottom‑centre of the stick mesh. "
-                    "This makes the stick rotate like a real joystick.");
+                    "Sets the pivot to the geometric centre of the mesh.");
+              ImGui::SameLine();
+              if (selectedMesh.assignedPart == 5 ||
+                  selectedMesh.assignedPart == 6) {
+                if (ImGui::Button("Set Pivot to Stick Base")) {
+                  float px =
+                      (selectedMesh.bboxMin.x + selectedMesh.bboxMax.x) * 0.5f;
+                  float py = selectedMesh.bboxMin.y;
+                  float pz =
+                      (selectedMesh.bboxMin.z + selectedMesh.bboxMax.z) * 0.5f;
+                  selectedMesh.pivot_offset[0] = px;
+                  selectedMesh.pivot_offset[1] = py;
+                  selectedMesh.pivot_offset[2] = pz;
+                }
+                if (ImGui::IsItemHovered())
+                  ImGui::SetTooltip(
+                      "Sets the pivot to the bottom‑centre of the stick mesh. "
+                      "This makes the stick rotate like a real joystick.");
+              }
+            } else {
+              ImGui::TextDisabled(
+                  "Bounding box not available – auto‑center disabled.");
             }
-          } else {
-            ImGui::TextDisabled(
-                "Bounding box not available – auto‑center disabled.");
+            EndShadedGroup(ShadeColor(0.58f, 0.38f, 0.10f),
+                           ShadeBorder(0.58f, 0.38f, 0.10f));
+            ImGui::TreePop();
           }
 
-          // ---- Rotation Section ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Rotation");
-          ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the X axis (degrees).");
-          ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the Y axis (degrees).");
-          ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f,
-                            1.0f, "%.1f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
+          // ---- Rotation Section (collapsible) ----
+          if (ImGui::TreeNode("Rotation")) {
+            BeginShadedGroup();
+            ImGui::InputFloat("Rot X (deg)", &selectedMesh.rotation[0], 0.1f,
+                              1.0f, "%.1f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Euler rotation around the X axis (degrees).");
+            ImGui::InputFloat("Rot Y (deg)", &selectedMesh.rotation[1], 0.1f,
+                              1.0f, "%.1f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Euler rotation around the Y axis (degrees).");
+            ImGui::InputFloat("Rot Z (deg)", &selectedMesh.rotation[2], 0.1f,
+                              1.0f, "%.1f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Euler rotation around the Z axis (degrees).");
+            EndShadedGroup(ShadeColor(0.22f, 0.52f, 0.30f),
+                           ShadeBorder(0.22f, 0.52f, 0.30f));
+            ImGui::TreePop();
+          }
 
-          // ---- Restored movement & animation controls ----
-          ImGui::Separator();
-          ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
-                             "Movement & Animation");
-          // Travel (button press offset)
-          ImGui::InputFloat("Travel X", &selectedMesh.travel[0], 0.01f, 1.0f,
-                            "%.3f");
-          ImGui::InputFloat("Travel Y", &selectedMesh.travel[1], 0.01f, 1.0f,
-                            "%.3f");
-          ImGui::InputFloat("Travel Z", &selectedMesh.travel[2], 0.01f, 1.0f,
-                            "%.3f");
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Movement when the button is pressed.");
-          // Popup offset/rotation
-          ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
-                            0.01f, 1.0f, "%.3f");
-          ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1], -180,
-                             180);
-          ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
-                             -180, 180);
-          ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
-                             -180, 180);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Offset and rotation when the part 'pops up' (e.g. bumper).");
-          // Stick and trigger max angles
-          ImGui::SliderAngle("Stick Max Angle", &selectedMesh.stick_max, 0.0f,
-                             45.0f);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Maximum deflection angle for sticks.");
-          ImGui::SliderAngle("Trigger Max Angle", &selectedMesh.trigger_max,
-                             0.0f, 90.0f);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Maximum pull angle for triggers.");
+          // ---- Movement & Animation (collapsible) ----
+          if (ImGui::TreeNode("Movement & Animation")) {
+            BeginShadedGroup();
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                               "Travel (button press offset)");
+            ImGui::InputFloat("Travel X", &selectedMesh.travel[0], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Travel Y", &selectedMesh.travel[1], 0.01f, 1.0f,
+                              "%.3f");
+            ImGui::InputFloat("Travel Z", &selectedMesh.travel[2], 0.01f, 1.0f,
+                              "%.3f");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Movement when the button is pressed.");
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                               "Popup (bumper/paddle)");
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Make this mesh pop out when its input is triggered.");
+            ImGui::Checkbox("Is Bumper", &selectedMesh.isBumper);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("This mesh acts as a bumper – it will pop when "
+                                "'Popup Bumpers' is enabled.");
+            ImGui::SameLine();
+            ImGui::Checkbox("Is Trigger", &selectedMesh.isTrigger);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("This mesh acts as a trigger – it will pop "
+                                "when 'Popup Triggers' is enabled.");
+            ImGui::SameLine();
+            ImGui::Checkbox("Is Paddle", &selectedMesh.isPaddle);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("This mesh acts as a paddle – it will pop when "
+                                "'Popup Paddles' is enabled.");
+            ImGui::InputFloat("Popup Offset X", &selectedMesh.popup_offset[0],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Y", &selectedMesh.popup_offset[1],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::InputFloat("Popup Offset Z", &selectedMesh.popup_offset[2],
+                              0.01f, 1.0f, "%.3f");
+            ImGui::SliderAngle("Popup Yaw", &selectedMesh.popup_rotation[1],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Pitch", &selectedMesh.popup_rotation[0],
+                               -180, 180);
+            ImGui::SliderAngle("Popup Roll", &selectedMesh.popup_rotation[2],
+                               -180, 180);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip(
+                  "Offset and rotation when the part 'pops up' (e.g. bumper).");
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                               "Stick / Trigger Limits");
+            ImGui::SliderAngle("Stick Max Angle", &selectedMesh.stick_max, 0.0f,
+                               45.0f);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum deflection angle for sticks.");
+            ImGui::SliderAngle("Trigger Max Angle", &selectedMesh.trigger_max,
+                               0.0f, 90.0f);
+            if (ImGui::IsItemHovered())
+              ImGui::SetTooltip("Maximum pull angle for triggers.");
+            EndShadedGroup(ShadeColor(0.16f, 0.48f, 0.52f),
+                           ShadeBorder(0.16f, 0.48f, 0.52f));
+            ImGui::TreePop();
+          }
+
+          // ---- Highlight Override (per-mesh) ----
+          if (ImGui::TreeNode("Highlight Override")) {
+            BeginShadedGroup();
+            bool useCustom = selectedMesh.use_custom_highlight;
+            if (ImGui::Checkbox("Override global highlight color",
+                                &useCustom)) {
+              selectedMesh.use_custom_highlight = useCustom;
+              if (useCustom) {
+                // Copy current global color as default
+                selectedMesh.custom_highlight_color[0] =
+                    current_window->highlight_color[0];
+                selectedMesh.custom_highlight_color[1] =
+                    current_window->highlight_color[1];
+                selectedMesh.custom_highlight_color[2] =
+                    current_window->highlight_color[2];
+              }
+            }
+            if (selectedMesh.use_custom_highlight) {
+              ImGui::ColorEdit3("Custom Highlight Color",
+                                selectedMesh.custom_highlight_color);
+            }
+            EndShadedGroup(ShadeColor(0.58f, 0.16f, 0.16f),
+                           ShadeBorder(0.58f, 0.16f, 0.16f));
+            ImGui::TreePop();
+          }
 
           // ---- Reset Transform ----
           ImGui::Separator();
@@ -1818,22 +1938,13 @@ void drawSettingsWindow() {
             ImGui::SetTooltip("Reset all transform values (position, pivot, "
                               "rotation, travel, popup) to zero.");
 
+          // ---- Legacy Highlight checkbox (now replaced by override) ----
+          // We keep it as a temporary visual highlight in the 3D view (doesn't
+          // save)
+          ImGui::Checkbox("Temporary Highlight (view only)",
+                          &current_window->highlight_enabled);
           ImGui::SameLine();
-          if (ImGui::Button("Save Model")) {
-            writeJson(current_window->model,
-                      current_window->model.path + "/info.json");
-            spdlog::info("Model saved to {}", current_window->model.path);
-          }
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Write current settings to info.json.");
-
-          // ---- Edit Highlight ----
-          ImGui::Checkbox("Highlight", &current_window->highlight_enabled);
-          ImGui::SameLine();
-          ImGui::ColorEdit3("Highlight Color", current_window->highlight_color);
-          if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(
-                "Temporarily colour the selected mesh for editing.");
+          ImGui::ColorEdit3("Temp Color", current_window->highlight_color);
 
           if (current_window->highlight_enabled) {
             if (current_window->original_colors.find(selected_mesh) ==
@@ -1936,7 +2047,11 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Mark this mesh as a touchpad surface. This "
                               "enables touch area controls.");
-
+          ImGui::SameLine();
+          ImGui::Checkbox("Is Touchpoint", &selectedMesh.isTouchpoint);
+          if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Mark this mesh as a touchpoint (moves with "
+                              "mouse/touch input).");
           if (selectedMesh.isTouchpad) {
             ImGui::SliderFloat("Touch Area Width", &selectedMesh.touch_width,
                                0.01f, 5.0f, "%.2f");
@@ -2120,6 +2235,7 @@ void drawSettingsWindow() {
     if (ImGui::CollapsingHeader("Lighting")) {
       // ---- Directional Lights ----
       if (ImGui::TreeNode("Directional Lights")) {
+        BeginShadedGroup();
         static unsigned current_dir_light = 0;
         std::string preview_name = "";
         if (current_window->direct_lights.size() > 0)
@@ -2220,11 +2336,14 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Light colour.");
         }
+        EndShadedGroup(ShadeColor(0.58f, 0.46f, 0.10f),
+                       ShadeBorder(0.58f, 0.46f, 0.10f));
         ImGui::TreePop();
       }
 
       // ---- Point Lights ----
       if (ImGui::TreeNode("Point Lights")) {
+        BeginShadedGroup();
         static unsigned current_point_light = 0;
         std::string preview_name = "";
         if (current_window->point_lights.size() > 0)
@@ -2341,11 +2460,14 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Light colour.");
         }
+        EndShadedGroup(ShadeColor(0.58f, 0.20f, 0.36f),
+                       ShadeBorder(0.58f, 0.20f, 0.36f));
         ImGui::TreePop();
       }
 
       // ---- Spot Lights ----
       if (ImGui::TreeNode("Spot Lights")) {
+        BeginShadedGroup();
         static unsigned current_spot_light = 0;
         std::string preview_name = "";
         if (current_window->spot_lights.size() > 0)
@@ -2486,6 +2608,8 @@ void drawSettingsWindow() {
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Softness of the cone edge.");
         }
+        EndShadedGroup(ShadeColor(0.16f, 0.42f, 0.56f),
+                       ShadeBorder(0.16f, 0.42f, 0.56f));
         ImGui::TreePop();
       }
     }
@@ -3156,9 +3280,6 @@ static void saveGlobalSettings() {
     // Colors
     tab["highlight_color"] = {w->highlight_color[0], w->highlight_color[1],
                               w->highlight_color[2]};
-    tab["global_press_color"] = {w->global_press_color[0],
-                                 w->global_press_color[1],
-                                 w->global_press_color[2]};
 
     // Gyro
     tab["gyro_debug_logging"] = w->gyro_debug_logging;
@@ -3167,6 +3288,21 @@ static void saveGlobalSettings() {
     tab["reset_gyro_button2"] = w->reset_gyro_button2;
     tab["gyro_correction"] = w->gyro_correction;
     tab["gyro_sensitivity"] = w->gyro_sensitivity;
+
+    // ---- Per-mesh data (highlight override etc.) ----
+    json meshes = json::array();
+    for (auto &mesh : w->model.meshes) {
+      json m;
+      m["use_custom_highlight"] = mesh.use_custom_highlight;
+      m["custom_highlight_color"] = {mesh.custom_highlight_color[0],
+                                     mesh.custom_highlight_color[1],
+                                     mesh.custom_highlight_color[2]};
+      // Also store other transform data (already in info.json, but we save here
+      // as well) We'll rely on info.json for transforms, but we need highlight
+      // override saved.
+      meshes.push_back(m);
+    }
+    tab["meshes"] = meshes;
 
     // ---- Lights ----
     json direct = json::array();
@@ -3322,11 +3458,6 @@ static void loadGlobalSettings() {
     w->highlight_color[0] = hc[0];
     w->highlight_color[1] = hc[1];
     w->highlight_color[2] = hc[2];
-    auto pc =
-        tab.value("global_press_color", std::array<float, 3>{0.0f, 1.0f, 0.0f});
-    w->global_press_color[0] = pc[0];
-    w->global_press_color[1] = pc[1];
-    w->global_press_color[2] = pc[2];
 
     auto tao =
         tab.value("touch_area_offset", std::array<float, 3>{0.0f, 0.01f, 0.0f});
@@ -3337,6 +3468,22 @@ static void loadGlobalSettings() {
     w->reset_gyro_button2 = tab.value("reset_gyro_button2", -1);
     w->gyro_correction = tab.value("gyro_correction", 5);
     w->gyro_sensitivity = tab.value("gyro_sensitivity", 5.0f);
+
+    // ---- Per-mesh highlight override ----
+    if (tab.contains("meshes") && tab["meshes"].is_array()) {
+      auto &meshArr = tab["meshes"];
+      for (size_t i = 0; i < meshArr.size() && i < w->model.meshes.size();
+           ++i) {
+        auto &m = meshArr[i];
+        w->model.meshes[i].use_custom_highlight =
+            m.value("use_custom_highlight", false);
+        auto col = m.value("custom_highlight_color",
+                           std::array<float, 3>{1.0f, 0.0f, 0.0f});
+        w->model.meshes[i].custom_highlight_color[0] = col[0];
+        w->model.meshes[i].custom_highlight_color[1] = col[1];
+        w->model.meshes[i].custom_highlight_color[2] = col[2];
+      }
+    }
 
     // ---- Lights ----
     w->direct_lights.clear();

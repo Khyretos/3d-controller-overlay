@@ -1,5 +1,5 @@
-#include "settings.h"
 #include "keyboard_input.h"
+#include "settings.h"
 #include "settings_window.h"
 #include <iostream>
 #include <spdlog/sinks/rotating_file_sink.h>

@@ -122,7 +122,7 @@ typedef struct mesh_struct {
   // Input type: 0=Gamepad, 1=Joystick, 2=Keyboard, 3=Mouse
   int inputType = 0; // default to Gamepad
   float glow_intensity = 0.0f;
-  float press_color[3] = {0.0f, 0.0f, 0.0f}; // zero means "use global"
+  // Removed press_color – press uses highlight color
 
   float original_color[3] = {0.8f, 0.8f, 0.8f};
   float original_alpha = 1.0f;
@@ -130,12 +130,20 @@ typedef struct mesh_struct {
                             // "keyboard:key_w", "mouse:mouse_left"
   bool invert = false;
   bool isTouchpad = false;
+  bool isBumper = false;
+  bool isTrigger = false;
+  bool isPaddle = false;
+  bool isTouchpoint = false;
 
   float touch_offset[3] = {0.0f, 0.0f, 0.0f};
   float touch_rotation[3] = {0.0f, 0.0f, 0.0f};
+
+  // Per‑mesh highlight override
+  bool use_custom_highlight = false;
+  float custom_highlight_color[3] = {1.0f, 0.0f, 0.0f};
 } Mesh;
 
-// ----- NEW: Imported mesh data for custom model mapping -----
+// ----- Imported mesh data for custom model mapping -----
 typedef struct imported_mesh_struct {
   std::string name;       // mesh name from the file
   int assigned_part = -1; // index into the 32 controller parts (0..31)
@@ -199,12 +207,13 @@ void loadTexture(GLuint &id, std::string path);
 void deleteTexture(GLuint &id);
 
 void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1,
-               const glm::vec3 &globalPressColor = glm::vec3(0.0f, 1.0f, 0.0f));
+               const glm::vec3 &globalHighlightColor = glm::vec3(1.0f, 0.0f,
+                                                                 0.0f));
 
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &pressColor);
+              const glm::vec3 &highlightColor);
 
-// ----- NEW: functions for custom mesh import and mapping -----
+// ----- functions for custom mesh import and mapping -----
 void importModelFile(Model &m, const std::string &filepath);
 void applyMeshMapping(Model &m);
 

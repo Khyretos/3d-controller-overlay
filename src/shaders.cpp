@@ -160,7 +160,6 @@ const std::string fragment_shader_code =
     "\n"
     "uniform vec3 highlight_color;\n"
     "uniform float highlight_value;\n"
-    "uniform vec3 pressColor;\n "
     "uniform float pressValue;\n"
     "\n"
     "vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);\n"
@@ -193,9 +192,10 @@ const std::string fragment_shader_code =
     "        }\n"
     "    }\n"
     "\n"
-    "    vec3 finalColor = mix(result, pressColor, pressValue);\n"
-    "    finalColor = mix(finalColor, highlight_color, highlight_value);\n"
-    "FragColor = vec4(finalColor, material.alpha);\n "
+    "    // Combine highlight with press value\n"
+    "    vec3 finalColor = mix(result, highlight_color, max(pressValue, "
+    "highlight_value));\n"
+    "    FragColor = vec4(finalColor, material.alpha);\n"
     "}\n"
     "\n"
     "vec2 CalcTexCoords(Texture t, vec2 inTexCoords){\n"
@@ -348,4 +348,32 @@ const std::string touch_area_fragment_shader_code =
     "void main()\n"
     "{\n"
     "    FragColor = vec4(lightColor, 1.0);\n"
+    "}\n";
+
+// ------------------------------------------------------------------
+// Text shaders for overlay
+// ------------------------------------------------------------------
+const std::string text_vertex_shader_code =
+    "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "layout (location = 1) in vec2 aTexCoords;\n"
+    "out vec2 TexCoords;\n"
+    "uniform mat4 projection;\n"
+    "void main()\n"
+    "{\n"
+    "    gl_Position = projection * vec4(aPos, 0.0, 1.0);\n"
+    "    TexCoords = aTexCoords;\n"
+    "}\n";
+
+const std::string text_fragment_shader_code =
+    "#version 330 core\n"
+    "in vec2 TexCoords;\n"
+    "uniform sampler2D fontTexture;\n"
+    "uniform vec3 textColor;\n"
+    "out vec4 FragColor;\n"
+    "void main()\n"
+    "{\n"
+    "    float alpha = texture(fontTexture, TexCoords).r;\n"
+    "    if(alpha < 0.1) discard;\n"
+    "    FragColor = vec4(textColor, alpha);\n"
     "}\n";

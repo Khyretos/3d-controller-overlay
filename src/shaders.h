@@ -11,5 +11,7 @@ extern const std::string vertex_shader_code;
 extern const std::string fragment_shader_code;
 extern const std::string touch_area_vertex_shader_code;
 extern const std::string touch_area_fragment_shader_code;
+extern const std::string text_vertex_shader_code;
+extern const std::string text_fragment_shader_code;
 
 #endif
