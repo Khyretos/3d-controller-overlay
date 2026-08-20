@@ -353,6 +353,8 @@ void drawSettingsWindow() {
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
 
+  static bool show_delete_popup = false;
+
   ImGuiWindowFlags window_flags =
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoTitleBar |
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
@@ -1671,7 +1673,7 @@ void drawSettingsWindow() {
             ImGui::SameLine();
             if (ImGui::Button(("Del##" + std::to_string(i)).c_str())) {
               mesh_to_delete = i;
-              ImGui::OpenPopup("delete_mesh_per_row");
+              show_delete_popup = true;
             }
           } else {
             ImGui::TextDisabled(" ");
@@ -1680,23 +1682,56 @@ void drawSettingsWindow() {
         ImGui::EndTable();
       }
 
-      // ---- Per‑row delete popup ----
-      if (ImGui::BeginPopup("delete_mesh_per_row")) {
-        ImGui::Text("Delete this mesh?");
-        if (ImGui::Button("Confirm")) {
+      // ---- Per‑row delete modal (triggered by flag) ----
+      if (show_delete_popup) {
+        ImGui::OpenPopup("Delete Mesh##confirm");
+        // Keep the flag true so the popup stays open; we'll close it inside the
+        // modal.
+      }
+
+      if (ImGui::BeginPopupModal("Delete Mesh##confirm", NULL,
+                                 ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Delete this mesh permanently?");
+        ImGui::Text("This action cannot be undone.");
+        ImGui::Separator();
+
+        if (ImGui::Button("Yes, Delete", ImVec2(120, 0))) {
           if (mesh_to_delete >= 0 &&
               mesh_to_delete < (int)current_window->model.meshes.size()) {
+            // Log which mesh is being deleted
+            std::string meshName =
+                current_window->model.meshes[mesh_to_delete].name;
+            spdlog::info("Deleting mesh '{}' at index {}", meshName,
+                         mesh_to_delete);
+
+            // Remove the mesh from the vector
             current_window->model.meshes.erase(
                 current_window->model.meshes.begin() + mesh_to_delete);
+
+            // Update info.json immediately
             writeJson(current_window->model,
                       current_window->model.path + "/info.json");
-            mesh_to_delete = -1;
-            ImGui::CloseCurrentPopup();
+
+            // Adjust selection if needed
+            if (selected_mesh == mesh_to_delete) {
+              selected_mesh = -1;
+            } else if (selected_mesh > mesh_to_delete) {
+              selected_mesh--;
+            }
+
+            spdlog::info("Mesh '{}' deleted and model saved.", meshName);
+          } else {
+            spdlog::warn("Invalid mesh index for deletion: {}", mesh_to_delete);
           }
+
+          mesh_to_delete = -1;
+          show_delete_popup = false; // close popup
+          ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
           mesh_to_delete = -1;
+          show_delete_popup = false;
           ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
