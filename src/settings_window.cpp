@@ -8,8 +8,10 @@
 #else // some other operating system
 #endif
 
+#include "controller_window.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "keyboard_input.h"
 #include "model.h"
 #include "settings.h"
 #include "settings_window.h"
@@ -22,6 +24,186 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <stdio.h>
+
+// ---- Capture state for auto‑binding (global) ----
+static struct CaptureState {
+  bool active = false;
+  controller_window *window = nullptr;
+  int mesh = -1;
+  int type = -1; // 0=gamepad,1=joystick,2=keyboard,3=mouse
+  bool keyboard_snapshot[SDL_NUM_SCANCODES];
+  bool gamepad_snapshot[32];
+  bool joystick_snapshot[128];
+  bool mouse_snapshot[8];
+  float axis_snapshot[128];
+} capture;
+
+static void startCapture(controller_window *w, int meshIdx, int type) {
+  spdlog::debug("startCapture called: mesh={}, type={}", meshIdx, type);
+
+  capture.active = true;
+  capture.window = w;
+  capture.mesh = meshIdx;
+  capture.type = type;
+
+  // Zero out snapshots to avoid garbage
+  memset(capture.joystick_snapshot, 0, sizeof(capture.joystick_snapshot));
+  memset(capture.axis_snapshot, 0, sizeof(capture.axis_snapshot));
+
+  if (type == 2) { // Keyboard
+    for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+      capture.keyboard_snapshot[i] = GlobalKeyboard::isPressed((SDL_Scancode)i);
+    }
+  } else if (type == 0) { // Gamepad
+    if (w->sdl_controller) {
+      for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX && i < 32; ++i) {
+        capture.gamepad_snapshot[i] = SDL_GameControllerGetButton(
+            w->sdl_controller, (SDL_GameControllerButton)i);
+      }
+      for (int i = 0; i < SDL_CONTROLLER_AXIS_MAX && i < 32; ++i) {
+        capture.axis_snapshot[i] =
+            SDL_GameControllerGetAxis(w->sdl_controller,
+                                      (SDL_GameControllerAxis)i) /
+            32767.0f;
+      }
+    }
+  } else if (type == 1) { // Joystick – fallback to raw joystick from
+                          // gamecontroller if needed
+    SDL_Joystick *joy = nullptr;
+    if (w->sdl_joystick)
+      joy = w->sdl_joystick;
+    else if (w->sdl_controller)
+      joy = SDL_GameControllerGetJoystick(w->sdl_controller);
+    if (joy) {
+      int numButtons = SDL_JoystickNumButtons(joy);
+      int maxButtons = std::min(numButtons, 128);
+      for (int i = 0; i < maxButtons; ++i) {
+        capture.joystick_snapshot[i] = SDL_JoystickGetButton(joy, i);
+      }
+      int numAxes = SDL_JoystickNumAxes(joy);
+      int maxAxes = std::min(numAxes, 128);
+      for (int i = 0; i < maxAxes; ++i) {
+        capture.axis_snapshot[i] = SDL_JoystickGetAxis(joy, i) / 32767.0f;
+      }
+      spdlog::debug("Joystick snapshot: {} buttons, {} axes", maxButtons,
+                    maxAxes);
+    } else {
+      spdlog::warn("No joystick available for capture");
+    }
+  } else if (type == 3) { // Mouse
+    for (int i = 0; i < 8; ++i) {
+      capture.mouse_snapshot[i] = GlobalKeyboard::isMouseButtonPressed(i);
+    }
+  }
+}
+
+static void clearCapture() {
+  spdlog::debug("clearCapture called");
+  capture.active = false;
+  capture.window = nullptr;
+  capture.mesh = -1;
+  capture.type = -1;
+}
+
+static bool pollAndCapture(controller_window *w, int meshIdx, int type,
+                           std::string &outBinding) {
+  if (!capture.active || capture.window != w || capture.mesh != meshIdx ||
+      capture.type != type) {
+    return false;
+  }
+
+  // ---- Keyboard ----
+  if (type == 2) {
+    for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
+      bool current = GlobalKeyboard::isPressed((SDL_Scancode)i);
+      if (current && !capture.keyboard_snapshot[i]) {
+        const char *name = SDL_GetScancodeName((SDL_Scancode)i);
+        if (name) {
+          outBinding = "key_" + std::string(name);
+          for (char &c : outBinding)
+            c = tolower(c);
+          spdlog::debug("Keyboard capture: {}", outBinding);
+          return true;
+        }
+      }
+    }
+  }
+
+  // ---- Gamepad ----
+  if (type == 0 && w->sdl_controller) {
+    for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX && i < 32; ++i) {
+      bool current = SDL_GameControllerGetButton(w->sdl_controller,
+                                                 (SDL_GameControllerButton)i);
+      if (current && !capture.gamepad_snapshot[i]) {
+        outBinding = "b" + std::to_string(i);
+        spdlog::debug("Gamepad button capture: {}", outBinding);
+        return true;
+      }
+    }
+    for (int i = 0; i < SDL_CONTROLLER_AXIS_MAX && i < 32; ++i) {
+      float current = SDL_GameControllerGetAxis(w->sdl_controller,
+                                                (SDL_GameControllerAxis)i) /
+                      32767.0f;
+      float snap = capture.axis_snapshot[i];
+      if (fabs(current) > 0.8f && fabs(current - snap) > 0.2f) {
+        std::string dir = (current > 0) ? "+" : "-";
+        outBinding = "a" + std::to_string(i) + dir;
+        spdlog::debug("Gamepad axis capture: {}", outBinding);
+        return true;
+      }
+    }
+  }
+
+  // ---- Joystick (raw) ----
+  if (type == 1) {
+    SDL_Joystick *joy = nullptr;
+    if (w->sdl_joystick)
+      joy = w->sdl_joystick;
+    else if (w->sdl_controller)
+      joy = SDL_GameControllerGetJoystick(w->sdl_controller);
+    if (joy) {
+      int numButtons = SDL_JoystickNumButtons(joy);
+      int maxButtons = std::min(numButtons, 128);
+      for (int i = 0; i < maxButtons; ++i) {
+        bool current = SDL_JoystickGetButton(joy, i);
+        if (current && !capture.joystick_snapshot[i]) {
+          outBinding = "b" + std::to_string(i);
+          spdlog::debug("Joystick button capture: {}", outBinding);
+          return true;
+        }
+      }
+      int numAxes = SDL_JoystickNumAxes(joy);
+      int maxAxes = std::min(numAxes, 128);
+      for (int i = 0; i < maxAxes; ++i) {
+        float current = SDL_JoystickGetAxis(joy, i) / 32767.0f;
+        float snap = capture.axis_snapshot[i];
+        if (fabs(current) > 0.8f && fabs(current - snap) > 0.2f) {
+          std::string dir = (current > 0) ? "+" : "-";
+          outBinding = "a" + std::to_string(i) + dir;
+          spdlog::debug("Joystick axis capture: {}", outBinding);
+          return true;
+        }
+      }
+    }
+  }
+
+  // ---- Mouse ----
+  if (type == 3) {
+    for (int i = 0; i < 8; ++i) {
+      bool current = GlobalKeyboard::isMouseButtonPressed(i);
+      if (current && !capture.mouse_snapshot[i]) {
+        const char *names[] = {"left", "right", "middle", "4",
+                               "5",    "6",     "7",      "8"};
+        outBinding = "mouse_" + std::string(names[i]);
+        spdlog::debug("Mouse button capture: {}", outBinding);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 using json = nlohmann::json;
 
 extern std::vector<controller_window> windows;
@@ -1570,8 +1752,10 @@ void drawSettingsWindow() {
                     ? "unbound"
                     : getFriendlyInputLabel(currentType, currentValue);
 
-            if (ImGui::BeginCombo("##input", selectedDisplay.c_str())) {
-              // "Unbound" option to clear binding
+            bool comboActive =
+                ImGui::BeginCombo("##input", selectedDisplay.c_str());
+            if (comboActive) {
+              // "Unbound" option
               if (ImGui::Selectable("Unbound", currentValue.empty())) {
                 currentValue = "";
                 mesh.inputBinding = "";
@@ -1588,7 +1772,37 @@ void drawSettingsWindow() {
                 }
               }
               ImGui::EndCombo();
+
+              // ---- Start capture if this combo is now active ----
+              if (!capture.active) {
+                startCapture(current_window, i, type_idx);
+              }
+            } else {
+              // ---- Combo is not active ----
+              // If we were capturing for this mesh and the combo closed, clear
+              // capture
+              if (capture.active && capture.window == current_window &&
+                  capture.mesh == i) {
+                clearCapture();
+              }
             }
+
+            // ---- Handle capture polling while combo is active ----
+            if (capture.active && capture.window == current_window &&
+                capture.mesh == i) {
+              std::string newBinding;
+              if (pollAndCapture(current_window, i, type_idx, newBinding)) {
+                // Set the binding
+                currentValue = newBinding;
+                mesh.inputBinding = currentType + ":" + currentValue;
+                // Clear capture so we don't keep capturing
+                clearCapture();
+                // Optionally, log the auto-binding
+                spdlog::info("Auto-bound mesh '{}' to input '{}'", mesh.name,
+                             newBinding);
+              }
+            }
+
             if (ImGui::IsItemHovered())
               ImGui::SetTooltip("Choose the input that triggers this mesh.");
 
