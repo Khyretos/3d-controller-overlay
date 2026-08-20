@@ -1184,11 +1184,18 @@ void drawSettingsWindow() {
       ImGui::SameLine();
       static int set_all_type = 0;
       const char *type_names[] = {"Gamepad", "Joystick", "Keyboard", "Mouse"};
+      const char *binding_prefixes[] = {"gamepad", "joystick", "keyboard",
+                                        "mouse"};
       if (ImGui::Combo("Set All Type", &set_all_type, type_names,
                        IM_ARRAYSIZE(type_names))) {
         for (auto &mesh : current_window->model.meshes) {
-          if (mesh.elements > 0)
+          if (mesh.elements > 0) {
             mesh.inputType = set_all_type;
+            // Update the binding prefix so the table shows the new type.
+            // The value part is cleared so the user can pick a specific input.
+            mesh.inputBinding =
+                std::string(binding_prefixes[set_all_type]) + ":";
+          }
         }
       }
       ImGui::NewLine();
