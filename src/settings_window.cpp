@@ -1170,9 +1170,16 @@ void drawSettingsWindow() {
       ImGui::NewLine();
       ImGui::Separator();
 
-      // ---- Dynamic mesh table ----
       ImGui::Text("Mesh List (%zu meshes)",
                   current_window->model.meshes.size());
+      ImGui::SameLine();
+      if (ImGui::Button("Save Model")) {
+        writeJson(current_window->model,
+                  current_window->model.path + "/info.json");
+        spdlog::info("Model saved to {}", current_window->model.path);
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Save current model settings to info.json.");
 
       // --- Check-all buttons ---
       if (ImGui::Button("Toggle All Visible")) {
