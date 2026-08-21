@@ -1,0 +1,158 @@
+name: Build
+
+on:
+  # Manual trigger: go to the Actions tab -> Build -> "Run workflow".
+  workflow_dispatch: {}
+  # Also builds automatically when you push a version tag, e.g.:
+  #   git tag v1.2.0 && git push --tags
+  # Tagging is itself a deliberate action, so this doesn't fire on your
+  # regular day-to-day commits to main - only when you decide a version
+  # is ready.
+  push:
+    tags: ['v*']
+
+# If you trigger the workflow twice in a row before the first finishes,
+# cancel the older run instead of burning minutes on both.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build appimage builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/docker/Dockerfile.appimage
+          tags: 3dco-appimage-builder:latest
+          load: true
+          cache-from: type=gha,scope=appimage
+          cache-to: type=gha,mode=max,scope=appimage
+
+      - name: Run build (produces AppImage)
+        run: |
+          mkdir -p dist/linux
+          docker run --rm -v "${{ github.workspace }}/dist:/dist" 3dco-appimage-builder:latest
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3dco-linux-appimage
+          path: dist/linux/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows executable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build windows builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/docker/Dockerfile.windows
+          tags: 3dco-windows-builder:latest
+          load: true
+          cache-from: type=gha,scope=windows
+          cache-to: type=gha,mode=max,scope=windows
+
+      - name: Run build (produces .exe)
+        run: |
+          mkdir -p dist/windows
+          docker run --rm -v "${{ github.workspace }}/dist:/dist" 3dco-windows-builder:latest
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3dco-windows
+          path: dist/windows/3dco+.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS Universal App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build macos builder image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/docker/Dockerfile.macos
+          tags: 3dco-macos-builder:latest
+          load: true
+          cache-from: type=gha,scope=macos
+          cache-to: type=gha,mode=max,scope=macos
+
+      - name: Run build (produces .app bundle)
+        run: |
+          mkdir -p dist/macos
+          docker run --rm -v "${{ github.workspace }}/dist:/dist" 3dco-macos-builder:latest
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3dco-macos
+          path: dist/macos/3dco+.app
+          if-no-files-found: error
+
+  # Only runs when you push a version tag (e.g. `git tag v1.2.0 && git push --tags`).
+  # Bundles all three platform builds into a single GitHub Release.
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-appimage, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/3dco-linux-appimage/*.AppImage
+            release-assets/3dco-windows/3dco+.exe
+            release-assets/3dco-macos/3dco+.app
