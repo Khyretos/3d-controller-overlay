@@ -30,6 +30,8 @@ void shaderUniformMat3(GLuint ID, const char *name, glm::mat3 mat);
 
 void shaderUniformVec3(GLuint ID, const char *name, glm::vec3 vec);
 
+void shaderUniformVec4(GLuint ID, const char *name, glm::vec4 vec);
+
 void shaderUniform2f(GLuint ID, const char *name, float value1, float value2);
 
 void shaderUniform3f(GLuint ID, const char *name, float value1, float value2,

@@ -544,6 +544,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           pressed = !pressed;
         mesh.press = pressed ? 1.0f : 0.0f;
         mesh.highlight_value = pressed ? 1.0f : 0.0f;
+        mesh.travel_value = mesh.press;
       } else if (prefix == 'a') {
         if (value.back() == '+') {
           isDirection = true;
@@ -620,6 +621,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           bool pressed = (hatVal & sdlDir) != 0;
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
+          mesh.travel_value = mesh.press;
         }
       }
 
@@ -892,6 +894,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
             pressed = !pressed;
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
+          mesh.travel_value = mesh.press;
         }
         continue;
       }
@@ -907,6 +910,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
             pressed = !pressed;
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
+          mesh.travel_value = mesh.press;
         } else {
           static std::set<std::string> warnedKeys;
           if (warnedKeys.insert(value).second) {
@@ -1433,10 +1437,23 @@ void controller_window_input() {
     }
 
     if (middle_button == GLFW_PRESS) {
-      w.camera_yaw = 0.0f;
-      w.camera_pitch = 89.999f;
-      w.camera_distance = 3.5f;
-      w.camera_roll = 0.0f;
+      bool shiftPressed =
+          glfwGetKey(w.glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+          glfwGetKey(w.glfw_window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+      if (shiftPressed) {
+        // Pan: move offsets based on mouse delta
+        float sensitivity = 0.005f;
+        w.camera_offset_x -= w.mouse_delta_x * sensitivity;
+        w.camera_offset_y += w.mouse_delta_y * sensitivity; // inverted Y
+      } else {
+        // Reset view
+        w.camera_yaw = 0.0f;
+        w.camera_pitch = 89.999f;
+        w.camera_distance = 3.5f;
+        w.camera_roll = 0.0f;
+        w.camera_offset_x = 0.0f;
+        w.camera_offset_y = 0.0f;
+      }
     }
 
     // Check if window should close
@@ -1645,11 +1662,13 @@ void update_camera(controller_window &w, GLuint &shader, int window_width,
     w.view_matrix =
         glm::lookAt(w.freelook_position, front, glm::vec3(0.0f, 1.0f, 0.0f));
   } else {
+    // Orbit camera
     w.camera_position.x = cos(glm::radians(w.camera_pitch)) *
                           sin(glm::radians(w.camera_yaw)) * w.camera_distance;
     w.camera_position.y = sin(glm::radians(w.camera_pitch)) * w.camera_distance;
     w.camera_position.z = cos(glm::radians(w.camera_pitch)) *
                           cos(glm::radians(w.camera_yaw)) * w.camera_distance;
+
     glm::vec3 front =
         glm::normalize(glm::vec3(0.0, 0.0, 0.0) - w.camera_position);
     glm::vec3 right =
@@ -1658,7 +1677,13 @@ void update_camera(controller_window &w, GLuint &shader, int window_width,
     glm::mat4 roll_mat = glm::mat4(1.0f);
     roll_mat = glm::rotate(roll_mat, glm::radians(w.camera_roll), front);
     up = glm::vec3(roll_mat * glm::vec4(up, 1.0));
-    w.view_matrix = glm::lookAt(w.camera_position, front, up);
+
+    // Apply pan offset (translate camera position and target)
+    glm::vec3 offset = right * w.camera_offset_x + up * w.camera_offset_y;
+    glm::vec3 eye = w.camera_position + offset;
+    glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f) + offset;
+
+    w.view_matrix = glm::lookAt(eye, target, up);
   }
   shaderUniformMat4(shader, "view", w.view_matrix);
   w.projection_matrix = glm::perspective(
@@ -1881,8 +1906,9 @@ void drawControllerWindows() {
       }
 
       // Pass global highlight color (will be overridden per mesh if custom)
-      glm::vec3 globalHighlight = glm::vec3(
-          w.highlight_color[0], w.highlight_color[1], w.highlight_color[2]);
+      glm::vec4 globalHighlight =
+          glm::vec4(w.highlight_color[0], w.highlight_color[1],
+                    w.highlight_color[2], w.highlight_color[3]);
       drawModel(w.model, w.shader, highlight, globalHighlight);
 
       // ---- Draw Pivot Circle, Axis, and Text Overlay (always on top) ----

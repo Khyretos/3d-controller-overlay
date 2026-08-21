@@ -97,8 +97,9 @@ typedef struct mesh_struct {
   // Dual highlight for axes
   bool use_dual_highlight = false;
   float axis_deadzone = 0.1f; // 0-1 range, default 10%
-  float highlight_color_positive[3] = {1.0f, 0.0f, 0.0f};
-  float highlight_color_negative[3] = {0.0f, 0.0f, 1.0f};
+  float highlight_color_positive[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+  float highlight_color_negative[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+  float custom_highlight_color[4] = {1.0f, 0.0f, 0.0f, 1.0f};
   float axis_highlight_value = 0.0f; // signed value from axis
 
   glm::mat4 base_transform = glm::mat4(1.0f);
@@ -154,7 +155,6 @@ typedef struct mesh_struct {
 
   // Per‑mesh highlight override
   bool use_custom_highlight = false;
-  float custom_highlight_color[3] = {1.0f, 0.0f, 0.0f};
 } Mesh;
 
 // ----- Imported mesh data for custom model mapping -----
@@ -224,14 +224,14 @@ void deleteTexture(GLuint &id);
 // imported mesh library, and this runs every frame per open window, so a
 // deep copy here would be wasteful. See model.cpp for why this is safe.
 void drawModel(Model &m, GLuint shader, int highlight_mesh_index = -1,
-               const glm::vec3 &globalHighlightColor = glm::vec3(1.0f, 0.0f,
-                                                                 0.0f));
+               const glm::vec4 &globalHighlightColor = glm::vec4(1.0f, 0.0f,
+                                                                 0.0f, 1.0f));
 
 // baseColorOverride, when non-null, replaces mesh.material.color for this
 // draw call only (used for the selection highlight) instead of requiring
 // the caller to mutate and later discard a copy of the mesh's real color.
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &highlightColor,
+              const glm::vec4 &highlightColor,
               const glm::vec3 *baseColorOverride = nullptr);
 
 // ----- functions for custom mesh import and mapping -----

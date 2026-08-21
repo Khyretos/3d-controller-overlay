@@ -1,6 +1,6 @@
 #include "shader.h"
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 
 GLuint CompileShader(GLuint type, const char *shaderSource) {
   GLuint shaderObject;
@@ -125,6 +125,11 @@ void shaderUniformMat3(GLuint ID, const char *name, glm::mat3 mat) {
 void shaderUniformVec3(GLuint ID, const char *name, glm::vec3 vec) {
 
   glUniform3fv(glGetUniformLocation(ID, name), 1, &vec[0]);
+}
+
+void shaderUniformVec4(GLuint ID, const char *name, glm::vec4 vec) {
+
+  glUniform4fv(glGetUniformLocation(ID, name), 1, &vec[0]);
 }
 
 void shaderUniform2f(GLuint ID, const char *name, float value1, float value2) {

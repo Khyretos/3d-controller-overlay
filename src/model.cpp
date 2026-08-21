@@ -128,7 +128,8 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"custom_highlight_color\": ["
          << mesh.custom_highlight_color[0] << ", "
          << mesh.custom_highlight_color[1] << ", "
-         << mesh.custom_highlight_color[2] << "],\n";
+         << mesh.custom_highlight_color[2] << ", "
+         << mesh.custom_highlight_color[3] << "],\n";
     json << "      \"travel_rotation\": [" << mesh.travel_rotation[0] << ", "
          << mesh.travel_rotation[1] << ", " << mesh.travel_rotation[2]
          << "],\n";
@@ -138,11 +139,13 @@ void writeJson(Model &m, const std::string &path) {
     json << "      \"highlight_color_positive\": ["
          << mesh.highlight_color_positive[0] << ", "
          << mesh.highlight_color_positive[1] << ", "
-         << mesh.highlight_color_positive[2] << "],\n";
+         << mesh.highlight_color_positive[2] << ", "
+         << mesh.highlight_color_positive[3] << "],\n";
     json << "      \"highlight_color_negative\": ["
          << mesh.highlight_color_negative[0] << ", "
          << mesh.highlight_color_negative[1] << ", "
-         << mesh.highlight_color_negative[2] << "]\n";
+         << mesh.highlight_color_negative[2] << ", "
+         << mesh.highlight_color_negative[3] << "]\n";
     json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
   }
   json << "  ],\n";
@@ -871,7 +874,7 @@ void loadTexture(GLuint &id, std::string path) {
 }
 
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &highlightColor,
+              const glm::vec4 &highlightColor,
               const glm::vec3 *baseColorOverride) {
   if (!mesh.vao || mesh.elements == 0)
     return;
@@ -903,16 +906,20 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   shaderUniformFloat(shader, "material.ambient", mesh.material.ambient);
   shaderUniformFloat(shader, "material.diffuse", mesh.material.diffuse);
   shaderUniformFloat(shader, "material.specular", mesh.material.specular);
-  shaderUniformVec3(shader, "material.color",
-                    baseColorOverride ? *baseColorOverride
-                                      : glm::vec3(mesh.material.color[0],
-                                                  mesh.material.color[1],
-                                                  mesh.material.color[2]));
+  glm::vec4 matColor;
+  if (baseColorOverride) {
+    matColor = glm::vec4(*baseColorOverride, 1.0f);
+  } else {
+    matColor = glm::vec4(mesh.material.color[0], mesh.material.color[1],
+                         mesh.material.color[2],
+                         1.0f); // <-- explicit alpha = 1.0
+  }
+  shaderUniformVec4(shader, "material.color", matColor);
   shaderUniformFloat(shader, "material.shininess", mesh.material.shininess);
   shaderUniformFloat(shader, "material.alpha", mesh.material.alpha);
 
   // ---- Determine highlight color and value ----
-  glm::vec3 effectiveHighlight = highlightColor;
+  glm::vec4 effectiveHighlight = highlightColor;
   float effectiveHighlightValue = mesh.highlight_value;
   float pressValForShader = mesh.press; // will be used for shader uniform
 
@@ -934,13 +941,15 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
       effectiveHighlightValue = effectiveVal;
       if (effectiveVal > 0.001f) {
         if (mesh.axis_highlight_value > 0) {
-          effectiveHighlight = glm::vec3(mesh.highlight_color_positive[0],
+          effectiveHighlight = glm::vec4(mesh.highlight_color_positive[0],
                                          mesh.highlight_color_positive[1],
-                                         mesh.highlight_color_positive[2]);
+                                         mesh.highlight_color_positive[2],
+                                         mesh.highlight_color_positive[3]);
         } else {
-          effectiveHighlight = glm::vec3(mesh.highlight_color_negative[0],
+          effectiveHighlight = glm::vec4(mesh.highlight_color_negative[0],
                                          mesh.highlight_color_negative[1],
-                                         mesh.highlight_color_negative[2]);
+                                         mesh.highlight_color_negative[2],
+                                         mesh.highlight_color_negative[3]);
         }
       } else {
         // Axis is within deadzone -> no highlight
@@ -954,7 +963,7 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   }
 
   // Use the computed highlight color and value
-  shaderUniformVec3(shader, "highlight_color", effectiveHighlight);
+  shaderUniformVec4(shader, "highlight_color", effectiveHighlight);
   shaderUniformFloat(shader, "highlight_value", effectiveHighlightValue);
   shaderUniformFloat(shader, "pressValue", pressValForShader);
 
@@ -1130,7 +1139,7 @@ glm::mat4 getMeshFinalMatrix(const Model &m, int idx, const glm::mat4 &parent) {
 }
 
 void drawModel(Model &m, GLuint shader, int highlight_mesh_index,
-               const glm::vec3 &globalHighlightColor) {
+               const glm::vec4 &globalHighlightColor) {
   int num_meshes = (int)m.meshes.size();
   std::vector<glm::mat4> finalMatrices(num_meshes, glm::mat4(1.0f));
   std::vector<bool> computed(num_meshes, false);
@@ -1165,11 +1174,11 @@ void drawModel(Model &m, GLuint shader, int highlight_mesh_index,
     Mesh &mesh = m.meshes[i];
 
     // ---- Determine effective highlight color ----
-    glm::vec3 highlightCol;
+    glm::vec4 highlightCol;
     if (mesh.use_custom_highlight) {
-      highlightCol = glm::vec3(mesh.custom_highlight_color[0],
-                               mesh.custom_highlight_color[1],
-                               mesh.custom_highlight_color[2]);
+      highlightCol = glm::vec4(
+          mesh.custom_highlight_color[0], mesh.custom_highlight_color[1],
+          mesh.custom_highlight_color[2], mesh.custom_highlight_color[3]);
     } else {
       highlightCol = globalHighlightColor;
     }

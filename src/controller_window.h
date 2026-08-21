@@ -201,7 +201,7 @@ typedef struct controller_window_struct {
   bool last_button_values[64] = {};
   bool last_joy_button_values[128] = {};
   bool highlight_enabled = false;
-  float highlight_color[3] = {1.0f, 0.0f, 0.0f};
+  float highlight_color[4] = {1.0f, 0.0f, 0.0f, 1.0f};
   std::map<int, std::array<float, 3>> original_colors;
   GLuint touch_area_vao = 0;
   GLuint touch_area_vbo = 0;
@@ -225,6 +225,9 @@ typedef struct controller_window_struct {
   double pivot_drag_start_screen_y = 0.0;
   glm::vec3 pivot_drag_start_world = glm::vec3(0.0f);
   int pivot_drag_mesh_index = -1;
+
+  float camera_offset_x = 0.0f; // horizontal pan
+  float camera_offset_y = 0.0f; // vertical pan
 
 } controller_window;
 

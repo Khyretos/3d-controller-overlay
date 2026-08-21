@@ -735,6 +735,12 @@ void drawSettingsWindow() {
       ImGui::SliderFloat("Roll", &current_window->camera_roll, -180, 180);
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Camera roll (tilt).");
+      ImGui::SliderFloat("Pan X", &current_window->camera_offset_x, -5.0f, 5.0f,
+                         "%.2f");
+      ImGui::SliderFloat("Pan Y", &current_window->camera_offset_y, -5.0f, 5.0f,
+                         "%.2f");
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Translate camera horizontally/vertically.");
       if (ImGui::Button("Reset")) {
         current_window->camera_distance = 3.3f;
         current_window->camera_yaw = 0.0f;
@@ -893,7 +899,7 @@ void drawSettingsWindow() {
         }
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Deadzone for right stick highlight ring.");
-        ImGui::ColorEdit3("Highlight Color (Global)",
+        ImGui::ColorEdit4("Highlight Color (Global)",
                           current_window->highlight_color);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Default highlight color for all meshes. Can be "
@@ -1970,6 +1976,7 @@ void drawSettingsWindow() {
         if (selectedMesh.elements == 0) {
           ImGui::TextDisabled("No mesh loaded at index %d.", selected_mesh);
         } else {
+
           // ---- Header with mesh name and Save button ----
           ImGui::Text("Editing: %s", selectedMesh.name.c_str());
           ImGui::SameLine();
@@ -2179,7 +2186,7 @@ void drawSettingsWindow() {
               }
             }
             if (selectedMesh.use_custom_highlight) {
-              ImGui::ColorEdit3("Custom Highlight Color",
+              ImGui::ColorEdit4("Custom Highlight Color",
                                 selectedMesh.custom_highlight_color);
             }
 
@@ -2189,9 +2196,9 @@ void drawSettingsWindow() {
               selectedMesh.use_dual_highlight = dual;
             }
             if (selectedMesh.use_dual_highlight) {
-              ImGui::ColorEdit3("Positive Color",
+              ImGui::ColorEdit4("Positive Color",
                                 selectedMesh.highlight_color_positive);
-              ImGui::ColorEdit3("Negative Color",
+              ImGui::ColorEdit4("Negative Color",
                                 selectedMesh.highlight_color_negative);
               ImGui::SliderFloat("Axis Deadzone", &selectedMesh.axis_deadzone,
                                  0.0f, 0.5f, "%.3f");
