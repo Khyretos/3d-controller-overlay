@@ -471,8 +471,14 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
     }
     return map;
   }();
+
   for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
     Mesh &mesh = w.model.meshes[meshIdx];
+    // Reset axis highlight value – will be set only for axis bindings below
+    mesh.axis_highlight_value = 0.0f;
+    mesh.travel_value = 0.0f;
+    mesh.travel_signed = 0.0f;
+
     if (mesh.inputBinding.empty())
       continue;
 
@@ -501,6 +507,11 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         mesh.highlight_value = (fabs(lx) > 0.1f || fabs(ly) > 0.1f)
                                    ? std::max(fabs(lx), fabs(ly)) * 1.2f
                                    : 0.0f;
+
+        float magnitude = sqrt(lx * lx + ly * ly);
+        if (magnitude > 1.0f)
+          magnitude = 1.0f;
+        mesh.travel_value = magnitude;
         continue;
       } else if (value == "rightstick") {
         float rx = get_axis_value_choice(w, 2, useRaw);
@@ -514,6 +525,10 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         mesh.highlight_value = (fabs(rx) > 0.1f || fabs(ry) > 0.1f)
                                    ? std::max(fabs(rx), fabs(ry)) * 1.2f
                                    : 0.0f;
+        float magnitude = sqrt(rx * rx + ry * ry);
+        if (magnitude > 1.0f)
+          magnitude = 1.0f;
+        mesh.travel_value = magnitude;
         continue;
       }
 
@@ -542,28 +557,31 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           num = std::stoi(value.substr(1));
         }
         float axisVal = get_axis_value_choice(w, num, useRaw);
+        mesh.travel_signed = axisVal;
         if (mesh.invert)
           axisVal = -axisVal;
+        mesh.axis_highlight_value = axisVal;
+        mesh.travel_value = fabs(axisVal);
 
         if (isDirection) {
           bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
           mesh.axis_highlight_value = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
+          mesh.travel_signed = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
         } else {
-          float val;
+          // For non‑trigger axes, we want `press` to be 0 so it does not cause
+          // a highlight. Triggers (gamepad axes 4 and 5) still need `press` for
+          // their pull animation.
           if (type == "gamepad" && (num == 4 || num == 5)) {
-            val = std::max(0.0f, std::min(1.0f, axisVal));
+            float val = std::max(0.0f, std::min(1.0f, axisVal));
+            mesh.pull = val * 32767.0f;
+            mesh.press = val; // used for trigger pull animation
           } else {
-            val = (axisVal + 1.0f) * 0.5f;
+            mesh.pull = 0.0f;  // not used for non‑triggers
+            mesh.press = 0.0f; // do NOT blend highlight via press
           }
-          mesh.pull = val * 32767.0f;
-          mesh.press = val;
-          // For axes, we store the signed value for dual highlight
-          mesh.axis_highlight_value = axisVal; // original signed value
-          // highlight_value will be set by drawMesh based on
-          // axis_highlight_value For backwards compatibility, set
-          // highlight_value to absolute value
+          mesh.axis_highlight_value = axisVal;
           mesh.highlight_value = fabs(axisVal);
         }
       } else if (prefix == 'h') {
@@ -773,14 +791,12 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
             continue;
           }
         }
+
         dx *= w.mouse_sensitivity;
         dy *= w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 10.0f;
-          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
-          dx = std::max(-maxDelta, std::min(maxDelta, dx));
-          dy = std::max(-maxDelta, std::min(maxDelta, dy));
+          // REMOVED: clamping cap – raw input is passed directly
           mesh.touch_X += dx;
           mesh.touch_Y += dy;
           mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
@@ -811,9 +827,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         float val = dx * w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 20.0f;
-          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
-          val = std::max(-maxDelta, std::min(maxDelta, val));
+          // REMOVED: clamping cap
           if (mesh.invert)
             val = -val;
           mesh.touch_X += val;
@@ -835,9 +849,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         float val = dy * w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
         if (isTouchPoint) {
-          const float MAX_DELTA_PER_SEC = 20.0f;
-          float maxDelta = MAX_DELTA_PER_SEC * (float)w.deltaTime;
-          val = std::max(-maxDelta, std::min(maxDelta, val));
+          // REMOVED: clamping cap
           if (mesh.invert)
             val = -val;
           mesh.touch_Y += val;
@@ -1846,10 +1858,15 @@ void drawControllerWindows() {
       }
       w.model.motion_matrix = w.gyro_matrix;
 
-      // Apply glow intensity to touchpoints
       for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
         Mesh &mesh = w.model.meshes[meshIdx];
         if (mesh.isTouchpoint) {
+          // Decay the glow intensity – it will fade out naturally when no new
+          // input arrives
+          mesh.glow_intensity *= (1.0f - w.deltaTime * 8.0f);
+          if (mesh.glow_intensity < 0.001f)
+            mesh.glow_intensity = 0.0f;
+
           // Apply the glow intensity to the material
           if (mesh.glow_intensity > 0.001f) {
             mesh.material.color[0] = 1.0f;

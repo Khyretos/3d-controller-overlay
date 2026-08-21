@@ -1973,10 +1973,14 @@ void drawSettingsWindow() {
           // ---- Header with mesh name and Save button ----
           ImGui::Text("Editing: %s", selectedMesh.name.c_str());
           ImGui::SameLine();
-          if (ImGui::Button("Save Model")) {
-            writeJson(current_window->model,
-                      current_window->model.path + "/info.json");
-            spdlog::info("Model saved to {}", current_window->model.path);
+          if (ImGui::Button("Save Model##Editing")) { // <-- unique ID
+            if (current_window->model.path.empty()) {
+              spdlog::error("Cannot save: model path is empty.");
+            } else {
+              writeJson(current_window->model,
+                        current_window->model.path + "/info.json");
+              spdlog::info("Model saved to {}", current_window->model.path);
+            }
           }
           if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Write current settings to info.json.");
@@ -2189,6 +2193,11 @@ void drawSettingsWindow() {
                                 selectedMesh.highlight_color_positive);
               ImGui::ColorEdit3("Negative Color",
                                 selectedMesh.highlight_color_negative);
+              ImGui::SliderFloat("Axis Deadzone", &selectedMesh.axis_deadzone,
+                                 0.0f, 0.5f, "%.3f");
+              ImGui::TextWrapped("The highlight will be off when the axis "
+                                 "value is within this deadzone. It ramps from "
+                                 "0 to full between the deadzone and 1.");
               ImGui::TextWrapped(
                   "For joystick axes, the mesh will highlight in the positive "
                   "color when the axis is positive, and the negative color "

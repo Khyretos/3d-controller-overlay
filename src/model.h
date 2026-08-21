@@ -96,6 +96,7 @@ typedef struct mesh_struct {
 
   // Dual highlight for axes
   bool use_dual_highlight = false;
+  float axis_deadzone = 0.1f; // 0-1 range, default 10%
   float highlight_color_positive[3] = {1.0f, 0.0f, 0.0f};
   float highlight_color_negative[3] = {0.0f, 0.0f, 1.0f};
   float axis_highlight_value = 0.0f; // signed value from axis
@@ -106,6 +107,10 @@ typedef struct mesh_struct {
   float stick_Y = 0;
   float pull = 0;
   float press = 0.0f;
+  float anim_value = 0.0f; // normalised axis value for travel animation (0..1)
+  float travel_value = 0.0f;  // 0..1 for buttons/sticks
+  float travel_signed = 0.0f; // signed axis value for travel (-1..1)
+
   bool visible = true;
   bool popup = false;
   float highlight_value = 0.0f;
