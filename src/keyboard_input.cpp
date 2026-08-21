@@ -888,7 +888,8 @@ void removeDevice(std::vector<LinuxDevice> &devices, size_t index) {
   devices.erase(devices.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
-void scanDevices(std::vector<LinuxDevice> &devices) {
+void scanDevices(std::vector<LinuxDevice> &devices,
+                 std::unordered_set<std::string> &ignored_paths) {
   namespace fs = std::filesystem;
   std::error_code ec;
   for (const auto &entry : fs::directory_iterator("/dev/input", ec)) {
@@ -896,6 +897,14 @@ void scanDevices(std::vector<LinuxDevice> &devices) {
       continue;
     const std::string path = entry.path().string();
     if (path.find("/event") == std::string::npos)
+      continue;
+    // Skip paths we've already opened+probed and determined aren't a
+    // keyboard/mouse (power button, lid switch, HID subinterfaces, etc.).
+    // Without this, every periodic rescan re-open()s and re-ioctl()s every
+    // such node, every time, forever — which runs synchronously on the same
+    // thread that drains mouse/keyboard events, so a scan busy re-probing a
+    // dozen+ irrelevant nodes can noticeably delay event draining.
+    if (ignored_paths.count(path))
       continue;
     bool already = false;
     for (const auto &d : devices)
@@ -910,6 +919,7 @@ void scanDevices(std::vector<LinuxDevice> &devices) {
     bool isMouse = looksLikeMouse(fd);
     if (!isKeyboard && !isMouse) {
       close(fd);
+      ignored_paths.insert(path);
       continue;
     }
     LinuxDevice dev;
@@ -932,8 +942,9 @@ void scanDevices(std::vector<LinuxDevice> &devices) {
 
 void linuxThread() {
   std::vector<LinuxDevice> devices;
+  std::unordered_set<std::string> ignored_paths;
   g_status = "Linux evdev (keyboard + mouse + scroll)";
-  scanDevices(devices);
+  scanDevices(devices, ignored_paths);
   if (devices.empty()) {
     spdlog::warn("Global input: no keyboard or mouse devices found. "
                  "Check permissions for /dev/input/event*.");
@@ -944,7 +955,7 @@ void linuxThread() {
   auto lastScan = std::chrono::steady_clock::now();
   while (g_running.load()) {
     if (std::chrono::steady_clock::now() - lastScan > std::chrono::seconds(2)) {
-      scanDevices(devices);
+      scanDevices(devices, ignored_paths);
       lastScan = std::chrono::steady_clock::now();
     }
     std::vector<pollfd> pfds;
