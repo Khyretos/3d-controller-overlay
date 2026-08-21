@@ -105,6 +105,12 @@ typedef struct controller_window_struct {
   float mouse_sensitivity =
       0.01f; // scale factor for mouse->stick mapping (reduced from 0.005)
 
+  // ---- Scroll state accumulation ----
+  float scroll_accum_x = 0.0f;
+  float scroll_accum_y = 0.0f;
+  float scroll_accum_magnitude = 0.0f;
+  float scroll_accum_decay = 0.9f; // Decay factor per frame
+
   // ---- Touchpoint mouse tracking ----
   std::unordered_map<int, double> touchpoint_last_move_time;
   double mouse_idle_timeout = 0.05; // seconds (~2-3 frames @ 60fps)

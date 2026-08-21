@@ -722,6 +722,51 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
       }
 
       if (value == "mouse_xy" || value == "mouse_scroll_xy") {
+        // ---- Handle accumulated scroll ----
+        if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
+            value == "mouse_scroll_y") {
+          // Accumulate scroll values with clamping to prevent overflow
+          const float MAX_SCROLL = 1.0f;
+          float scrollX = globalScrollDx;
+          float scrollY = globalScrollDy;
+
+          // Only accumulate if there's actual scroll movement
+          if (fabs(scrollX) > 0.001f || fabs(scrollY) > 0.001f) {
+            // Apply scroll sensitivity
+            scrollX *= 0.5f;
+            scrollY *= 0.5f;
+
+            w.scroll_accum_x = std::max(
+                -MAX_SCROLL, std::min(MAX_SCROLL, w.scroll_accum_x + scrollX));
+            w.scroll_accum_y = std::max(
+                -MAX_SCROLL, std::min(MAX_SCROLL, w.scroll_accum_y + scrollY));
+            w.scroll_accum_magnitude =
+                sqrt(w.scroll_accum_x * w.scroll_accum_x +
+                     w.scroll_accum_y * w.scroll_accum_y);
+          }
+
+          // Apply the accumulated scroll to the mesh
+          if (value == "mouse_scroll_xy") {
+            mesh.press = w.scroll_accum_magnitude > 0.01f ? 1.0f : 0.0f;
+            mesh.highlight_value = w.scroll_accum_magnitude;
+            mesh.stick_X = w.scroll_accum_x * 32767.0f;
+            mesh.stick_Y = w.scroll_accum_y * 32767.0f;
+            mesh.pull = w.scroll_accum_magnitude * 32767.0f;
+            continue;
+          } else if (value == "mouse_scroll_x") {
+            mesh.press = fabs(w.scroll_accum_x) > 0.01f ? 1.0f : 0.0f;
+            mesh.highlight_value = fabs(w.scroll_accum_x);
+            mesh.stick_X = w.scroll_accum_x * 32767.0f;
+            mesh.pull = fabs(w.scroll_accum_x) * 32767.0f;
+            continue;
+          } else if (value == "mouse_scroll_y") {
+            mesh.press = fabs(w.scroll_accum_y) > 0.01f ? 1.0f : 0.0f;
+            mesh.highlight_value = fabs(w.scroll_accum_y);
+            mesh.stick_Y = w.scroll_accum_y * 32767.0f;
+            mesh.pull = fabs(w.scroll_accum_y) * 32767.0f;
+            continue;
+          }
+        }
         dx *= w.mouse_sensitivity;
         dy *= w.mouse_sensitivity;
         bool isTouchPoint = mesh.isTouchpoint;
@@ -895,10 +940,14 @@ void controller_window_input() {
                 goto skip_gyro_processing;
               }
               if (w.gyro_debug_logging) {
-                static int frame_counter = 0;
-                if (++frame_counter % 60 == 0) {
-                  spdlog::debug("Gyro raw: x={:.3f} y={:.3f} z={:.3f}",
-                                w.gyro_data[0], w.gyro_data[1], w.gyro_data[2]);
+                static int gyro_log_counter = 0;
+                if (++gyro_log_counter % 60 == 0) { // Log every 60 frames
+                  glm::vec3 euler =
+                      glm::eulerAngles(glm::quat_cast(w.gyro_matrix));
+                  spdlog::debug(
+                      "Gyro Euler: yaw={:.3f} pitch={:.3f} roll={:.3f}",
+                      glm::degrees(euler.y), glm::degrees(euler.x),
+                      glm::degrees(euler.z));
                 }
               }
               if (w.gyro_toggled) {
@@ -1131,9 +1180,9 @@ void controller_window_input() {
           float dx = globalMouseX - last_log_mouse_x;
           float dy = -(globalMouseY -
                        last_log_mouse_y); // Invert Y for screen coordinates
-          float distance = sqrt(dx * dx + dy * dy);
-
-          if (distance > 5.0f) {
+          float distance_sq = dx * dx + dy * dy;
+          if (distance_sq > 25.0f) { // 5.0f squared
+            float distance = sqrt(distance_sq);
             const char *direction = "";
             float angle = atan2(dy, dx) * 180.0f / 3.14159265f;
 
@@ -1173,27 +1222,58 @@ void controller_window_input() {
         applyMappingToMeshes(w, globalMouseDx, globalMouseDy, globalScrollDx,
                              globalScrollDy);
 
-        // ---- Reset touchpoints to center if mouse is idle ----
-        double current_time = glfwGetTime();
-        for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size(); ++meshIdx) {
-          Mesh &mesh = w.model.meshes[meshIdx];
-          if (mesh.inputBinding.find("mouse:") != 0)
-            continue;
-          bool isTouchPoint = mesh.isTouchpoint;
-          if (!isTouchPoint)
-            continue;
-          auto it = w.touchpoint_last_move_time.find(meshIdx);
-          if (it == w.touchpoint_last_move_time.end())
-            continue;
-          if (current_time - it->second > 0.5) { // 0.5 seconds idle timeout
-            // Reset to center
-            mesh.touch_X = 0.5f;
-            mesh.touch_Y = 0.5f;
-            mesh.touch_state = 0;
-            mesh.glow_intensity = 0.0f; // Immediately disappear
-            mesh.highlight_value = 0.0f;
-            mesh.visible = false;
+        // ---- Handle touchpoint idle timeout ----
+        // Only check every 60 frames to reduce overhead
+        static int frame_counter = 0;
+        frame_counter++;
+        if (frame_counter % 60 ==
+            0) { // Check every 60 frames (~1 second at 60fps)
+          double current_time = glfwGetTime();
+          for (int meshIdx = 0; meshIdx < (int)w.model.meshes.size();
+               ++meshIdx) {
+            Mesh &mesh = w.model.meshes[meshIdx];
+            if (mesh.inputBinding.find("mouse:") != 0)
+              continue;
+            bool isTouchPoint = mesh.isTouchpoint;
+            if (!isTouchPoint)
+              continue;
+            auto it = w.touchpoint_last_move_time.find(meshIdx);
+            if (it == w.touchpoint_last_move_time.end())
+              continue;
+            // Only reset after 5 seconds of inactivity
+            if (current_time - it->second > 5.0) {
+              // Reset to center
+              mesh.touch_X = 0.5f;
+              mesh.touch_Y = 0.5f;
+              mesh.touch_state = 0;
+              mesh.glow_intensity = 0.0f;
+              mesh.highlight_value = 0.0f;
+              mesh.visible = false;
+            }
           }
+        }
+
+        // ---- Decay scroll accumulation (optimized) ----
+        static const float DECAY = 0.98f;
+        static const float EPSILON = 0.0001f;
+
+        if (fabs(w.scroll_accum_x) > EPSILON) {
+          w.scroll_accum_x *= DECAY;
+          if (fabs(w.scroll_accum_x) < EPSILON)
+            w.scroll_accum_x = 0.0f;
+        }
+        if (fabs(w.scroll_accum_y) > EPSILON) {
+          w.scroll_accum_y *= DECAY;
+          if (fabs(w.scroll_accum_y) < EPSILON)
+            w.scroll_accum_y = 0.0f;
+        }
+
+        if (fabs(w.scroll_accum_x) > EPSILON ||
+            fabs(w.scroll_accum_y) > EPSILON) {
+          w.scroll_accum_magnitude = sqrt(w.scroll_accum_x * w.scroll_accum_x +
+                                          w.scroll_accum_y * w.scroll_accum_y);
+        } else {
+          w.scroll_accum_magnitude = 0.0f;
         }
 
         // Propagate stick motion
