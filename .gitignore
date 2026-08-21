@@ -32,8 +32,6 @@ CMakeUserPresets.json
 
 # Compiled object files (build output only — not the vendored .obj mesh assets)
 *.o
-*.obj
-!assets/models/**/*.obj
 *.ko
 *.dylib
 *.dll
