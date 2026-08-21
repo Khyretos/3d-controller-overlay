@@ -129,6 +129,19 @@ void writeJson(Model &m, const std::string &path) {
          << mesh.custom_highlight_color[0] << ", "
          << mesh.custom_highlight_color[1] << ", "
          << mesh.custom_highlight_color[2] << "]\n";
+    json << "      \"travel_rotation\": [" << mesh.travel_rotation[0] << ", "
+         << mesh.travel_rotation[1] << ", " << mesh.travel_rotation[2]
+         << "],\n";
+    json << "      \"use_dual_highlight\": "
+         << (mesh.use_dual_highlight ? "true" : "false") << ",\n";
+    json << "      \"highlight_color_positive\": ["
+         << mesh.highlight_color_positive[0] << ", "
+         << mesh.highlight_color_positive[1] << ", "
+         << mesh.highlight_color_positive[2] << "],\n";
+    json << "      \"highlight_color_negative\": ["
+         << mesh.highlight_color_negative[0] << ", "
+         << mesh.highlight_color_negative[1] << ", "
+         << mesh.highlight_color_negative[2] << "]\n";
     json << "    }" << (i < m.meshes.size() - 1 ? "," : "") << "\n";
   }
   json << "  ],\n";
@@ -288,17 +301,24 @@ void readInfoJson(Model &m, const std::string &path) {
     getFloat("alpha", mesh.material.alpha);
 
     // per-mesh highlight override
-    mesh.use_custom_highlight = p.value("use_custom_highlight", false);
-    if (p.contains("custom_highlight_color")) {
-      auto arr = p["custom_highlight_color"].get<std::array<float, 3>>();
-      mesh.custom_highlight_color[0] = arr[0];
-      mesh.custom_highlight_color[1] = arr[1];
-      mesh.custom_highlight_color[2] = arr[2];
-    } else {
-      // default to red
-      mesh.custom_highlight_color[0] = 1.0f;
-      mesh.custom_highlight_color[1] = 0.0f;
-      mesh.custom_highlight_color[2] = 0.0f;
+    if (p.contains("travel_rotation")) {
+      auto arr = p["travel_rotation"].get<std::array<float, 3>>();
+      mesh.travel_rotation[0] = arr[0];
+      mesh.travel_rotation[1] = arr[1];
+      mesh.travel_rotation[2] = arr[2];
+    }
+    mesh.use_dual_highlight = p.value("use_dual_highlight", false);
+    if (p.contains("highlight_color_positive")) {
+      auto arr = p["highlight_color_positive"].get<std::array<float, 3>>();
+      mesh.highlight_color_positive[0] = arr[0];
+      mesh.highlight_color_positive[1] = arr[1];
+      mesh.highlight_color_positive[2] = arr[2];
+    }
+    if (p.contains("highlight_color_negative")) {
+      auto arr = p["highlight_color_negative"].get<std::array<float, 3>>();
+      mesh.highlight_color_negative[0] = arr[0];
+      mesh.highlight_color_negative[1] = arr[1];
+      mesh.highlight_color_negative[2] = arr[2];
     }
 
     // After setting mesh.material.color (possibly from JSON)
@@ -880,17 +900,34 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   shaderUniformFloat(shader, "material.diffuse", mesh.material.diffuse);
   shaderUniformFloat(shader, "material.specular", mesh.material.specular);
   shaderUniformVec3(shader, "material.color",
-                    baseColorOverride
-                        ? *baseColorOverride
-                        : glm::vec3(mesh.material.color[0],
-                                    mesh.material.color[1],
-                                    mesh.material.color[2]));
+                    baseColorOverride ? *baseColorOverride
+                                      : glm::vec3(mesh.material.color[0],
+                                                  mesh.material.color[1],
+                                                  mesh.material.color[2]));
   shaderUniformFloat(shader, "material.shininess", mesh.material.shininess);
   shaderUniformFloat(shader, "material.alpha", mesh.material.alpha);
 
-  // Use the passed highlightColor (already overridden per mesh if custom)
-  shaderUniformVec3(shader, "highlight_color", highlightColor);
-  shaderUniformFloat(shader, "highlight_value", mesh.highlight_value);
+  // ---- Determine highlight color and value ----
+  glm::vec3 effectiveHighlight = highlightColor;
+  float effectiveHighlightValue = mesh.highlight_value;
+
+  // If dual highlight is enabled and we have an axis value
+  if (mesh.use_dual_highlight && fabs(mesh.axis_highlight_value) > 0.001f) {
+    effectiveHighlightValue = fabs(mesh.axis_highlight_value);
+    if (mesh.axis_highlight_value > 0) {
+      effectiveHighlight = glm::vec3(mesh.highlight_color_positive[0],
+                                     mesh.highlight_color_positive[1],
+                                     mesh.highlight_color_positive[2]);
+    } else {
+      effectiveHighlight = glm::vec3(mesh.highlight_color_negative[0],
+                                     mesh.highlight_color_negative[1],
+                                     mesh.highlight_color_negative[2]);
+    }
+  }
+
+  // Use the computed highlight color and value
+  shaderUniformVec3(shader, "highlight_color", effectiveHighlight);
+  shaderUniformFloat(shader, "highlight_value", effectiveHighlightValue);
   shaderUniformFloat(shader, "pressValue", mesh.press);
 
   shaderUniformMat4(shader, "model", modelMatrix);
@@ -955,6 +992,19 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
   model = glm::rotate(model, mesh.pull / -32767 * mesh.trigger_max,
                       glm::vec3(1.0f, 0.0f, 0.0f));
 
+  // ---- Travel rotation (button press) ----
+  if (mesh.press > 0.001f) {
+    model =
+        glm::rotate(model, glm::radians(mesh.travel_rotation[0] * mesh.press),
+                    glm::vec3(1.0f, 0.0f, 0.0f));
+    model =
+        glm::rotate(model, glm::radians(mesh.travel_rotation[1] * mesh.press),
+                    glm::vec3(0.0f, 1.0f, 0.0f));
+    model =
+        glm::rotate(model, glm::radians(mesh.travel_rotation[2] * mesh.press),
+                    glm::vec3(0.0f, 0.0f, 1.0f));
+  }
+
   // ---- Translate back from pivot ----
   model = glm::translate(model,
                          -glm::vec3(mesh.pivot_offset[0], mesh.pivot_offset[1],
@@ -978,10 +1028,38 @@ glm::mat4 computeMeshTransform(const Model &m, int meshIndex,
     model =
         glm::rotate(model, mesh.popup_rotation[2], glm::vec3(0.0f, 0.0f, 1.0f));
   } else {
-    // Button press travel
+    // Button press travel (translation)
     model = glm::translate(model, glm::vec3(mesh.travel[0] * mesh.press,
                                             mesh.travel[1] * mesh.press,
                                             mesh.travel[2] * mesh.press));
+    // Button press rotation (for flightsticks, etc.)
+    // The rotation is applied around the pivot, which is already set.
+    // We need to apply rotation AFTER translating to pivot and BEFORE
+    // translating back? Actually the pivot translation is already applied above
+    // and will be reversed later. To apply rotation around the pivot, we need
+    // to apply it while at the pivot. We already have a section that applies
+    // stick/trigger rotation between translate to pivot and translate back.
+    // However, those are applied before travel translation. For button press
+    // rotation, we want it after travel translation? For simplicity, we apply
+    // it at the same place as stick/trigger rotation, i.e., before popup. But
+    // we need to use mesh.travel_rotation scaled by mesh.press. The current
+    // code applies stick/trigger rotation in the section before "Translate back
+    // from pivot". We'll add travel rotation there as well. However, we want it
+    // to be applied after travel translation? Actually it's applied before
+    // travel translation in the current code. Let's add a new section before
+    // "Translate back from pivot" that applies travel_rotation. But we need to
+    // apply it after the translation? Actually the rotation should be around
+    // the pivot, so we need to be at pivot. The current code applies pivot
+    // translate, then stick/trigger rotations, then popup/button travel, then
+    // translate back. Button travel is applied after stick/trigger rotations
+    // but before translate back. So we can add travel rotation after
+    // stick/trigger rotations and before button travel. However, we want travel
+    // rotation to be scaled by press, which is applied with button press. So we
+    // can add it in the else branch (when not popup) after the travel
+    // translation. But then we need to translate to pivot again? The pivot
+    // translation is already done. So we can apply rotation after travel
+    // translation but before translate back. But the translate back is after
+    // the button travel block. So we can just add rotation here.
   }
 
   // ---- Touchpad offset ----

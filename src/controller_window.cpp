@@ -549,6 +549,7 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
+          mesh.axis_highlight_value = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
         } else {
           float val;
           if (type == "gamepad" && (num == 4 || num == 5)) {
@@ -558,7 +559,12 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
           }
           mesh.pull = val * 32767.0f;
           mesh.press = val;
-          mesh.highlight_value = val;
+          // For axes, we store the signed value for dual highlight
+          mesh.axis_highlight_value = axisVal; // original signed value
+          // highlight_value will be set by drawMesh based on
+          // axis_highlight_value For backwards compatibility, set
+          // highlight_value to absolute value
+          mesh.highlight_value = fabs(axisVal);
         }
       } else if (prefix == 'h') {
         size_t dot = value.find('.');

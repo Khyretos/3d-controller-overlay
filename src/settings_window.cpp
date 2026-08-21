@@ -2096,6 +2096,14 @@ void drawSettingsWindow() {
                               "%.3f");
             ImGui::InputFloat("Travel Z", &selectedMesh.travel[2], 0.01f, 1.0f,
                               "%.3f");
+            ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.8f, 1.0f),
+                               "Travel Rotation (deg)");
+            ImGui::InputFloat("Rot X", &selectedMesh.travel_rotation[0], 0.1f,
+                              1.0f, "%.1f");
+            ImGui::InputFloat("Rot Y", &selectedMesh.travel_rotation[1], 0.1f,
+                              1.0f, "%.1f");
+            ImGui::InputFloat("Rot Z", &selectedMesh.travel_rotation[2], 0.1f,
+                              1.0f, "%.1f");
             if (ImGui::IsItemHovered())
               ImGui::SetTooltip("Movement when the button is pressed.");
             ImGui::Separator();
@@ -2170,6 +2178,23 @@ void drawSettingsWindow() {
               ImGui::ColorEdit3("Custom Highlight Color",
                                 selectedMesh.custom_highlight_color);
             }
+
+            // ---- Dual highlight for axes ----
+            bool dual = selectedMesh.use_dual_highlight;
+            if (ImGui::Checkbox("Dual Highlight (for axes)", &dual)) {
+              selectedMesh.use_dual_highlight = dual;
+            }
+            if (selectedMesh.use_dual_highlight) {
+              ImGui::ColorEdit3("Positive Color",
+                                selectedMesh.highlight_color_positive);
+              ImGui::ColorEdit3("Negative Color",
+                                selectedMesh.highlight_color_negative);
+              ImGui::TextWrapped(
+                  "For joystick axes, the mesh will highlight in the positive "
+                  "color when the axis is positive, and the negative color "
+                  "when negative.");
+            }
+
             EndShadedGroup(ShadeColor(0.58f, 0.16f, 0.16f),
                            ShadeBorder(0.58f, 0.16f, 0.16f));
             ImGui::TreePop();

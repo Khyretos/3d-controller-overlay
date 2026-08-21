@@ -91,6 +91,15 @@ typedef struct mesh_struct {
   float touch_width = 0.0f;
   float touch_height = 0.0f;
 
+  // Press-induced rotation (for flightsticks, etc.)
+  float travel_rotation[3] = {0.0f, 0.0f, 0.0f}; // degrees
+
+  // Dual highlight for axes
+  bool use_dual_highlight = false;
+  float highlight_color_positive[3] = {1.0f, 0.0f, 0.0f};
+  float highlight_color_negative[3] = {0.0f, 0.0f, 1.0f};
+  float axis_highlight_value = 0.0f; // signed value from axis
+
   glm::mat4 base_transform = glm::mat4(1.0f);
 
   float stick_X = 0;
