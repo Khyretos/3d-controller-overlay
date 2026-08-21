@@ -2,11 +2,14 @@
 
 ![3D Controller Overlay + banner](images/banner_placeholder.png)
 
-**3D Controller Overlay +** (`3dco+`) is an AI-assisted continuation of [**3D Controller Overlay**](https://github.com/larfingshnew/3d-controller-overlay) by **Larf** ([larfingshnew](https://github.com/larfingshnew)). It's a lightweight OpenGL/SDL2 program that renders a live 3D model of your controller — buttons, sticks, triggers, touchpads, and gyro/accel — so content creators can show what their input device is doing without a handcam.
+> ⚠️ **AI-assisted project — read before you judge the code.**
+> This fork is built with heavy use of AI coding assistance. That does **not** mean "vibe coded and shipped blind." Every architectural decision — how input flows from SDL into the mesh hierarchy, how the settings/import system is structured, what gets a raw joystick fallback vs. a GameController mapping, how the build/packaging pipeline is put together — was made, reviewed, and debugged by me. AI was the tool; the design, the testing, and the responsibility for what ships are mine. I'm building this openly as a way to test how far I can push my own skills with AI as a collaborator, not to hide behind it. If you find something that looks wrong, please open an issue — I'd genuinely rather know.
 
-This project is a **fork, not a replacement**. It exists as an homage to the original tool and its creator, rebuilt on top of the same rendering foundation but pushed further with the help of AI-assisted coding. All credit for the original concept, models, and engine goes to Larf. If you just want the classic, minimal version, go use [the original repo](https://github.com/larfingshnew/3d-controller-overlay) — it's great on its own.
+**3D Controller Overlay +** (`3dco+`) is an AI-assisted continuation of [**3D Controller Overlay**](https://github.com/larfingshnew/3d-controller-overlay) by **Larf** ([larfingshnew](https://github.com/larfingshnew)). It's a lightweight OpenGL/SDL2 program that renders a live 3D model of your input device — buttons, sticks, triggers, touchpads, keys, gyro/accel — so content creators can show what their controller, keyboard, or mouse is doing without a handcam.
 
-The `+` in the name is meant literally: **more controllers, more rendering features, more input paths, more build tooling** — while keeping the same "point it at your controller and it just works" spirit.
+This project is a **fork, not a replacement**. It exists as an homage to the original tool and its creator, rebuilt on top of the same rendering foundation but pushed further. All credit for the original concept, models, and engine goes to Larf. If you just want the classic, minimal version, go use [the original repo](https://github.com/larfingshnew/3d-controller-overlay) — it's great on its own.
+
+The **`+`** in the name means exactly that: **improvements and extra features** layered on top of the original — more controllers, more rendering features, more input paths, more build tooling — while keeping the same "point it at your input device and it just works" spirit. It's also a personal passion project: a way for me to see what I'm actually capable of building and maintaining with AI as a collaborator rather than a crutch.
 
 ---
 
@@ -15,7 +18,9 @@ The `+` in the name is meant literally: **more controllers, more rendering featu
 - [What stayed the same](#what-stayed-the-same)
 - [What's new in the `+`](#whats-new-in-the-)
 - [How it works](#how-it-works)
+- [Supported platforms](#supported-platforms)
 - [Supported input](#supported-input)
+- [Controller showcase](#controller-showcase)
 - [Work in progress / known bugs](#work-in-progress--known-bugs)
 - [Building](#building)
 - [Credits](#credits)
@@ -24,94 +29,150 @@ The `+` in the name is meant literally: **more controllers, more rendering featu
 
 ## What stayed the same
 
-- **Core concept**: an OpenGL scene per connected controller, with each button/stick/trigger mapped to its own mesh piece that moves, presses, or lights up in real time.
+- **Core concept**: an OpenGL scene per connected input device, with each button/stick/trigger/key mapped to its own mesh piece that moves, presses, or lights up in real time.
 - **Rendering stack**: GLFW + glad (OpenGL loader) + SDL2 (input) + GLM (math) + Dear ImGui (the settings UI).
-- **Model format & library**: controller parts are still individual `.obj` meshes, and the original controller library ships unchanged — DualSense, DualShock 4, Xbox 360, Xbox One, Switch Pro, Joy-Con (left/right/grip), GameCube pad, and the Wavebird.
+- **Model format**: parts are still individual `.obj` meshes, assembled per-device from a swappable model library.
 - **Directional/point/spot lighting system** and the customizable grid floor.
 - **Cross-platform target**: Windows, Linux, and macOS.
 
 ## What's new in the `+`
 
-Comparing the two codebases side by side, the `+` fork roughly **doubles to triples the size** of the core source files (`controller_window.cpp` ~2.2x, `settings_window.cpp` ~1.9x, `model.cpp` ~2.8x) on top of the original architecture. The concrete additions:
+The goal of the `+` fork isn't "more lines of code" — it's closing gaps the original left open and adding the features a streamer/content-creator setup actually needs. Here's what that looks like in practice:
 
 ### Rendering & customization
 
-- **Custom model import via Assimp.** You're no longer limited to the built-in controller library — you can import your own mesh (glTF, FBX, and anything else Assimp reads) and map its parts to buttons/axes through a new import-preview/assignment workflow.
-- **Pivot-point editing.** Individual mesh pieces can be repositioned by dragging their pivot in the 3D viewport, instead of only editing raw offsets in a settings panel.
+- **Custom model import via Assimp.** You're no longer limited to the built-in controller library — import your own mesh (glTF, FBX, and anything else Assimp reads) and map its parts to buttons/axes through an import-preview/assignment workflow.
+- **Pivot-point editing.** Reposition individual mesh pieces by dragging their pivot directly in the 3D viewport, instead of only editing raw offsets in a settings panel.
 - **Per-part material alpha (transparency).**
-- **Mouse orbit & zoom** for the camera, plus a dedicated **freelook** mode (independent from the controller-driven camera), with adjustable move/turn/mouse sensitivity.
+- **Mouse orbit & zoom** for the camera, plus a dedicated **freelook** mode independent from the input-driven camera, with adjustable move/turn/mouse sensitivity.
 - **Global and per-button "press" highlight colors**, with original-color tracking so highlighted parts revert correctly.
 - **Touch-area visualization**: a drawable wireframe/fill overlay showing the real hit-area of touchpads, useful when lining up custom pads.
-- Expanded **touchpad support**: multiple touchpads with 2-finger tracking each (the original supported a single pad; this tracks up to 4 pads × 2 fingers, plus extra touch-point meshes per model).
+- **Multi-touchpad support**: up to 4 touchpads × 2 fingers each, versus the original's single pad.
 
 ### Input
 
+- **Keyboard overlay.** A system-wide keyboard monitor (native backend per platform — see [Supported platforms](#supported-platforms)) drives a live on-screen keyboard, so keypresses show up even when another window has focus.
+- **Mouse overlay.** The same system-wide backend tracks cursor position, buttons, and scroll wheel for a live mouse overlay.
 - **Raw joystick fallback.** In addition to SDL's `GameController` API (used for recognized/mapped pads), the `+` fork can open a device as a raw `SDL_Joystick`, so unmapped or unusual controllers still produce usable input instead of being ignored.
-- **Per-axis/button mapping inversion**, so a stick or trigger that reads backwards on your hardware can be flipped without needing a new SDL mapping.
-- **Gyro & accelerometer improvements**: dedicated sensitivity/correction settings, configurable reset-gyro button combo, and optional debug logging of raw sensor data.
+- **Per-axis/button mapping inversion**, so a stick or trigger that reads backwards on your hardware can be flipped without a new SDL mapping.
+- **Gyro & accelerometer improvements**: dedicated sensitivity/correction settings, a configurable reset-gyro button combo, and optional debug logging of raw sensor data.
 
 ### Engineering / tooling
 
-- **Logging via spdlog**, including rotating log files — the original had no structured logging.
-- **CMake-based build system** (`CMakeLists.txt`) replacing the original's platform-specific shell/batch scripts, plus convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) and Docker-based cross-build files (`Dockerfile.appimage`, `Dockerfile.macos`, `Dockerfile.windows`) for reproducible builds/packaging.
-- **AppImage & `.desktop` integration** on Linux (`3dco+.desktop.in`) for proper application-menu installation.
-- New dependencies pulled in to support the above: **Assimp** (model import) and **spdlog/fmt** (logging), alongside the original GLFW/SDL2/GLM/stb stack.
+- **Structured logging via spdlog**, including rotating log files — the original had no structured logging at all.
+- **CMake-based build system** replacing the original's platform-specific shell/batch scripts, plus convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) and Docker-based cross-build files for reproducible packaging.
+- **AppImage & `.desktop` integration** on Linux for proper application-menu installation.
+- **Embedded model library**: the bundled `.obj` model set is packed into the binary at build time and extracted on first run, so there's no separate assets folder to lose track of.
+- New dependencies to support the above: **Assimp** (model import), **spdlog/fmt** (logging), and **nlohmann_json** (settings/model metadata), alongside the original GLFW/SDL2/GLM/stb stack.
 
 ## How it works
 
-At a high level, the pipeline is unchanged from the original:
+At a high level, the pipeline builds on the original:
 
-1. **SDL2** enumerates connected controllers/joysticks and streams button, axis, hat, touchpad, and sensor (gyro/accel) events.
-2. Each connected device gets its own **GLFW window** and OpenGL context (`controller_window`), rendering a 3D scene built from that controller's `.obj` parts.
-3. Every frame, input state is mapped onto the corresponding mesh: buttons translate along their press axis and/or change color, sticks and triggers rotate/translate proportionally to their live analog value, and touchpad finger positions move small touch-point meshes across the pad mesh.
+1. **SDL2** enumerates connected controllers/joysticks and streams button, axis, hat, touchpad, and sensor (gyro/accel) events. A platform-native background thread separately watches the system keyboard and mouse (see [Supported platforms](#supported-platforms)), so those work even without window focus.
+2. Each connected device gets its own **GLFW window** and OpenGL context, rendering a 3D scene built from that device's `.obj` parts.
+3. Every frame, input state is mapped onto the corresponding mesh: buttons translate along their press axis and/or change color, sticks and triggers rotate/translate proportionally to their live analog value, touchpad finger positions move small touch-point meshes across the pad mesh, and keyboard/mouse events drive the keyboard/mouse overlay meshes the same way.
 4. **Dear ImGui** drives the settings window — lighting, camera, colors, mappings, model import/mapping, and window behavior (always-on-top, borderless, click-through/drag-to-move, background color/alpha for green-screen or transparent capture).
-5. In the `+` fork, the same pipeline now also accepts **raw joystick input** (for devices SDL doesn't have a built-in mapping for) and **imported custom meshes** (via Assimp) instead of only the bundled `.obj` library, with an added pivot/highlight/touch-area layer for fine-tuning how everything looks on stream.
+5. The pipeline also accepts **raw joystick input** (for devices SDL doesn't have a built-in mapping for) and **imported custom meshes** (via Assimp) instead of only the bundled `.obj` library, with an added pivot/highlight/touch-area layer for fine-tuning how everything looks on stream.
+
+## Supported platforms
+
+All three major desktop platforms are targeted and built for:
+
+| Platform | Status | Notes |
+| --- | --- | --- |
+| 🐧 Linux | ✅ Actively developed & tested | Primary development platform. Keyboard/mouse overlay uses raw `evdev` device polling. |
+| 🪟 Windows | ✅ Supported | Keyboard/mouse overlay uses a low-level `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook. Built via CMake + MSYS2/MinGW, or cross-compiled from Linux with the included Docker scripts. |
+| 🍎 macOS | ✅ Supported | Keyboard/mouse overlay uses a listen-only `CGEventTap` (requires granting Accessibility/Input Monitoring permission on first run). Built natively via Homebrew, or cross-compiled from Linux with the included Docker scripts. |
+
+Since day-to-day development happens on Linux, the Windows and macOS builds get comparatively less mileage. If you hit a platform-specific issue on Windows or macOS, please file an issue with your OS version and build method — those reports genuinely help.
 
 ## Supported input
 
-| Input type                                                                         | Status                                           |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController)            |
-| Unmapped/generic joysticks                                                         | ✅ Supported (via raw SDL Joystick fallback)     |
-| Gyro / accelerometer                                                               | ✅ Supported, with sensitivity/correction tuning |
-| Touchpads (DualShock/DualSense)                                                    | ✅ Supported, multi-touch, multiple pads         |
-| Steam Controller                                                                   | 🚧 Work in progress                              |
-| Keyboard overlay                                                                   | 🚧 Work in progress                              |
-| Mouse overlay                                                                      | 🚧 Work in progress                              |
-| Racing wheel                                                                       | 🚧 Work in progress                              |
+| Input type | Status |
+| --- | --- |
+| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController) |
+| Unmapped/generic joysticks | ✅ Supported (via raw SDL Joystick fallback) |
+| Steam Controller | ✅ Supported (added to the model library) |
+| Keyboard overlay | ✅ Supported (system-wide, works without window focus) |
+| Mouse overlay | ✅ Supported (position, buttons, scroll — system-wide) |
+| Gyro / accelerometer | ✅ Supported, with sensitivity/correction tuning |
+| Touchpads (DualShock/DualSense) | ✅ Supported, multi-touch, multiple pads |
+| Racing wheel / flightstick | 🚧 Work in progress |
 
-![Joystick demo placeholder](images/joystick_placeholder.gif)
-![Steam Controller demo placeholder](images/steamcontroller_placeholder.gif)
-![Keyboard demo placeholder](images/keyboard_placeholder.gif)
-![Mouse demo placeholder](images/mouse_placeholder.gif)
+## Controller showcase
+
+Live demo clips for every controller in the built-in model library. (The `+` badge on `3dco+` itself is a nod to this: everything below is an addition on top of what the original project shipped with.)
+
+> The clips below are placeholders — I'll be swapping each one for real capture footage as I record it.
+
+| | |
+| --- | --- |
+| **Steam Controller 2026** <br> ![Steam Controller 2026 demo placeholder](images/steamcontroller2026_placeholder.gif) | **DualSense** <br> ![DualSense demo placeholder](images/dualsense_placeholder.gif) |
+| **DualShock 4** <br> ![DualShock 4 demo placeholder](images/dualshock4_placeholder.gif) | **GameCube** <br> ![GameCube demo placeholder](images/gamecube_placeholder.gif) |
+| **Joy-Con Grip** <br> ![Joy-Con Grip demo placeholder](images/joycongrip_placeholder.gif) | **Keyboard** <br> ![Keyboard demo placeholder](images/keyboard_placeholder.gif) |
+| **Left Joy-Con** <br> ![Left Joy-Con demo placeholder](images/leftjoycon_placeholder.gif) | **Right Joy-Con** <br> ![Right Joy-Con demo placeholder](images/rightjoycon_placeholder.gif) |
+| **Xbox One** <br> ![Xbox One demo placeholder](images/xboxone_placeholder.gif) | **Xbox 360** <br> ![Xbox 360 demo placeholder](images/xbox360_placeholder.gif) |
+| **Mouse** <br> ![Mouse demo placeholder](images/mouse_placeholder.gif) | **Switch Pro** <br> ![Switch Pro demo placeholder](images/switchpro_placeholder.gif) |
+| **Wavebird** <br> ![Wavebird demo placeholder](images/wavebird_placeholder.gif) | **Flightstick** <br> ![Flightstick demo placeholder](images/flightstick_placeholder.gif) |
 
 ## Work in progress / known bugs
 
-- **Keyboard support** — planned overlay for showing live keypresses; not implemented yet.
-- **Mouse support** — planned overlay for cursor movement/clicks/scroll; not implemented yet.
-- **Steam Controller** — not yet in the bundled model library or input path; planned.
-- **Racing wheel support** — planned for pedal/wheel/force-feedback devices.
-- General stability/edge-case bugs from the expanded input and import paths are still being ironed out — expect rough edges while these land. Please file issues with repro steps if you hit one.
+- **Racing wheel / flightstick support** — planned for pedal/wheel/stick/force-feedback devices; not yet in the model library or input path.
+- **Windows/macOS coverage** — both platforms build and run, but get less real-world testing than Linux. Expect the occasional platform-specific rough edge.
+- General stability/edge-case bugs from the expanded input and import paths are still being ironed out. Please file issues with repro steps if you hit one.
 
 ## Building
 
-This fork builds with **CMake** instead of the original's per-platform scripts. From the repo root:
+This fork builds with **CMake** and **pkg-config** on all three platforms. From the repo root:
 
+### 🐧 Linux
+
+```bash
+# Debian/Ubuntu
+sudo apt install build-essential cmake pkg-config libglfw3-dev libsdl2-dev \
+  libassimp-dev libspdlog-dev libfmt-dev nlohmann-json3-dev
+
+# Arch/CachyOS
+sudo pacman -S --needed base-devel cmake pkgconf glfw sdl2 assimp spdlog fmt nlohmann-json
+
+rm -rf build && mkdir build && cd build
+cmake ..
+make -j$(nproc)
 ```
- rm -rf build
-  mkdir build && cd build
-  cmake ..
-  make -j$(nproc);
+
+### 🍎 macOS
+
+```bash
+brew install cmake pkg-config glfw sdl2 assimp spdlog fmt nlohmann-json
+
+rm -rf build && mkdir build && cd build
+cmake ..
+make -j$(sysctl -n hw.ncpu)
 ```
 
-The resulting executable is **`3dco+`**.
+On first launch, macOS will need you to grant **Accessibility** (and/or **Input Monitoring**) permission for the global keyboard/mouse overlay to work — System Settings → Privacy & Security.
 
-**Dependencies** (via your system package manager / pkg-config): `glfw3`, `sdl2`, `assimp`, `spdlog`, `fmt`, plus OpenGL and a C++17 compiler. On Linux, `libsdl2-dev`, `libglfw3-dev`, `libassimp-dev`, and `libspdlog-dev` (naming varies by distro) cover it.
+### 🪟 Windows (native, via MSYS2/MinGW)
 
-Convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) and Docker cross-build files are included for packaged/AppImage builds, but the snippet above is the day-to-day build.
+```bash
+# Inside an MSYS2 MinGW64 shell
+pacman -S --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake \
+  mingw-w64-x86_64-pkgconf mingw-w64-x86_64-glfw mingw-w64-x86_64-SDL2 \
+  mingw-w64-x86_64-assimp mingw-w64-x86_64-spdlog mingw-w64-x86_64-fmt \
+  mingw-w64-x86_64-nlohmann-json
+
+rm -rf build && mkdir build && cd build
+cmake -G "MinGW Makefiles" ..
+mingw32-make -j$(nproc)
+```
+
+The resulting executable is **`3dco+`** (`3dco+.exe` on Windows).
+
+Convenience scripts (`build-all.sh`, `build-appimage.sh`, `build-macos.sh`, `build-windows.sh`) plus Docker cross-build files are also included, and are the easiest way to produce a Windows or macOS build from a Linux machine without installing a full native toolchain.
 
 ## Credits
 
 - **Original creator & engine**: [Larf](https://github.com/larfingshnew) — [3D Controller Overlay](https://github.com/larfingshnew/3d-controller-overlay). Please go star/support the original.
-- **This fork**: maintained as a homage/continuation, extended with AI-assisted coding for the features listed above.
-- Third-party libraries: GLFW, glad, SDL2, GLM, Dear ImGui, stb_image, Assimp, spdlog/fmt.
+- **This fork**: designed, built, and maintained by me as a homage/continuation and a personal test of what I can build with AI-assisted coding — all architecture, debugging, and feature decisions are mine.
+- Third-party libraries: GLFW, glad, SDL2, GLM, Dear ImGui, stb_image, Assimp, spdlog/fmt, nlohmann_json, miniz.
