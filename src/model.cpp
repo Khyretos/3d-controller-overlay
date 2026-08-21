@@ -847,7 +847,8 @@ void loadTexture(GLuint &id, std::string path) {
 }
 
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &highlightColor) {
+              const glm::vec3 &highlightColor,
+              const glm::vec3 *baseColorOverride) {
   if (!mesh.vao || mesh.elements == 0)
     return;
 
@@ -879,8 +880,11 @@ void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
   shaderUniformFloat(shader, "material.diffuse", mesh.material.diffuse);
   shaderUniformFloat(shader, "material.specular", mesh.material.specular);
   shaderUniformVec3(shader, "material.color",
-                    glm::vec3(mesh.material.color[0], mesh.material.color[1],
-                              mesh.material.color[2]));
+                    baseColorOverride
+                        ? *baseColorOverride
+                        : glm::vec3(mesh.material.color[0],
+                                    mesh.material.color[1],
+                                    mesh.material.color[2]));
   shaderUniformFloat(shader, "material.shininess", mesh.material.shininess);
   shaderUniformFloat(shader, "material.alpha", mesh.material.alpha);
 
@@ -1039,23 +1043,27 @@ glm::mat4 getMeshFinalMatrix(const Model &m, int idx, const glm::mat4 &parent) {
   }
 }
 
-void drawModel(Model m, GLuint shader, int highlight_mesh_index,
+void drawModel(Model &m, GLuint shader, int highlight_mesh_index,
                const glm::vec3 &globalHighlightColor) {
   int num_meshes = (int)m.meshes.size();
   std::vector<glm::mat4> finalMatrices(num_meshes, glm::mat4(1.0f));
   std::vector<bool> computed(num_meshes, false);
 
-  // ---- Set popup flags and highlight colors ----
+  // ---- Set popup flags ----
+  // `m` is now taken by reference instead of by value: drawModel runs every
+  // frame per open window, and the model can hold a large imported mesh
+  // library, so a full deep copy here was the single most expensive thing
+  // in the render loop. `popup` is safe to write back onto the real mesh
+  // because it's fully re-derived from m.popup_bumpers/triggers/paddles
+  // every frame anyway — nothing is lost by making it "stick" between
+  // frames. The selection-highlight color is handled differently below
+  // (see baseColorOverride) specifically because that one must NOT persist
+  // into the mesh's real material.
   for (int i = 0; i < num_meshes; ++i) {
     Mesh &mesh = m.meshes[i];
     mesh.popup = (mesh.isBumper && m.popup_bumpers) ||
                  (mesh.isTrigger && m.popup_triggers) ||
                  (mesh.isPaddle && m.popup_paddles);
-    if (i == highlight_mesh_index) {
-      mesh.material.color[0] = 0.0f;
-      mesh.material.color[1] = 1.0f;
-      mesh.material.color[2] = 0.0f;
-    }
   }
 
   // ---- Compute matrices (parent-child hierarchy) ----
@@ -1084,6 +1092,7 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index,
   }
 
   // ---- Draw ----
+  const glm::vec3 selectionColor(0.0f, 1.0f, 0.0f);
   for (int i = 0; i < num_meshes; ++i) {
     Mesh &mesh = m.meshes[i];
 
@@ -1098,7 +1107,14 @@ void drawModel(Model m, GLuint shader, int highlight_mesh_index,
     }
 
     // ---- Draw the mesh ----
-    drawMesh(mesh, finalMatrices[i], shader, highlightCol);
+    // When this mesh is the selected one (highlight_mesh_index), force its
+    // base color to green for the draw call only, via baseColorOverride,
+    // rather than overwriting mesh.material.color — which used to require
+    // drawModel to take the whole Model by value just to make that
+    // overwrite disposable.
+    const glm::vec3 *baseColorOverride =
+        (i == highlight_mesh_index) ? &selectionColor : nullptr;
+    drawMesh(mesh, finalMatrices[i], shader, highlightCol, baseColorOverride);
   }
 }
 

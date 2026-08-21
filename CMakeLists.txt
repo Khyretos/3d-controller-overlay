@@ -48,11 +48,28 @@ list(FILTER SRC_FILES EXCLUDE REGEX "src/imgui/backup/.*")
 # ------------------------------------------------------------------
 set(GEN_SCRIPT "${CMAKE_SOURCE_DIR}/tools/generate_models_zip.py")
 set(GEN_HEADER "${CMAKE_SOURCE_DIR}/src/models_zip_data.h")
+set(MODELS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets/models")
+
+# assets/models is gitignored (the vendored .obj model library isn't
+# committed), so it may simply not exist on a fresh clone. Only add it as a
+# DEPENDS target when it's actually there — `make` errors out with
+# "No rule to make target ... assets/models" if we depend on a path with no
+# rule to produce it. Without it present, generate_models_zip.py still runs
+# (see that script) and just produces an empty embedded library so the
+# build succeeds; the app falls back to an empty default model set at
+# runtime until you add assets/models yourself.
+if(EXISTS "${MODELS_SOURCE_DIR}")
+    set(MODELS_DEPENDS "${MODELS_SOURCE_DIR}")
+else()
+    set(MODELS_DEPENDS "")
+    message(WARNING "assets/models not found — building without an embedded "
+                     "default model library. See README's 'Building' section.")
+endif()
 
 add_custom_command(
     OUTPUT ${GEN_HEADER}
     COMMAND python3 ${GEN_SCRIPT}
-    DEPENDS ${CMAKE_SOURCE_DIR}/assets/models
+    DEPENDS ${MODELS_DEPENDS}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Generating models_zip_data.h from assets/models"
 )

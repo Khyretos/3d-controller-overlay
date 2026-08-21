@@ -1,7 +1,11 @@
 #if defined(__linux__)
+#include <sys/wait.h>
+#include <unistd.h>
 #elif __FreeBSD__
 #elif __ANDROID__
 #elif __APPLE__
+#include <sys/wait.h>
+#include <unistd.h>
 #elif _WIN32
 #include <windows.h>
 #define SDL_MAIN_HANDLED
@@ -3916,19 +3920,34 @@ std::string get_first_model() {
 }
 
 void OsOpenInShell(const char *path) {
-  std::string open_executable = "";
+#if defined(__linux__) || defined(__APPLE__)
+  // Launch the opener directly via fork/exec instead of system(). This
+  // passes `path` as a single argv entry rather than interpolating it into
+  // a shell command string, so it can't be affected by shell metacharacters
+  // (quotes, `;`, `$()`, etc.) even if `path` ever comes from something
+  // less trusted than a hardcoded URL (e.g. a user-controlled file path).
+  const char *open_executable =
 #if defined(__linux__)
-  open_executable = "xdg-open";
-#elif __APPLE__
-  open_executable = "open";
-#elif _WIN32
+      "xdg-open";
+#else
+      "open";
+#endif
+  pid_t pid = fork();
+  if (pid == 0) {
+    // Child: replace ourselves with the opener; never returns on success.
+    execlp(open_executable, open_executable, path, (char *)nullptr);
+    _exit(127); // execlp failed
+  } else if (pid > 0) {
+    // Parent: don't block the UI thread waiting on the opener.
+    int status;
+    waitpid(pid, &status, WNOHANG);
+  } else {
+    spdlog::warn("OsOpenInShell: fork() failed for '{}'", path);
+  }
+#elif defined(_WIN32)
   ::ShellExecuteA(NULL, "open", path, NULL, NULL, SW_SHOWDEFAULT);
 #else
-  // unsupported
+  // unsupported platform
+  (void)path;
 #endif
-  if (!open_executable.empty()) {
-    char command[256];
-    snprintf(command, 256, "%s \"%s\"", open_executable.c_str(), path);
-    system(command);
-  }
 }

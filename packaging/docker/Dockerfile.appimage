@@ -63,6 +63,15 @@ RUN git clone --depth 1 --branch 10.2.1 https://github.com/fmtlib/fmt.git && \
 WORKDIR /app
 COPY . /app
 
+# assets/models is gitignored (the vendored .obj model library isn't
+# committed to the repo), so it may not exist in the build context at all.
+# Guarantee it's at least present as an empty directory here so the later
+# `COPY --from=builder /app/assets/models /app/models` in the packager
+# stage never fails with "not found" — it'll just produce an AppImage with
+# an empty default model set unless you've placed real models there before
+# building.
+RUN mkdir -p /app/assets/models
+
 RUN mkdir -p build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \

@@ -5,7 +5,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-extern glm::vec3 cubePositions[];
 extern float cube_vertices[];
 extern float cube_normals[];
 extern float cube_tex_coords[];

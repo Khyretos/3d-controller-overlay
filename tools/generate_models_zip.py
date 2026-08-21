@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import sys
 import zipfile
 from io import BytesIO
 
@@ -8,8 +7,13 @@ models_dir = "assets/models"
 out_header = "src/models_zip_data.h"
 
 if not os.path.isdir(models_dir):
-    print(f"Error: {models_dir} not found")
-    sys.exit(1)
+    print(
+        f"Warning: {models_dir} not found — building without an embedded "
+        f"default model library. The app will still build and run, but "
+        f"won't ship any built-in controller models until you add "
+        f"{models_dir} (see README's 'Building' section)."
+    )
+    os.makedirs(models_dir, exist_ok=True)
 
 # Create zip in memory
 zip_buffer = BytesIO()

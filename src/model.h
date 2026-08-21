@@ -206,12 +206,19 @@ void loadTexture(GLuint &id, std::string path);
 
 void deleteTexture(GLuint &id);
 
-void drawModel(Model m, GLuint shader, int highlight_mesh_index = -1,
+// Takes the model by reference (not by value) — the model can hold a large
+// imported mesh library, and this runs every frame per open window, so a
+// deep copy here would be wasteful. See model.cpp for why this is safe.
+void drawModel(Model &m, GLuint shader, int highlight_mesh_index = -1,
                const glm::vec3 &globalHighlightColor = glm::vec3(1.0f, 0.0f,
                                                                  0.0f));
 
+// baseColorOverride, when non-null, replaces mesh.material.color for this
+// draw call only (used for the selection highlight) instead of requiring
+// the caller to mutate and later discard a copy of the mesh's real color.
 void drawMesh(const Mesh &mesh, const glm::mat4 &modelMatrix, GLuint shader,
-              const glm::vec3 &highlightColor);
+              const glm::vec3 &highlightColor,
+              const glm::vec3 *baseColorOverride = nullptr);
 
 // ----- functions for custom mesh import and mapping -----
 void importModelFile(Model &m, const std::string &filepath);

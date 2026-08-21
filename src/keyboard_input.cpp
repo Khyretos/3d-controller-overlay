@@ -647,10 +647,13 @@ void macThread() {
                      CGEventMaskBit(kCGEventMouseMoved) |
                      CGEventMaskBit(kCGEventLeftMouseDown) |
                      CGEventMaskBit(kCGEventLeftMouseUp) |
+                     CGEventMaskBit(kCGEventLeftMouseDragged) |
                      CGEventMaskBit(kCGEventRightMouseDown) |
                      CGEventMaskBit(kCGEventRightMouseUp) |
+                     CGEventMaskBit(kCGEventRightMouseDragged) |
                      CGEventMaskBit(kCGEventOtherMouseDown) |
                      CGEventMaskBit(kCGEventOtherMouseUp) |
+                     CGEventMaskBit(kCGEventOtherMouseDragged) |
                      CGEventMaskBit(kCGEventScrollWheel);
   g_eventTap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap,
                                 kCGEventTapOptionListenOnly, mask,

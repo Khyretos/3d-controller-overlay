@@ -395,6 +395,12 @@ lipo -create \
 
 # ----- Copy resources -----
 mkdir -p /out/3dco+.app/Contents/Resources
+# assets/models is gitignored (the vendored .obj model library isn't
+# committed), so it may or may not exist in the build context depending on
+# the host machine's local disk state. Guarantee a source directory exists
+# so this never hard-fails; an empty one just means the .app ships with no
+# on-disk default models (the CMake-embedded fallback still applies).
+mkdir -p /src/assets/models
 cp -r /src/assets/models /out/3dco+.app/Contents/Resources/
 cp /src/assets/icon.png /out/3dco+.app/Contents/Resources/
 
