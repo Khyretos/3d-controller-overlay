@@ -1,7 +1,6 @@
 #include "controller_window.h"
 #include "cube_info.h"
 #include "keyboard_input.h"
-#include "settings.h"
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
@@ -1509,15 +1508,56 @@ void controller_sdl_events(SDL_Event *event) {
     spdlog::info("Game controller added. Reopening...");
   }
   if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
-    spdlog::warn("Controller removed.");
+    SDL_JoystickID id = event->cdevice.which;
+    for (auto &w : windows) {
+      if (w.sdl_controller) {
+        SDL_Joystick *joy = SDL_GameControllerGetJoystick(w.sdl_controller);
+        if (joy && SDL_JoystickInstanceID(joy) == id) {
+          SDL_GameControllerClose(w.sdl_controller);
+          w.sdl_controller = nullptr;
+          w.is_gamecontroller = false;
+          // Also clear any sensor references
+          w.gyro_sensor = nullptr;
+          w.accel_sensor = nullptr;
+          w.gyro_enabled = false;
+          spdlog::info("Game controller removed and closed.");
+          break;
+        }
+      } else if (w.sdl_joystick) {
+        if (SDL_JoystickInstanceID(w.sdl_joystick) == id) {
+          SDL_JoystickClose(w.sdl_joystick);
+          w.sdl_joystick = nullptr;
+          w.gyro_sensor = nullptr;
+          w.accel_sensor = nullptr;
+          w.gyro_enabled = false;
+          spdlog::info("Joystick removed and closed.");
+          break;
+        }
+      }
+    }
   }
   if (event->type == SDL_JOYDEVICEADDED) {
     spdlog::info("Joystick added.");
   }
   if (event->type == SDL_JOYDEVICEREMOVED) {
-    spdlog::warn("Joystick removed.");
+    // Similar cleanup for raw joysticks (if your app uses them)
+    SDL_JoystickID id = event->jdevice.which;
+    for (auto &w : windows) {
+      if (!w.is_gamecontroller && w.sdl_joystick) {
+        if (SDL_JoystickInstanceID(w.sdl_joystick) == id) {
+          SDL_JoystickClose(w.sdl_joystick);
+          w.sdl_joystick = nullptr;
+          w.gyro_sensor = nullptr;
+          w.accel_sensor = nullptr;
+          w.gyro_enabled = false;
+          spdlog::info("Raw joystick removed and closed.");
+          break;
+        }
+      }
+    }
   }
   if (event->type == SDL_SENSORUPDATE) {
+    // Keep as is – but avoid using sensors if the device is already closed
     for (auto &w : windows) {
       if (w.gyro_sensor &&
           event->sensor.which == SDL_SensorGetInstanceID(w.gyro_sensor)) {
