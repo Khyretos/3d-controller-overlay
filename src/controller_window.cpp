@@ -471,7 +471,17 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
         std::string key = "key_";
         for (const char *p = name; *p; ++p)
           key.push_back(tolower(*p));
-        map[key] = sc;
+        // NOTE: SDL2's scancode name table is not 1:1 - SDL_SCANCODE_RETURN
+        // (40) and SDL_SCANCODE_RETURN2 (158) are BOTH named "Return". Since
+        // we iterate scancodes in ascending order, use emplace() (first
+        // write wins) instead of operator[] (last write wins), so the main
+        // Return/Enter key keeps its canonical, lower scancode instead of
+        // being silently remapped to RETURN2 - a scancode none of our
+        // platform keyboard backends ever actually produce. Without this,
+        // "keyboard:key_return" bindings are captured correctly (capture
+        // reads the pressed scancode directly) but never highlight during
+        // normal use (playback goes through this map).
+        map.emplace(key, sc);
       }
     }
     return map;
@@ -497,432 +507,468 @@ void applyMappingToMeshes(controller_window &w, float globalMouseDx,
     mesh.highlight_value = 0.0f;
     mesh.pull = 0.0f;
 
-    if (type == "gamepad" || type == "joystick") {
-      bool useRaw = (type == "joystick");
+    // ------------------------------------------------------------------
+    // Guard against malformed/incompatible bindings (e.g. a model saved on
+    // one platform referencing an axis/touchpad index that isn't produced
+    // by this platform's SDL backend for this controller). std::stoi and
+    // friends below throw on unexpected input; without this, one bad
+    // binding used to be able to bring down the whole app with no log at
+    // all on a console-less Windows build. Now we skip just that mesh.
+    // ------------------------------------------------------------------
+    try {
 
-      if (value == "leftstick") {
-        float lx = get_axis_value_choice(w, 0, useRaw);
-        float ly = get_axis_value_choice(w, 1, useRaw);
-        if (mesh.invert) {
-          lx = -lx;
-          ly = -ly;
-        }
-        mesh.stick_X = lx * 32767.0f;
-        mesh.stick_Y = ly * 32767.0f;
-        mesh.highlight_value = (fabs(lx) > 0.1f || fabs(ly) > 0.1f)
-                                   ? std::max(fabs(lx), fabs(ly)) * 1.2f
-                                   : 0.0f;
+      if (type == "gamepad" || type == "joystick") {
+        bool useRaw = (type == "joystick");
 
-        float magnitude = sqrt(lx * lx + ly * ly);
-        if (magnitude > 1.0f)
-          magnitude = 1.0f;
-        mesh.travel_value = magnitude;
-        continue;
-      } else if (value == "rightstick") {
-        float rx = get_axis_value_choice(w, 2, useRaw);
-        float ry = get_axis_value_choice(w, 3, useRaw);
-        if (mesh.invert) {
-          rx = -rx;
-          ry = -ry;
-        }
-        mesh.stick_X = rx * 32767.0f;
-        mesh.stick_Y = ry * 32767.0f;
-        mesh.highlight_value = (fabs(rx) > 0.1f || fabs(ry) > 0.1f)
-                                   ? std::max(fabs(rx), fabs(ry)) * 1.2f
-                                   : 0.0f;
-        float magnitude = sqrt(rx * rx + ry * ry);
-        if (magnitude > 1.0f)
-          magnitude = 1.0f;
-        mesh.travel_value = magnitude;
-        continue;
-      }
-
-      char prefix = value[0];
-      int num = 0, hatDir = -1;
-      bool isDirection = false;
-      int dir = 0;
-
-      if (prefix == 'b') {
-        num = std::stoi(value.substr(1));
-        bool pressed = get_button_value_choice(w, num, useRaw);
-        if (mesh.invert)
-          pressed = !pressed;
-        mesh.press = pressed ? 1.0f : 0.0f;
-        mesh.highlight_value = pressed ? 1.0f : 0.0f;
-        mesh.travel_value = mesh.press;
-      } else if (prefix == 'a') {
-        if (value.back() == '+') {
-          isDirection = true;
-          dir = 1;
-          num = std::stoi(value.substr(1, value.size() - 2));
-        } else if (value.back() == '-') {
-          isDirection = true;
-          dir = -1;
-          num = std::stoi(value.substr(1, value.size() - 2));
-        } else {
-          num = std::stoi(value.substr(1));
-        }
-        float axisVal = get_axis_value_choice(w, num, useRaw);
-        mesh.travel_signed = axisVal;
-        if (mesh.invert)
-          axisVal = -axisVal;
-        mesh.axis_highlight_value = axisVal;
-        mesh.travel_value = fabs(axisVal);
-
-        if (isDirection) {
-          bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
-          mesh.press = pressed ? 1.0f : 0.0f;
-          mesh.highlight_value = pressed ? 1.0f : 0.0f;
-          mesh.axis_highlight_value = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
-          mesh.travel_signed = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
-        } else {
-          // For non‑trigger axes, we want `press` to be 0 so it does not cause
-          // a highlight. Triggers (gamepad axes 4 and 5) still need `press` for
-          // their pull animation.
-          if (type == "gamepad" && (num == 4 || num == 5)) {
-            float val = std::max(0.0f, std::min(1.0f, axisVal));
-            mesh.pull = val * 32767.0f;
-            mesh.press = val; // used for trigger pull animation
-          } else {
-            mesh.pull = 0.0f;  // not used for non‑triggers
-            mesh.press = 0.0f; // do NOT blend highlight via press
-          }
-          mesh.axis_highlight_value = axisVal;
-          mesh.highlight_value = fabs(axisVal);
-        }
-      } else if (prefix == 'h') {
-        size_t dot = value.find('.');
-        if (dot != std::string::npos) {
-          num = std::stoi(value.substr(1, dot - 1));
-          hatDir = std::stoi(value.substr(dot + 1));
-          Uint8 hatVal = getHatValue(w, num);
-          Uint8 sdlDir = 0;
-          switch (hatDir) {
-          case 0:
-            sdlDir = SDL_HAT_UP;
-            break;
-          case 1:
-            sdlDir = SDL_HAT_RIGHTUP;
-            break;
-          case 2:
-            sdlDir = SDL_HAT_RIGHT;
-            break;
-          case 3:
-            sdlDir = SDL_HAT_RIGHTDOWN;
-            break;
-          case 4:
-            sdlDir = SDL_HAT_DOWN;
-            break;
-          case 5:
-            sdlDir = SDL_HAT_LEFTDOWN;
-            break;
-          case 6:
-            sdlDir = SDL_HAT_LEFT;
-            break;
-          case 7:
-            sdlDir = SDL_HAT_LEFTUP;
-            break;
-          }
-          bool pressed = (hatVal & sdlDir) != 0;
-          mesh.press = pressed ? 1.0f : 0.0f;
-          mesh.highlight_value = pressed ? 1.0f : 0.0f;
-          mesh.travel_value = mesh.press;
-        }
-      }
-
-      if (type == "gamepad" && value.rfind("touch", 0) == 0) {
-        std::string rest = value.substr(5);
-        size_t underscore1 = rest.find('_');
-        if (underscore1 != std::string::npos) {
-          std::string touchStr = rest.substr(0, underscore1);
-          std::string rest2 = rest.substr(underscore1 + 1);
-          size_t underscore2 = rest2.find('_');
-          if (underscore2 == std::string::npos) {
-            std::string fingerStr = rest2;
-            int touchpadIdx = std::stoi(touchStr);
-            int fingerIdx = std::stoi(fingerStr.substr(1));
-            if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
-                fingerIdx < 2) {
-              auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
-              if (ts.state == 1) {
-                float x = ts.x;
-                float y = ts.y;
-                if (mesh.invert) {
-                  x = 1.0f - x;
-                  y = 1.0f - y;
-                }
-                mesh.touch_X = x;
-                mesh.touch_Y = y;
-                mesh.touch_state = 1;
-                mesh.glow_intensity = 1.0f;
-
-                int part = mesh.assignedPart;
-                int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
-                if (touchpadIdxFound == -1) {
-                  for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
-                    if (i != meshIdx && w.model.meshes[i].isTouchpad) {
-                      touchpadIdxFound = i;
-                      break;
-                    }
-                  }
-                }
-                if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
-                  if (mesh.parentIndex != touchpadIdxFound ||
-                      mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
-                      mesh.position[2] != 0.0f) {
-                    mesh.parentIndex = touchpadIdxFound;
-                    mesh.position[0] = 0.0f;
-                    mesh.position[1] = 0.0f;
-                    mesh.position[2] = 0.0f;
-                    mesh.useCustomScale = false;
-                    spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
-                                 mesh.name,
-                                 w.model.meshes[touchpadIdxFound].name);
-                  }
-                }
-              } else {
-                mesh.touch_state = 0;
-                mesh.glow_intensity = 0.0f;
-              }
-            }
-          } else {
-            std::string fingerStr = rest2.substr(0, underscore2);
-            char axis = rest2.back();
-            int touchpadIdx = std::stoi(touchStr);
-            int fingerIdx = std::stoi(fingerStr.substr(1));
-            if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
-                fingerIdx < 2) {
-              auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
-              if (ts.state == 1) {
-                float val = (axis == 'x') ? ts.x : ts.y;
-                if (mesh.invert)
-                  val = 1.0f - val;
-                if (axis == 'x')
-                  mesh.touch_X = val;
-                else
-                  mesh.touch_Y = val;
-                mesh.touch_state = 1;
-                mesh.glow_intensity = 1.0f;
-
-                int part = mesh.assignedPart;
-                int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
-                if (touchpadIdxFound == -1) {
-                  for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
-                    if (i != meshIdx && w.model.meshes[i].isTouchpad) {
-                      touchpadIdxFound = i;
-                      break;
-                    }
-                  }
-                }
-                if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
-                  if (mesh.parentIndex != touchpadIdxFound ||
-                      mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
-                      mesh.position[2] != 0.0f) {
-                    mesh.parentIndex = touchpadIdxFound;
-                    mesh.position[0] = 0.0f;
-                    mesh.position[1] = 0.0f;
-                    mesh.position[2] = 0.0f;
-                    mesh.useCustomScale = false;
-                    spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
-                                 mesh.name,
-                                 w.model.meshes[touchpadIdxFound].name);
-                  }
-                }
-              } else {
-                mesh.touch_state = 0;
-                mesh.glow_intensity = 0.0f;
-              }
-            }
-          }
-        }
-        continue;
-      }
-    } else if (type == "mouse") {
-      // Determine which delta to use based on binding name
-      float dx = 0.0f, dy = 0.0f;
-      bool isScroll = false;
-      if (value == "mouse_xy" || value == "mouse_x" || value == "mouse_y") {
-        dx = globalMouseDx;
-        dy = globalMouseDy;
-        isScroll = false;
-      } else if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
-                 value == "mouse_scroll_y") {
-        dx = globalScrollDx;
-        dy = globalScrollDy;
-        isScroll = true;
-      }
-
-      if (value == "mouse_xy" || value == "mouse_scroll_xy") {
-        // ---- Handle accumulated scroll ----
-        if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
-            value == "mouse_scroll_y") {
-          // Accumulate scroll values with clamping to prevent overflow
-          const float MAX_SCROLL = 1.0f;
-          float scrollX = globalScrollDx;
-          float scrollY = globalScrollDy;
-
-          // Only accumulate if there's actual scroll movement
-          if (fabs(scrollX) > 0.001f || fabs(scrollY) > 0.001f) {
-            // Apply scroll sensitivity
-            scrollX *= 0.5f;
-            scrollY *= 0.5f;
-
-            w.scroll_accum_x = std::max(
-                -MAX_SCROLL, std::min(MAX_SCROLL, w.scroll_accum_x + scrollX));
-            w.scroll_accum_y = std::max(
-                -MAX_SCROLL, std::min(MAX_SCROLL, w.scroll_accum_y + scrollY));
-            w.scroll_accum_magnitude =
-                sqrt(w.scroll_accum_x * w.scroll_accum_x +
-                     w.scroll_accum_y * w.scroll_accum_y);
-          }
-
-          // Apply the accumulated scroll to the mesh
-          if (value == "mouse_scroll_xy") {
-            mesh.press = w.scroll_accum_magnitude > 0.01f ? 1.0f : 0.0f;
-            mesh.highlight_value = w.scroll_accum_magnitude;
-            mesh.stick_X = w.scroll_accum_x * 32767.0f;
-            mesh.stick_Y = w.scroll_accum_y * 32767.0f;
-            mesh.pull = w.scroll_accum_magnitude * 32767.0f;
-            continue;
-          } else if (value == "mouse_scroll_x") {
-            mesh.press = fabs(w.scroll_accum_x) > 0.01f ? 1.0f : 0.0f;
-            mesh.highlight_value = fabs(w.scroll_accum_x);
-            mesh.stick_X = w.scroll_accum_x * 32767.0f;
-            mesh.pull = fabs(w.scroll_accum_x) * 32767.0f;
-            continue;
-          } else if (value == "mouse_scroll_y") {
-            mesh.press = fabs(w.scroll_accum_y) > 0.01f ? 1.0f : 0.0f;
-            mesh.highlight_value = fabs(w.scroll_accum_y);
-            mesh.stick_Y = w.scroll_accum_y * 32767.0f;
-            mesh.pull = fabs(w.scroll_accum_y) * 32767.0f;
-            continue;
-          }
-        }
-
-        dx *= w.mouse_sensitivity;
-        dy *= w.mouse_sensitivity;
-        bool isTouchPoint = mesh.isTouchpoint;
-        if (isTouchPoint) {
-          // REMOVED: clamping cap – raw input is passed directly
-          mesh.touch_X += dx;
-          mesh.touch_Y += dy;
-          mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
-          mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
-          if (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f)
-            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
-          mesh.touch_state = 1;
-          mesh.glow_intensity = 1.0f;
-          mesh.stick_X = 0.0f;
-          mesh.stick_Y = 0.0f;
-          mesh.highlight_value =
-              (fabs(dx) > 0.01f || fabs(dy) > 0.01f) ? 1.0f : 0.0f;
-        } else {
-          dx = std::max(-1.0f, std::min(1.0f, dx));
-          dy = std::max(-1.0f, std::min(1.0f, dy));
+        if (value == "leftstick") {
+          float lx = get_axis_value_choice(w, 0, useRaw);
+          float ly = get_axis_value_choice(w, 1, useRaw);
           if (mesh.invert) {
-            dx = -dx;
-            dy = -dy;
+            lx = -lx;
+            ly = -ly;
           }
-          mesh.stick_X = dx * 32767.0f;
-          mesh.stick_Y = dy * 32767.0f;
-          mesh.highlight_value = (fabs(dx) > 0.1f || fabs(dy) > 0.1f)
-                                     ? std::max(fabs(dx), fabs(dy)) * 1.2f
+          mesh.stick_X = lx * 32767.0f;
+          mesh.stick_Y = ly * 32767.0f;
+          mesh.highlight_value = (fabs(lx) > 0.1f || fabs(ly) > 0.1f)
+                                     ? std::max(fabs(lx), fabs(ly)) * 1.2f
                                      : 0.0f;
+
+          float magnitude = sqrt(lx * lx + ly * ly);
+          if (magnitude > 1.0f)
+            magnitude = 1.0f;
+          mesh.travel_value = magnitude;
+          continue;
+        } else if (value == "rightstick") {
+          float rx = get_axis_value_choice(w, 2, useRaw);
+          float ry = get_axis_value_choice(w, 3, useRaw);
+          if (mesh.invert) {
+            rx = -rx;
+            ry = -ry;
+          }
+          mesh.stick_X = rx * 32767.0f;
+          mesh.stick_Y = ry * 32767.0f;
+          mesh.highlight_value = (fabs(rx) > 0.1f || fabs(ry) > 0.1f)
+                                     ? std::max(fabs(rx), fabs(ry)) * 1.2f
+                                     : 0.0f;
+          float magnitude = sqrt(rx * rx + ry * ry);
+          if (magnitude > 1.0f)
+            magnitude = 1.0f;
+          mesh.travel_value = magnitude;
+          continue;
         }
-        continue;
-      } else if (value == "mouse_x" || value == "mouse_scroll_x") {
-        float val = dx * w.mouse_sensitivity;
-        bool isTouchPoint = mesh.isTouchpoint;
-        if (isTouchPoint) {
-          // REMOVED: clamping cap
-          if (mesh.invert)
-            val = -val;
-          mesh.touch_X += val;
-          mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
-          if (fabs(val) > 0.0001f)
-            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
-          mesh.touch_state = 1;
-          mesh.glow_intensity = 1.0f;
-          mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
-        } else {
-          val = std::max(-1.0f, std::min(1.0f, val));
-          if (mesh.invert)
-            val = -val;
-          mesh.stick_X = val * 32767.0f;
-          mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
-        }
-        continue;
-      } else if (value == "mouse_y" || value == "mouse_scroll_y") {
-        float val = dy * w.mouse_sensitivity;
-        bool isTouchPoint = mesh.isTouchpoint;
-        if (isTouchPoint) {
-          // REMOVED: clamping cap
-          if (mesh.invert)
-            val = -val;
-          mesh.touch_Y += val;
-          mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
-          if (fabs(val) > 0.0001f)
-            w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
-          mesh.touch_state = 1;
-          mesh.glow_intensity = 1.0f;
-          mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
-        } else {
-          val = std::max(-1.0f, std::min(1.0f, val));
-          if (mesh.invert)
-            val = -val;
-          mesh.stick_Y = val * 32767.0f;
-          mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
-        }
-        continue;
-      } else {
-        // Mouse buttons
-        int button = -1;
-        if (value == "mouse_left")
-          button = 0;
-        else if (value == "mouse_right")
-          button = 1;
-        else if (value == "mouse_middle")
-          button = 2;
-        else if (value == "mouse_4")
-          button = 3;
-        else if (value == "mouse_5")
-          button = 4;
-        else if (value == "mouse_6")
-          button = 5;
-        else if (value == "mouse_7")
-          button = 6;
-        else if (value == "mouse_8")
-          button = 7;
-        if (button >= 0 && button < 8) {
-          bool pressed = GlobalKeyboard::isMouseButtonPressed(button);
+
+        // An empty value ("gamepad:" / "joystick:" with nothing after the
+        // colon) has no prefix character to read - bail out instead of
+        // indexing value[0] on an empty string.
+        if (value.empty())
+          continue;
+
+        char prefix = value[0];
+        int num = 0, hatDir = -1;
+        bool isDirection = false;
+        int dir = 0;
+
+        if (prefix == 'b') {
+          num = std::stoi(value.substr(1));
+          bool pressed = get_button_value_choice(w, num, useRaw);
           if (mesh.invert)
             pressed = !pressed;
           mesh.press = pressed ? 1.0f : 0.0f;
           mesh.highlight_value = pressed ? 1.0f : 0.0f;
           mesh.travel_value = mesh.press;
-        }
-        continue;
-      }
-    } else if (type == "keyboard") {
-      if (value.empty()) {
-        mesh.press = 0.0f;
-        mesh.highlight_value = 0.0f;
-      } else {
-        auto it = keyMap.find(value);
-        if (it != keyMap.end()) {
-          bool pressed = GlobalKeyboard::isPressed(it->second);
+        } else if (prefix == 'a') {
+          if (value.back() == '+') {
+            isDirection = true;
+            dir = 1;
+            num = std::stoi(value.substr(1, value.size() - 2));
+          } else if (value.back() == '-') {
+            isDirection = true;
+            dir = -1;
+            num = std::stoi(value.substr(1, value.size() - 2));
+          } else {
+            num = std::stoi(value.substr(1));
+          }
+          float axisVal = get_axis_value_choice(w, num, useRaw);
+          mesh.travel_signed = axisVal;
           if (mesh.invert)
-            pressed = !pressed;
-          mesh.press = pressed ? 1.0f : 0.0f;
-          mesh.highlight_value = pressed ? 1.0f : 0.0f;
-          mesh.travel_value = mesh.press;
+            axisVal = -axisVal;
+          mesh.axis_highlight_value = axisVal;
+          mesh.travel_value = fabs(axisVal);
+
+          if (isDirection) {
+            bool pressed = (dir > 0) ? (axisVal > 0.5f) : (axisVal < -0.5f);
+            mesh.press = pressed ? 1.0f : 0.0f;
+            mesh.highlight_value = pressed ? 1.0f : 0.0f;
+            mesh.axis_highlight_value =
+                pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
+            mesh.travel_signed = pressed ? (dir > 0 ? 1.0f : -1.0f) : 0.0f;
+          } else {
+            // For non‑trigger axes, we want `press` to be 0 so it does not
+            // cause a highlight. Triggers (gamepad axes 4 and 5) still need
+            // `press` for their pull animation.
+            if (type == "gamepad" && (num == 4 || num == 5)) {
+              float val = std::max(0.0f, std::min(1.0f, axisVal));
+              mesh.pull = val * 32767.0f;
+              mesh.press = val; // used for trigger pull animation
+            } else {
+              mesh.pull = 0.0f;  // not used for non‑triggers
+              mesh.press = 0.0f; // do NOT blend highlight via press
+            }
+            mesh.axis_highlight_value = axisVal;
+            mesh.highlight_value = fabs(axisVal);
+          }
+        } else if (prefix == 'h') {
+          size_t dot = value.find('.');
+          if (dot != std::string::npos) {
+            num = std::stoi(value.substr(1, dot - 1));
+            hatDir = std::stoi(value.substr(dot + 1));
+            Uint8 hatVal = getHatValue(w, num);
+            Uint8 sdlDir = 0;
+            switch (hatDir) {
+            case 0:
+              sdlDir = SDL_HAT_UP;
+              break;
+            case 1:
+              sdlDir = SDL_HAT_RIGHTUP;
+              break;
+            case 2:
+              sdlDir = SDL_HAT_RIGHT;
+              break;
+            case 3:
+              sdlDir = SDL_HAT_RIGHTDOWN;
+              break;
+            case 4:
+              sdlDir = SDL_HAT_DOWN;
+              break;
+            case 5:
+              sdlDir = SDL_HAT_LEFTDOWN;
+              break;
+            case 6:
+              sdlDir = SDL_HAT_LEFT;
+              break;
+            case 7:
+              sdlDir = SDL_HAT_LEFTUP;
+              break;
+            }
+            bool pressed = (hatVal & sdlDir) != 0;
+            mesh.press = pressed ? 1.0f : 0.0f;
+            mesh.highlight_value = pressed ? 1.0f : 0.0f;
+            mesh.travel_value = mesh.press;
+          }
+        }
+
+        if (type == "gamepad" && value.rfind("touch", 0) == 0) {
+          std::string rest = value.substr(5);
+          size_t underscore1 = rest.find('_');
+          if (underscore1 != std::string::npos) {
+            std::string touchStr = rest.substr(0, underscore1);
+            std::string rest2 = rest.substr(underscore1 + 1);
+            size_t underscore2 = rest2.find('_');
+            if (underscore2 == std::string::npos) {
+              std::string fingerStr = rest2;
+              int touchpadIdx = std::stoi(touchStr);
+              int fingerIdx = std::stoi(fingerStr.substr(1));
+              if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
+                  fingerIdx < 2) {
+                auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
+                if (ts.state == 1) {
+                  float x = ts.x;
+                  float y = ts.y;
+                  if (mesh.invert) {
+                    x = 1.0f - x;
+                    y = 1.0f - y;
+                  }
+                  mesh.touch_X = x;
+                  mesh.touch_Y = y;
+                  mesh.touch_state = 1;
+                  mesh.glow_intensity = 1.0f;
+
+                  int part = mesh.assignedPart;
+                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                  if (touchpadIdxFound == -1) {
+                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                        touchpadIdxFound = i;
+                        break;
+                      }
+                    }
+                  }
+                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                    if (mesh.parentIndex != touchpadIdxFound ||
+                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                        mesh.position[2] != 0.0f) {
+                      mesh.parentIndex = touchpadIdxFound;
+                      mesh.position[0] = 0.0f;
+                      mesh.position[1] = 0.0f;
+                      mesh.position[2] = 0.0f;
+                      mesh.useCustomScale = false;
+                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                   mesh.name,
+                                   w.model.meshes[touchpadIdxFound].name);
+                    }
+                  }
+                } else {
+                  mesh.touch_state = 0;
+                  mesh.glow_intensity = 0.0f;
+                }
+              }
+            } else {
+              std::string fingerStr = rest2.substr(0, underscore2);
+              char axis = rest2.back();
+              int touchpadIdx = std::stoi(touchStr);
+              int fingerIdx = std::stoi(fingerStr.substr(1));
+              if (touchpadIdx >= 0 && touchpadIdx < 4 && fingerIdx >= 0 &&
+                  fingerIdx < 2) {
+                auto &ts = w.touchpad_data[touchpadIdx][fingerIdx];
+                if (ts.state == 1) {
+                  float val = (axis == 'x') ? ts.x : ts.y;
+                  if (mesh.invert)
+                    val = 1.0f - val;
+                  if (axis == 'x')
+                    mesh.touch_X = val;
+                  else
+                    mesh.touch_Y = val;
+                  mesh.touch_state = 1;
+                  mesh.glow_intensity = 1.0f;
+
+                  int part = mesh.assignedPart;
+                  int touchpadIdxFound = getTouchpadAncestor(w.model, meshIdx);
+                  if (touchpadIdxFound == -1) {
+                    for (int i = 0; i < (int)w.model.meshes.size(); ++i) {
+                      if (i != meshIdx && w.model.meshes[i].isTouchpad) {
+                        touchpadIdxFound = i;
+                        break;
+                      }
+                    }
+                  }
+                  if (touchpadIdxFound != -1 && touchpadIdxFound != meshIdx) {
+                    if (mesh.parentIndex != touchpadIdxFound ||
+                        mesh.position[0] != 0.0f || mesh.position[1] != 0.0f ||
+                        mesh.position[2] != 0.0f) {
+                      mesh.parentIndex = touchpadIdxFound;
+                      mesh.position[0] = 0.0f;
+                      mesh.position[1] = 0.0f;
+                      mesh.position[2] = 0.0f;
+                      mesh.useCustomScale = false;
+                      spdlog::info("Anchored touchpoint '{}' to touchpad '{}'",
+                                   mesh.name,
+                                   w.model.meshes[touchpadIdxFound].name);
+                    }
+                  }
+                } else {
+                  mesh.touch_state = 0;
+                  mesh.glow_intensity = 0.0f;
+                }
+              }
+            }
+          }
+          continue;
+        }
+      } else if (type == "mouse") {
+        // Determine which delta to use based on binding name
+        float dx = 0.0f, dy = 0.0f;
+        bool isScroll = false;
+        if (value == "mouse_xy" || value == "mouse_x" || value == "mouse_y") {
+          dx = globalMouseDx;
+          dy = globalMouseDy;
+          isScroll = false;
+        } else if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
+                   value == "mouse_scroll_y") {
+          dx = globalScrollDx;
+          dy = globalScrollDy;
+          isScroll = true;
+        }
+
+        if (value == "mouse_xy" || value == "mouse_scroll_xy") {
+          // ---- Handle accumulated scroll ----
+          if (value == "mouse_scroll_xy" || value == "mouse_scroll_x" ||
+              value == "mouse_scroll_y") {
+            // Accumulate scroll values with clamping to prevent overflow
+            const float MAX_SCROLL = 1.0f;
+            float scrollX = globalScrollDx;
+            float scrollY = globalScrollDy;
+
+            // Only accumulate if there's actual scroll movement
+            if (fabs(scrollX) > 0.001f || fabs(scrollY) > 0.001f) {
+              // Apply scroll sensitivity
+              scrollX *= 0.5f;
+              scrollY *= 0.5f;
+
+              w.scroll_accum_x =
+                  std::max(-MAX_SCROLL,
+                           std::min(MAX_SCROLL, w.scroll_accum_x + scrollX));
+              w.scroll_accum_y =
+                  std::max(-MAX_SCROLL,
+                           std::min(MAX_SCROLL, w.scroll_accum_y + scrollY));
+              w.scroll_accum_magnitude =
+                  sqrt(w.scroll_accum_x * w.scroll_accum_x +
+                       w.scroll_accum_y * w.scroll_accum_y);
+            }
+
+            // Apply the accumulated scroll to the mesh
+            if (value == "mouse_scroll_xy") {
+              mesh.press = w.scroll_accum_magnitude > 0.01f ? 1.0f : 0.0f;
+              mesh.highlight_value = w.scroll_accum_magnitude;
+              mesh.stick_X = w.scroll_accum_x * 32767.0f;
+              mesh.stick_Y = w.scroll_accum_y * 32767.0f;
+              mesh.pull = w.scroll_accum_magnitude * 32767.0f;
+              continue;
+            } else if (value == "mouse_scroll_x") {
+              mesh.press = fabs(w.scroll_accum_x) > 0.01f ? 1.0f : 0.0f;
+              mesh.highlight_value = fabs(w.scroll_accum_x);
+              mesh.stick_X = w.scroll_accum_x * 32767.0f;
+              mesh.pull = fabs(w.scroll_accum_x) * 32767.0f;
+              continue;
+            } else if (value == "mouse_scroll_y") {
+              mesh.press = fabs(w.scroll_accum_y) > 0.01f ? 1.0f : 0.0f;
+              mesh.highlight_value = fabs(w.scroll_accum_y);
+              mesh.stick_Y = w.scroll_accum_y * 32767.0f;
+              mesh.pull = fabs(w.scroll_accum_y) * 32767.0f;
+              continue;
+            }
+          }
+
+          dx *= w.mouse_sensitivity;
+          dy *= w.mouse_sensitivity;
+          bool isTouchPoint = mesh.isTouchpoint;
+          if (isTouchPoint) {
+            // REMOVED: clamping cap – raw input is passed directly
+            mesh.touch_X += dx;
+            mesh.touch_Y += dy;
+            mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
+            mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
+            if (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f)
+              w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+            mesh.touch_state = 1;
+            mesh.glow_intensity = 1.0f;
+            mesh.stick_X = 0.0f;
+            mesh.stick_Y = 0.0f;
+            mesh.highlight_value =
+                (fabs(dx) > 0.01f || fabs(dy) > 0.01f) ? 1.0f : 0.0f;
+          } else {
+            dx = std::max(-1.0f, std::min(1.0f, dx));
+            dy = std::max(-1.0f, std::min(1.0f, dy));
+            if (mesh.invert) {
+              dx = -dx;
+              dy = -dy;
+            }
+            mesh.stick_X = dx * 32767.0f;
+            mesh.stick_Y = dy * 32767.0f;
+            mesh.highlight_value = (fabs(dx) > 0.1f || fabs(dy) > 0.1f)
+                                       ? std::max(fabs(dx), fabs(dy)) * 1.2f
+                                       : 0.0f;
+          }
+          continue;
+        } else if (value == "mouse_x" || value == "mouse_scroll_x") {
+          float val = dx * w.mouse_sensitivity;
+          bool isTouchPoint = mesh.isTouchpoint;
+          if (isTouchPoint) {
+            // REMOVED: clamping cap
+            if (mesh.invert)
+              val = -val;
+            mesh.touch_X += val;
+            mesh.touch_X = std::max(0.0f, std::min(1.0f, mesh.touch_X));
+            if (fabs(val) > 0.0001f)
+              w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+            mesh.touch_state = 1;
+            mesh.glow_intensity = 1.0f;
+            mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
+          } else {
+            val = std::max(-1.0f, std::min(1.0f, val));
+            if (mesh.invert)
+              val = -val;
+            mesh.stick_X = val * 32767.0f;
+            mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
+          }
+          continue;
+        } else if (value == "mouse_y" || value == "mouse_scroll_y") {
+          float val = dy * w.mouse_sensitivity;
+          bool isTouchPoint = mesh.isTouchpoint;
+          if (isTouchPoint) {
+            // REMOVED: clamping cap
+            if (mesh.invert)
+              val = -val;
+            mesh.touch_Y += val;
+            mesh.touch_Y = std::max(0.0f, std::min(1.0f, mesh.touch_Y));
+            if (fabs(val) > 0.0001f)
+              w.touchpoint_last_move_time[meshIdx] = glfwGetTime();
+            mesh.touch_state = 1;
+            mesh.glow_intensity = 1.0f;
+            mesh.highlight_value = fabs(val) > 0.01f ? 1.0f : 0.0f;
+          } else {
+            val = std::max(-1.0f, std::min(1.0f, val));
+            if (mesh.invert)
+              val = -val;
+            mesh.stick_Y = val * 32767.0f;
+            mesh.highlight_value = fabs(val) > 0.1f ? fabs(val) * 1.2f : 0.0f;
+          }
+          continue;
         } else {
-          static std::set<std::string> warnedKeys;
-          if (warnedKeys.insert(value).second) {
-            spdlog::warn("Unknown keyboard key: {}", value);
+          // Mouse buttons
+          int button = -1;
+          if (value == "mouse_left")
+            button = 0;
+          else if (value == "mouse_right")
+            button = 1;
+          else if (value == "mouse_middle")
+            button = 2;
+          else if (value == "mouse_4")
+            button = 3;
+          else if (value == "mouse_5")
+            button = 4;
+          else if (value == "mouse_6")
+            button = 5;
+          else if (value == "mouse_7")
+            button = 6;
+          else if (value == "mouse_8")
+            button = 7;
+          if (button >= 0 && button < 8) {
+            bool pressed = GlobalKeyboard::isMouseButtonPressed(button);
+            if (mesh.invert)
+              pressed = !pressed;
+            mesh.press = pressed ? 1.0f : 0.0f;
+            mesh.highlight_value = pressed ? 1.0f : 0.0f;
+            mesh.travel_value = mesh.press;
+          }
+          continue;
+        }
+      } else if (type == "keyboard") {
+        if (value.empty()) {
+          mesh.press = 0.0f;
+          mesh.highlight_value = 0.0f;
+        } else {
+          auto it = keyMap.find(value);
+          if (it != keyMap.end()) {
+            bool pressed = GlobalKeyboard::isPressed(it->second);
+            if (mesh.invert)
+              pressed = !pressed;
+            mesh.press = pressed ? 1.0f : 0.0f;
+            mesh.highlight_value = pressed ? 1.0f : 0.0f;
+            mesh.travel_value = mesh.press;
+          } else {
+            static std::set<std::string> warnedKeys;
+            if (warnedKeys.insert(value).second) {
+              spdlog::warn("Unknown keyboard key: {}", value);
+            }
           }
         }
       }
+
+    } catch (const std::exception &e) {
+      // Most likely std::stoi choking on a malformed/unexpected binding
+      // string (e.g. "gamepad:b" with no number, or an index that made
+      // sense on the platform the model was saved on but not here). Log it
+      // once per unique offending binding and move on instead of crashing.
+      static std::set<std::string> warnedBadBindings;
+      std::string key = mesh.name + "|" + mesh.inputBinding;
+      if (warnedBadBindings.insert(key).second) {
+        spdlog::warn("Skipping unusable input binding '{}' on mesh '{}': {}",
+                     mesh.inputBinding, mesh.name, e.what());
+      }
+      mesh.press = 0.0f;
+      mesh.highlight_value = 0.0f;
+      mesh.pull = 0.0f;
+      mesh.axis_highlight_value = 0.0f;
     }
   }
 }

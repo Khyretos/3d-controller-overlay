@@ -16,6 +16,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "keyboard_input.h"
+#include "log_window.h"
 #include "model.h"
 #include "settings.h"
 #include "settings_window.h"
@@ -26,6 +27,7 @@
 #include <iostream>
 #include <map>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <spdlog/spdlog.h>
 #include <stdio.h>
 
@@ -717,6 +719,17 @@ void drawSettingsWindow() {
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip(
             "Open the folder where settings, models, and logs are stored.");
+
+      ImGui::SameLine();
+      if (ImGui::Button(isLogWindowOpen() ? "Hide Log Window"
+                                          : "Open Log Window")) {
+        toggleLogWindow();
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(
+            "Show a live view of the application log in its own window.\n"
+            "Useful on macOS/Linux, where no console is attached unless "
+            "you launch the app from a terminal.");
 
       ImGui::NewLine();
       ImGui::ColorEdit4("Background Color", current_window->bg_color);
@@ -1701,7 +1714,13 @@ void drawSettingsWindow() {
                 }
               }
             } else if (currentType == "keyboard") {
-              // Add all keyboard scancodes with a name
+              // Add all keyboard scancodes with a name. A handful of SDL2
+              // scancodes share the same display name (e.g. RETURN and
+              // RETURN2 are both "Return") - skip repeats so the dropdown
+              // never shows two identical-looking entries where only one
+              // actually does anything (see the emplace() note next to
+              // keyMap in controller_window.cpp for the full story).
+              std::set<std::string> seenKeyNames;
               for (int i = 0; i < SDL_NUM_SCANCODES; ++i) {
                 SDL_Scancode sc = static_cast<SDL_Scancode>(i);
                 const char *name = SDL_GetScancodeName(sc);
@@ -1709,7 +1728,8 @@ void drawSettingsWindow() {
                   std::string key = "key_";
                   for (const char *p = name; *p; ++p)
                     key.push_back(tolower(*p));
-                  inputOptions.push_back(key);
+                  if (seenKeyNames.insert(key).second)
+                    inputOptions.push_back(key);
                 }
               }
             } else if (currentType == "mouse") {
@@ -3045,6 +3065,11 @@ void drawSettingsWindow() {
       import_model_dialog.ClearSelected();
     }
   }
+
+  // Renders in the same ImGui frame/context as the rest of the settings
+  // window; internally a no-op unless the user has toggled it open via the
+  // "Open Log Window" button below.
+  drawLogWindow();
 
   ImGui::Render();
   glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);

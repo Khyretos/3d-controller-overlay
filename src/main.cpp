@@ -1,4 +1,5 @@
 #include "keyboard_input.h"
+#include "log_window.h"
 #include "settings.h"
 #include "settings_window.h"
 #include <iostream>
@@ -35,6 +36,11 @@ void InitializeProgram() {
     spdlog::set_default_logger(logger);
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("3D Controller Overlay starting...");
+
+    // Mirror every log line into the in-app log window's ring buffer so it
+    // works the same on Windows, macOS, and Linux, whether or not a
+    // console is attached to the process.
+    initLogWindow(logger);
   } catch (const spdlog::spdlog_ex &ex) {
     std::cerr << "Log initialization failed: " << ex.what() << std::endl;
   }

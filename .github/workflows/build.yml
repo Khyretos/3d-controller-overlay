@@ -9,7 +9,7 @@ on:
   # regular day-to-day commits to main - only when you decide a version
   # is ready.
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 # If you trigger the workflow twice in a row before the first finishes,
 # cancel the older run instead of burning minutes on both.
@@ -127,11 +127,20 @@ jobs:
           mkdir -p dist/macos
           docker run --rm -v "${{ github.workspace }}/dist:/dist" 3dco-macos-builder:latest
 
+      # GitHub Release assets must be single files - a raw .app bundle is a
+      # directory, so it can't be attached directly in the release job below.
+      # Zip it here (once, on the same runner that just built it) instead of
+      # re-deriving the app name later.
+      - name: Zip macOS app bundle
+        run: |
+          cd dist/macos
+          zip -r "3dco+-macos.zip" "3dco+.app"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: 3dco-macos
-          path: dist/macos/3dco+.app
+          path: dist/macos/3dco+-macos.zip
           if-no-files-found: error
 
   # Only runs when you push a version tag (e.g. `git tag v1.2.0 && git push --tags`).
@@ -155,4 +164,4 @@ jobs:
           files: |
             release-assets/3dco-linux-appimage/*.AppImage
             release-assets/3dco-windows/3dco+.exe
-            release-assets/3dco-macos/3dco+.app
+            release-assets/3dco-macos/3dco+-macos.zip
