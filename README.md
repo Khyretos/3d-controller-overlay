@@ -19,7 +19,9 @@ The **`+`** in the name means exactly that: **improvements and extra features** 
 - [What's new in the `+`](#whats-new-in-the-)
 - [How it works](#how-it-works)
 - [Supported platforms](#supported-platforms)
+- [Where your data lives](#where-your-data-lives)
 - [Supported input](#supported-input)
+- [A couple of things you'll notice](#a-couple-of-things-youll-notice)
 - [Controller showcase](#controller-showcase)
 - [Work in progress / known bugs](#work-in-progress--known-bugs)
 - [Building](#building)
@@ -79,26 +81,45 @@ At a high level, the pipeline builds on the original:
 
 All three major desktop platforms are targeted and built for:
 
-| Platform | Status | Notes |
-| --- | --- | --- |
-| 🐧 Linux | ✅ Actively developed & tested | Primary development platform. Keyboard/mouse overlay uses raw `evdev` device polling. |
-| 🪟 Windows | ✅ Supported | Keyboard/mouse overlay uses a low-level `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook. Built via CMake + MSYS2/MinGW, or cross-compiled from Linux with the included Docker scripts. |
-| 🍎 macOS | ✅ Supported | Keyboard/mouse overlay uses a listen-only `CGEventTap` (requires granting Accessibility/Input Monitoring permission on first run). Built natively via Homebrew, or cross-compiled from Linux with the included Docker scripts. |
+| Platform   | Status                         | Notes                                                                                                                                                                                                                          |
+| ---------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 🐧 Linux   | ✅ Actively developed & tested | Primary development platform. Keyboard/mouse overlay uses raw `evdev` device polling.                                                                                                                                          |
+| 🪟 Windows | ✅ Supported                   | Keyboard/mouse overlay uses a low-level `WH_KEYBOARD_LL` / `WH_MOUSE_LL` hook. Built via CMake + MSYS2/MinGW, or cross-compiled from Linux with the included Docker scripts.                                                   |
+| 🍎 macOS   | ✅ Supported                   | Keyboard/mouse overlay uses a listen-only `CGEventTap` (requires granting Accessibility/Input Monitoring permission on first run). Built natively via Homebrew, or cross-compiled from Linux with the included Docker scripts. |
 
 Since day-to-day development happens on Linux, the Windows and macOS builds get comparatively less mileage. If you hit a platform-specific issue on Windows or macOS, please file an issue with your OS version and build method — those reports genuinely help.
 
+## Where your data lives
+
+`3dco+` keeps all of its writable data — settings, imported models, the extracted model library, logs, and the controller mapping database — in a single per-user config directory, not next to the executable:
+
+| Platform   | Location                               |
+| ---------- | -------------------------------------- |
+| 🐧 Linux   | `~/.local/share/3dco+/`                |
+| 🪟 Windows | `%APPDATA%\3dco+\`                     |
+| 🍎 macOS   | `~/Library/Application Support/3dco+/` |
+
+You can jump straight there from inside the app via **Settings → Open Data Directory**. There's also an **Open Log Window** button right next to it if you'd rather watch the log live instead of digging through files — handy on macOS/Linux, where no console is attached to the process unless you launched it from a terminal.
+
 ## Supported input
 
-| Input type | Status |
-| --- | --- |
-| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController) |
-| Unmapped/generic joysticks | ✅ Supported (via raw SDL Joystick fallback) |
-| Steam Controller | ✅ Supported (added to the model library) |
-| Keyboard overlay | ✅ Supported (system-wide, works without window focus) |
-| Mouse overlay | ✅ Supported (position, buttons, scroll — system-wide) |
-| Gyro / accelerometer | ✅ Supported, with sensitivity/correction tuning |
-| Touchpads (DualShock/DualSense) | ✅ Supported, multi-touch, multiple pads |
-| Racing wheel / flightstick | 🚧 Work in progress |
+| Input type                                                                         | Status                                                 |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Standard gamepads (Xbox, DualShock/DualSense, Switch Pro, Joy-Con, GameCube, etc.) | ✅ Supported (via SDL GameController)                  |
+| Unmapped/generic joysticks                                                         | ✅ Supported (via raw SDL Joystick fallback)           |
+| Steam Controller                                                                   | ✅ Supported (added to the model library)              |
+| Keyboard overlay                                                                   | ✅ Supported (system-wide, works without window focus) |
+| Mouse overlay                                                                      | ✅ Supported (position, buttons, scroll — system-wide) |
+| Gyro / accelerometer                                                               | ✅ Supported, with sensitivity/correction tuning       |
+| Touchpads (DualShock/DualSense)                                                    | ✅ Supported, multi-touch, multiple pads               |
+| Racing wheel / flightstick                                                         | 🚧 Work in progress                                    |
+
+Gamepad button/axis layouts are resolved through SDL2's community-maintained [`gamecontrollerdb.txt`](https://github.com/mdqinc/SDL_GameControllerDB) database (embedded in the app, covering most Xbox/PlayStation/Switch Pro/Steam Controller/third-party pads). If your controller shows up as a raw, unlabeled joystick instead of a named gamepad, it isn't in that database yet — you can either add an entry to `gamecontrollerdb.txt` in your [data directory](#where-your-data-lives) (e.g. using [SDL2 Gamepad Tool](https://generalarcade.com/gamepadtool/)) and restart, or just map it manually using raw joystick bindings in the Mapping panel, which works regardless of whether SDL recognizes the controller. If you do get a new controller working, consider [contributing the mapping upstream](https://github.com/mdqinc/SDL_GameControllerDB) so other SDL2-based apps benefit too.
+
+## A couple of things you'll notice
+
+- **The download is a bit bigger than you might expect.** The full built-in model library ships embedded in the binary (see "Embedded model library" above) so the app works out of the box with zero setup and no separate assets folder to lose track of — that's most of what you're seeing in the file size, not bloat.
+- **The first launch takes a few seconds longer.** Because that model library is compressed inside the binary, first run needs to unzip it into your [data directory](#where-your-data-lives) before it can use it. One-time cost — every launch after that is fast.
 
 ## Controller showcase
 
@@ -106,15 +127,15 @@ Live demo clips for every controller in the built-in model library. (The `+` bad
 
 > The clips below are placeholders — I'll be swapping each one for real capture footage as I record it.
 
-| | |
-| --- | --- |
-| **Steam Controller 2026** <br> ![Steam Controller 2026 demo placeholder](images/steamcontroller2026_placeholder.gif) | **DualSense** <br> ![DualSense demo placeholder](images/dualsense_placeholder.gif) |
-| **DualShock 4** <br> ![DualShock 4 demo placeholder](images/dualshock4_placeholder.gif) | **GameCube** <br> ![GameCube demo placeholder](images/gamecube_placeholder.gif) |
-| **Joy-Con Grip** <br> ![Joy-Con Grip demo placeholder](images/joycongrip_placeholder.gif) | **Keyboard** <br> ![Keyboard demo placeholder](images/keyboard_placeholder.gif) |
-| **Left Joy-Con** <br> ![Left Joy-Con demo placeholder](images/leftjoycon_placeholder.gif) | **Right Joy-Con** <br> ![Right Joy-Con demo placeholder](images/rightjoycon_placeholder.gif) |
-| **Xbox One** <br> ![Xbox One demo placeholder](images/xboxone_placeholder.gif) | **Xbox 360** <br> ![Xbox 360 demo placeholder](images/xbox360_placeholder.gif) |
-| **Mouse** <br> ![Mouse demo placeholder](images/mouse_placeholder.gif) | **Switch Pro** <br> ![Switch Pro demo placeholder](images/switchpro_placeholder.gif) |
-| **Wavebird** <br> ![Wavebird demo placeholder](images/wavebird_placeholder.gif) | **Flightstick** <br> ![Flightstick demo placeholder](images/flightstick_placeholder.gif) |
+|                                                                                                                      |                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Steam Controller 2026** <br> ![Steam Controller 2026 demo placeholder](images/steamcontroller2026_placeholder.gif) | **DualSense** <br> ![DualSense demo placeholder](images/dualsense_placeholder.gif)           |
+| **DualShock 4** <br> ![DualShock 4 demo placeholder](images/dualshock4_placeholder.gif)                              | **GameCube** <br> ![GameCube demo placeholder](images/gamecube_placeholder.gif)              |
+| **Joy-Con Grip** <br> ![Joy-Con Grip demo placeholder](images/joycongrip_placeholder.gif)                            | **Keyboard** <br> ![Keyboard demo placeholder](images/keyboard_placeholder.gif)              |
+| **Left Joy-Con** <br> ![Left Joy-Con demo placeholder](images/leftjoycon_placeholder.gif)                            | **Right Joy-Con** <br> ![Right Joy-Con demo placeholder](images/rightjoycon_placeholder.gif) |
+| **Xbox One** <br> ![Xbox One demo placeholder](images/xboxone_placeholder.gif)                                       | **Xbox 360** <br> ![Xbox 360 demo placeholder](images/xbox360_placeholder.gif)               |
+| **Mouse** <br> ![Mouse demo placeholder](images/mouse_placeholder.gif)                                               | **Switch Pro** <br> ![Switch Pro demo placeholder](images/switchpro_placeholder.gif)         |
+| **Wavebird** <br> ![Wavebird demo placeholder](images/wavebird_placeholder.gif)                                      | **Flightstick** <br> ![Flightstick demo placeholder](images/flightstick_placeholder.gif)     |
 
 ## Work in progress / known bugs
 
@@ -151,7 +172,15 @@ cmake ..
 make -j$(sysctl -n hw.ncpu)
 ```
 
-On first launch, macOS will need you to grant **Accessibility** (and/or **Input Monitoring**) permission for the global keyboard/mouse overlay to work — System Settings → Privacy & Security.
+**Enabling the keyboard/mouse overlay:** on first launch, macOS won't grant the global keyboard/mouse hook access automatically. To turn it on:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Click **+** and add **3D Controller Overlay +** (or your terminal, if you're running it from one).
+3. Toggle it **on**, then restart the app.
+
+If you skip this, the app still launches fine — gamepad/joystick input is unaffected — but keyboard/mouse bindings and the keyboard/mouse overlay simply won't register anything.
+
+**"Apple could not verify this app":** I don't currently have an Apple Developer account, so prebuilt macOS releases aren't code-signed or notarized — that's a cost thing on my end, not a comment on safety, and Gatekeeper flags _any_ unsigned app this way. To open it the first time: **right-click (or Control-click) the app in Finder → Open**, rather than double-clicking, then click **Open** again on the warning dialog. macOS remembers your choice after that, and double-clicking works normally from then on. If you'd rather not take that on faith, the source is fully public here and you're welcome to build it yourself instead — see below.
 
 ### 🪟 Windows (native, via MSYS2/MinGW)
 

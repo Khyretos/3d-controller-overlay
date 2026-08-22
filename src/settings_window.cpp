@@ -387,8 +387,13 @@ void createSettingsWindow() {
   glfw_settings_window =
       glfwCreateWindow(640, 480, "3D Controller Overlay", NULL, NULL);
   if (glfw_settings_window == NULL) {
-    std::cout << "Failed to create settings window" << std::endl;
+    spdlog::critical("Failed to create settings window - GLFW returned "
+                     "NULL. Cannot continue.");
     glfwTerminate();
+    // Previously execution fell through to glfwMakeContextCurrent(NULL)
+    // and beyond with no window at all, which would crash rather than
+    // fail cleanly with a logged reason.
+    exit(1);
   }
   glfwMakeContextCurrent(glfw_settings_window);
   glfwSwapInterval(1);
@@ -399,7 +404,7 @@ void createSettingsWindow() {
   images[0].pixels =
       stbi_load("icon.png", &images[0].width, &images[0].height, 0, 4);
   if (images[0].pixels == NULL) {
-    std::cout << "couldn't load settings window icon" << std::endl;
+    spdlog::warn("Could not load settings window icon (icon.png).");
   } else {
     glfwSetWindowIcon(glfw_settings_window, 1, images);
   }
@@ -409,7 +414,9 @@ void createSettingsWindow() {
   vid_mode = glfwGetVideoMode(primary_monitor);
 
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    std::cout << "Failed to initialize GLAD" << std::endl;
+    spdlog::critical("Failed to initialize GLAD - no valid OpenGL context. "
+                     "Cannot continue.");
+    exit(1);
   }
 
   IMGUI_CHECKVERSION();
@@ -417,15 +424,10 @@ void createSettingsWindow() {
   io = &ImGui::GetIO();
   (void)io;
 
-  ImGui::CreateContext();
-  io = &ImGui::GetIO();
-
   // ---- Redirect ImGui INI file to config_base_path ----
   static std::string ini_path = config_base_path + "/imgui.ini";
   io->IniFilename = ini_path.c_str();
 
-  ImGui::StyleColorsDark();
-  ImGui::StyleColorsDark();
   ImGui::StyleColorsDark();
   ImGuiStyle &style = ImGui::GetStyle();
   ImVec4 purple = ImVec4(0.45f, 0.18f, 0.59f, 1.0f); // royal purple
@@ -455,7 +457,9 @@ void createSettingsWindow() {
 
   ImGui_ImplGlfw_InitForOpenGL(glfw_settings_window, true);
   if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
-    std::cout << "failed to init imgui for opengl3." << std::endl;
+    spdlog::critical("Failed to initialize ImGui's OpenGL3 backend. "
+                     "Cannot continue.");
+    exit(1);
   }
 
   texture_dialog.SetWindowSize(400, 300);
@@ -1042,8 +1046,9 @@ void drawSettingsWindow() {
             writeJson(current_window->model, new_model_path + "/info.json");
             ImGui::CloseCurrentPopup();
           } else {
-            std::cout << "Name contains invalid characters "
-                      << invalid_characters << std::endl;
+            spdlog::warn("Model folder name '{}' rejected: contains an "
+                         "invalid character (\\/:*?\"<>|).",
+                         name);
           }
         }
         if (!name_valid) {
@@ -2979,8 +2984,8 @@ void drawSettingsWindow() {
       spdlog::error("Texture mesh index out of range.");
       texture_dialog.ClearSelected();
     } else {
-      std::cout << "Selected filename : "
-                << texture_dialog.GetSelected().string() << std::endl;
+      spdlog::debug("Selected texture file: {}",
+                    texture_dialog.GetSelected().string());
       glfwMakeContextCurrent(ctrl->glfw_window);
       Texture t;
       loadTexture(t.id, texture_dialog.GetSelected().string());
@@ -3004,8 +3009,8 @@ void drawSettingsWindow() {
       spdlog::error("Invalid mesh index: {}", selected_mesh);
       model_dialog.ClearSelected();
     } else {
-      std::cout << "Selected filename : " << model_dialog.GetSelected().string()
-                << std::endl;
+      spdlog::debug("Selected model file: {}",
+                    model_dialog.GetSelected().string());
       const auto copy_options =
           std::filesystem::copy_options::overwrite_existing;
       std::filesystem::path from_path = model_dialog.GetSelected();

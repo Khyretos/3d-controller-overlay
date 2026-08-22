@@ -1,6 +1,7 @@
 #include "controller_window.h"
 #include "cube_info.h"
 #include "keyboard_input.h"
+#include "settings.h"
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
@@ -2137,8 +2138,94 @@ void drawControllerWindows() {
   }
 }
 
+// ----------------------------------------------------------------------
+//  RESOURCE CLEANUP
+// ----------------------------------------------------------------------
+// Releases every GPU resource and controller/sensor handle owned by a
+// controller window before it's torn down.
+//
+// Previously, closing a window via the UI (close_window() ->
+// removeControllerWindow()) only called glfwDestroyWindow() - it left the
+// SDL_GameController/SDL_Joystick handle open, any active gyro/accel
+// sensors open, and every shader program, VAO/VBO/EBO, and texture
+// belonging to that window's grid/lighting/touch-area/pivot/axis geometry
+// AND every mesh in its model leaked (both on the GPU and on SDL's side).
+// Only a full app exit (SDL_Quit()) ever implicitly cleaned any of that
+// up. Opening and closing windows repeatedly within one session leaked a
+// little more each time. Called from both removeControllerWindow()
+// (user-initiated close) and destroyWindows() (app exit).
+static void releaseControllerWindowResources(controller_window &w) {
+  if (w.sdl_controller) {
+    SDL_GameControllerClose(w.sdl_controller);
+    w.sdl_controller = nullptr;
+  } else if (w.sdl_joystick) {
+    SDL_JoystickClose(w.sdl_joystick);
+    w.sdl_joystick = nullptr;
+  }
+  w.gyro_sensor = nullptr;
+  w.accel_sensor = nullptr;
+  w.gyro_enabled = false;
+
+  if (!w.glfw_window)
+    return;
+
+  // GL objects belong to this window's own context. Deleting from the
+  // wrong current context is a silent no-op, so make this window's
+  // context current first - the same pattern used when it's created and
+  // drawn (see createControllerWindow() / drawControllerWindows()).
+  glfwMakeContextCurrent(w.glfw_window);
+
+  GLuint programs[] = {w.grid_shader, w.shader, w.light_source_shader,
+                       w.touch_shader};
+  for (GLuint p : programs)
+    if (p)
+      glDeleteProgram(p);
+
+  auto delBuf = [](GLuint &id) {
+    if (id) {
+      glDeleteBuffers(1, &id);
+      id = 0;
+    }
+  };
+  auto delVao = [](GLuint &id) {
+    if (id) {
+      glDeleteVertexArrays(1, &id);
+      id = 0;
+    }
+  };
+
+  delBuf(w.grid_vbo);
+  delBuf(w.grid_ibo);
+  delVao(w.grid_vao);
+
+  delBuf(w.lighting_vertex_data);
+  delBuf(w.lighting_normal_data);
+  delBuf(w.lighting_texture_data);
+  delVao(w.lighting_vao);
+
+  delBuf(w.touch_area_vbo);
+  delBuf(w.touch_area_ebo);
+  delBuf(w.touch_area_wire_ebo);
+  delVao(w.touch_area_vao);
+
+  delBuf(w.pivot_vbo);
+  delVao(w.pivot_vao);
+
+  delBuf(w.axis_vbo);
+  delVao(w.axis_vao);
+
+  for (Mesh &mesh : w.model.meshes) {
+    for (Texture &tex : mesh.textures)
+      deleteTexture(tex.id); // glDeleteTextures no-ops safely on id==0
+    delBuf(mesh.vbo);
+    delBuf(mesh.ebo);
+    delVao(mesh.vao);
+  }
+}
+
 void destroyWindows() {
-  for (controller_window w : windows) {
+  for (controller_window &w : windows) {
+    releaseControllerWindowResources(w);
     glfwDestroyWindow(w.glfw_window);
   }
 }
@@ -2146,6 +2233,7 @@ void destroyWindows() {
 void removeControllerWindow(unsigned ID) {
   for (unsigned i = 0; i < windows.size(); ++i) {
     if (windows[i].ID == ID) {
+      releaseControllerWindowResources(windows[i]);
       glfwDestroyWindow(windows[i].glfw_window);
       windows.erase(windows.begin() + i);
       break;

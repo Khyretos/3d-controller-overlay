@@ -272,7 +272,7 @@ void open_ifstream(std::filesystem::path path) {
 
   ifs = std::ifstream(file_path);
   if (!ifs) {
-    std::cout << "Uh oh, file could not be opened for reading!" << std::endl;
+    spdlog::warn("Could not open '{}' for reading.", file_path.string());
   }
 }
 
@@ -284,7 +284,7 @@ void open_ofstream(std::filesystem::path path) {
 
   ofs = std::ofstream(file_path);
   if (!ofs) {
-    std::cout << "Uh oh, file could not be opened for writing!" << std::endl;
+    spdlog::warn("Could not open '{}' for writing.", file_path.string());
   }
 }
 
