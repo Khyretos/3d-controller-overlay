@@ -37,4 +37,8 @@ void close_ofstream();
 
 std::string get_models_root();
 
+std::string get_gamecontrollerdb_path();
+
+void ensure_gamecontrollerdb();
+
 #endif

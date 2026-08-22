@@ -52,6 +52,9 @@ void InitializeProgram() {
   // keyboard overlays while another application is focused.
   GlobalKeyboard::initialize();
 
+  // ---- 5. Ensure gamecontrollerdb.txt is present ----
+  ensure_gamecontrollerdb();
+
   // ---- 6. Now create the settings window (which initialises ImGui) ----
   createSettingsWindow();
   loadTabs();

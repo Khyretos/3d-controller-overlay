@@ -535,6 +535,11 @@ void drawSettingsWindow() {
   glfwMakeContextCurrent(glfw_settings_window);
   glfwSwapInterval(1);
 
+  // ---- Set viewport to framebuffer size (fixes Retina scaling) ----
+  int fb_width, fb_height;
+  glfwGetFramebufferSize(glfw_settings_window, &fb_width, &fb_height);
+  glViewport(0, 0, fb_width, fb_height);
+
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();

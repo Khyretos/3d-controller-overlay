@@ -1,6 +1,7 @@
 #include "controller_window.h"
 #include "cube_info.h"
 #include "keyboard_input.h"
+#include "settings.h"
 #include "settings_window.h"
 #include "shader.h"
 #include "shaders.h"
@@ -335,6 +336,7 @@ void createControllerWindow(std::string title, std::string model_path) {
       }
 
       int chosen = 0;
+
       if (SDL_IsGameController(chosen)) {
         w.sdl_controller = SDL_GameControllerOpen(chosen);
         w.is_gamecontroller = true;
@@ -342,17 +344,21 @@ void createControllerWindow(std::string title, std::string model_path) {
         if (w.sdl_controller) {
           spdlog::info("Opened gamecontroller: {}",
                        SDL_GameControllerName(w.sdl_controller));
+          // Safely enable gyro
           if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_GYRO)) {
-            SDL_GameControllerSetSensorEnabled(w.sdl_controller,
-                                               SDL_SENSOR_GYRO, SDL_TRUE);
-            spdlog::info("Controller has gyro: true");
-            w.gyro_enabled = true;
-            Uint64 timestamp;
-            if (SDL_GameControllerGetSensorDataWithTimestamp(
-                    w.sdl_controller, SDL_SENSOR_GYRO, &timestamp, w.gyro_data,
-                    3) == 0) {
-              w.gyro_time = timestamp;
-              w.gyro_toggled = true;
+            if (SDL_GameControllerSetSensorEnabled(
+                    w.sdl_controller, SDL_SENSOR_GYRO, SDL_TRUE) == 0) {
+              spdlog::info("Controller has gyro: true");
+              w.gyro_enabled = true;
+              Uint64 timestamp;
+              if (SDL_GameControllerGetSensorDataWithTimestamp(
+                      w.sdl_controller, SDL_SENSOR_GYRO, &timestamp,
+                      w.gyro_data, 3) == 0) {
+                w.gyro_time = timestamp;
+                w.gyro_toggled = true;
+              }
+            } else {
+              spdlog::warn("Failed to enable gyro sensor");
             }
           }
           if (SDL_GameControllerHasSensor(w.sdl_controller, SDL_SENSOR_ACCEL)) {
@@ -940,7 +946,7 @@ void controller_window_input() {
         spdlog::warn("Controller window has empty model meshes; skipping "
                      "controller input.");
       } else {
-        // Gyro processing (unchanged)
+        // Gyro processing (with safety checks)
         if (w.gyro_enabled) {
           bool has_gyro_source = false;
           if (w.is_gamecontroller && w.sdl_controller) {
@@ -1069,13 +1075,18 @@ void controller_window_input() {
         skip_gyro_processing:;
         }
 
-        // Touchpad data (unchanged)
+        // Touchpad data (with bounds checking)
         if (w.is_gamecontroller && w.sdl_controller) {
           int touch_pads = SDL_GameControllerGetNumTouchpads(w.sdl_controller);
-          for (int t = 0; t < touch_pads && t < 4; ++t) {
+          // ---- SAFETY: clamp to our array size ----
+          if (touch_pads > 4)
+            touch_pads = 4;
+          for (int t = 0; t < touch_pads; ++t) {
             int numFingers =
                 SDL_GameControllerGetNumTouchpadFingers(w.sdl_controller, t);
-            for (int f = 0; f < numFingers && f < 2; ++f) {
+            if (numFingers > 2)
+              numFingers = 2;
+            for (int f = 0; f < numFingers; ++f) {
               SDL_GameControllerGetTouchpadFinger(
                   w.sdl_controller, t, f, &w.touchpad_data[t][f].state,
                   &w.touchpad_data[t][f].x, &w.touchpad_data[t][f].y, nullptr);
@@ -1113,9 +1124,13 @@ void controller_window_input() {
               }
               int numTouchpads =
                   SDL_GameControllerGetNumTouchpads(w.sdl_controller);
+              if (numTouchpads > 4)
+                numTouchpads = 4;
               for (int t = 0; t < numTouchpads; ++t) {
                 int numFingers = SDL_GameControllerGetNumTouchpadFingers(
                     w.sdl_controller, t);
+                if (numFingers > 2)
+                  numFingers = 2;
                 for (int f = 0; f < numFingers; ++f) {
                   Uint8 state;
                   float x, y;
@@ -1703,7 +1718,12 @@ void drawControllerWindows() {
       w.lastTime = glfwGetTime();
 
       int width = 0, height = 0;
-      glfwGetWindowSize(w.glfw_window, &width, &height);
+      // glViewport needs actual framebuffer PIXELS, not window size in
+      // points. On a Retina/HiDPI display (2x content scale) those differ
+      // by 2x per axis, so using glfwGetWindowSize here was only covering
+      // 1 / (scale^2) of the real drawable area - e.g. 1/4 of the screen
+      // on a standard 2x Retina Mac.
+      glfwGetFramebufferSize(w.glfw_window, &width, &height);
       glViewport(0, 0, width, height);
 
       update_camera(w, w.shader, width, height);

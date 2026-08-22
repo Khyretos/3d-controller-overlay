@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "gamecontrollerdb_data.h"
 #include "miniz.h"
 #include "models_zip_data.h"
 #include <SDL2/SDL.h>
@@ -198,6 +199,41 @@ std::string get_models_root() {
   fs::create_directories(user_models);
   return user_models.string();
 }
+
+std::string get_gamecontrollerdb_path() {
+  return config_base_path + "/gamecontrollerdb.txt";
+}
+
+void ensure_gamecontrollerdb() {
+  static bool loaded = false;
+  if (loaded)
+    return;
+  loaded = true;
+
+  if (Embedded::gamecontrollerdb_size == 0) {
+    spdlog::warn(
+        "Embedded gamecontrollerdb data is empty; no mappings loaded.");
+    return;
+  }
+
+  SDL_RWops *rw = SDL_RWFromConstMem(Embedded::gamecontrollerdb_data,
+                                     Embedded::gamecontrollerdb_size);
+  if (!rw) {
+    spdlog::error("Failed to create RWops from embedded gamecontrollerdb: {}",
+                  SDL_GetError());
+    return;
+  }
+
+  int count =
+      SDL_GameControllerAddMappingsFromRW(rw, 1); // 1 = SDL frees the RWops
+  if (count < 0) {
+    spdlog::error("SDL_GameControllerAddMappingsFromRW failed: {}",
+                  SDL_GetError());
+  } else {
+    spdlog::info("Loaded {} gamecontroller mappings from embedded data", count);
+  }
+}
+
 void write_int(std::string label, int value) {
   ofs << label.append("\n").c_str();
   ofs << std::to_string(value).append("\n").c_str();

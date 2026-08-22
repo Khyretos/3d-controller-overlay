@@ -192,10 +192,37 @@ SDL_Scancode vkToScancode(DWORD vk, DWORD scanCode, DWORD flags) {
     return SDL_SCANCODE_F11;
   case VK_F12:
     return SDL_SCANCODE_F12;
+  case VK_F13:
+    return SDL_SCANCODE_F13;
+  case VK_F14:
+    return SDL_SCANCODE_F14;
+  case VK_F15:
+    return SDL_SCANCODE_F15;
+  case VK_F16:
+    return SDL_SCANCODE_F16;
+  case VK_F17:
+    return SDL_SCANCODE_F17;
+  case VK_F18:
+    return SDL_SCANCODE_F18;
+  case VK_F19:
+    return SDL_SCANCODE_F19;
+  case VK_F20:
+    return SDL_SCANCODE_F20;
+  case VK_F21:
+    return SDL_SCANCODE_F21;
+  case VK_F22:
+    return SDL_SCANCODE_F22;
+  case VK_F23:
+    return SDL_SCANCODE_F23;
+  case VK_F24:
+    return SDL_SCANCODE_F24;
   case VK_SPACE:
     return SDL_SCANCODE_SPACE;
   case VK_RETURN:
-    return SDL_SCANCODE_RETURN;
+    // Numpad Enter shares VK_RETURN with the main Enter key on Windows;
+    // the hook's extended-key flag is what actually distinguishes them.
+    return (flags & LLKHF_EXTENDED) ? SDL_SCANCODE_KP_ENTER
+                                    : SDL_SCANCODE_RETURN;
   case VK_TAB:
     return SDL_SCANCODE_TAB;
   case VK_ESCAPE:
@@ -226,6 +253,95 @@ SDL_Scancode vkToScancode(DWORD vk, DWORD scanCode, DWORD flags) {
     return SDL_SCANCODE_LALT;
   case VK_RMENU:
     return SDL_SCANCODE_RALT;
+  case VK_CAPITAL:
+    return SDL_SCANCODE_CAPSLOCK;
+  case VK_LWIN:
+    return SDL_SCANCODE_LGUI;
+  case VK_RWIN:
+    return SDL_SCANCODE_RGUI;
+  case VK_PRIOR:
+    return SDL_SCANCODE_PAGEUP;
+  case VK_NEXT:
+    return SDL_SCANCODE_PAGEDOWN;
+  case VK_BACK:
+    return SDL_SCANCODE_BACKSPACE;
+  case VK_INSERT:
+    return SDL_SCANCODE_INSERT;
+  case VK_DELETE:
+    return SDL_SCANCODE_DELETE;
+  case VK_HOME:
+    return SDL_SCANCODE_HOME;
+  case VK_END:
+    return SDL_SCANCODE_END;
+  case VK_NUMLOCK:
+    return SDL_SCANCODE_NUMLOCKCLEAR;
+  case VK_SCROLL:
+    return SDL_SCANCODE_SCROLLLOCK;
+  case VK_PAUSE:
+    return SDL_SCANCODE_PAUSE;
+  case VK_SNAPSHOT:
+    return SDL_SCANCODE_PRINTSCREEN;
+  case VK_APPS:
+    return SDL_SCANCODE_APPLICATION;
+  // ---- Numpad ----
+  case VK_NUMPAD0:
+    return SDL_SCANCODE_KP_0;
+  case VK_NUMPAD1:
+    return SDL_SCANCODE_KP_1;
+  case VK_NUMPAD2:
+    return SDL_SCANCODE_KP_2;
+  case VK_NUMPAD3:
+    return SDL_SCANCODE_KP_3;
+  case VK_NUMPAD4:
+    return SDL_SCANCODE_KP_4;
+  case VK_NUMPAD5:
+    return SDL_SCANCODE_KP_5;
+  case VK_NUMPAD6:
+    return SDL_SCANCODE_KP_6;
+  case VK_NUMPAD7:
+    return SDL_SCANCODE_KP_7;
+  case VK_NUMPAD8:
+    return SDL_SCANCODE_KP_8;
+  case VK_NUMPAD9:
+    return SDL_SCANCODE_KP_9;
+  case VK_MULTIPLY:
+    return SDL_SCANCODE_KP_MULTIPLY;
+  case VK_ADD:
+    return SDL_SCANCODE_KP_PLUS;
+  case VK_SUBTRACT:
+    return SDL_SCANCODE_KP_MINUS;
+  case VK_DECIMAL:
+    return SDL_SCANCODE_KP_PERIOD;
+  case VK_DIVIDE:
+    return SDL_SCANCODE_KP_DIVIDE;
+  // ---- Punctuation ----
+  // NOTE: VK_OEM_* codes represent "the key in this physical position"
+  // as interpreted by the currently active Windows keyboard layout, same
+  // as the letter keys above - on a non-US layout the physical key that
+  // reaches a given case here may differ from the US legend implied by
+  // its name.
+  case VK_OEM_1:
+    return SDL_SCANCODE_SEMICOLON;
+  case VK_OEM_PLUS:
+    return SDL_SCANCODE_EQUALS;
+  case VK_OEM_COMMA:
+    return SDL_SCANCODE_COMMA;
+  case VK_OEM_MINUS:
+    return SDL_SCANCODE_MINUS;
+  case VK_OEM_PERIOD:
+    return SDL_SCANCODE_PERIOD;
+  case VK_OEM_2:
+    return SDL_SCANCODE_SLASH;
+  case VK_OEM_3:
+    return SDL_SCANCODE_GRAVE;
+  case VK_OEM_4:
+    return SDL_SCANCODE_LEFTBRACKET;
+  case VK_OEM_5:
+    return SDL_SCANCODE_BACKSLASH;
+  case VK_OEM_6:
+    return SDL_SCANCODE_RIGHTBRACKET;
+  case VK_OEM_7:
+    return SDL_SCANCODE_APOSTROPHE;
   default:
     return SDL_SCANCODE_UNKNOWN;
   }
@@ -487,6 +603,12 @@ SDL_Scancode macKeycodeToScancode(CGKeyCode key) {
     return SDL_SCANCODE_F5;
   case 64:
     return SDL_SCANCODE_F17;
+  case 79:
+    return SDL_SCANCODE_F18;
+  case 80:
+    return SDL_SCANCODE_F19;
+  case 90:
+    return SDL_SCANCODE_F20;
   case 65:
     return SDL_SCANCODE_KP_PERIOD;
   case 67:
@@ -632,6 +754,47 @@ CGEventRef macEventCallback(CGEventTapProxy, CGEventType type, CGEventRef event,
     return event;
   }
 
+  // ---- Modifier key events (Caps Lock, Cmd, Shift, Ctrl, Option) ----
+  // These do NOT fire kCGEventKeyDown/kCGEventKeyUp on macOS - they fire
+  // kCGEventFlagsChanged instead. There's no explicit "pressed" bit on the
+  // event itself, so we infer press/release by checking whether this key's
+  // corresponding modifier bit is currently set in the event's flags.
+  // Known limitation: if both the left and right variant of a modifier
+  // (e.g. both Shift keys) are held at once, releasing just one of them
+  // can't be distinguished from the shared flag bit alone, since macOS
+  // doesn't expose a separate left/right bit in CGEventFlags.
+  if (type == kCGEventFlagsChanged) {
+    CGKeyCode key = static_cast<CGKeyCode>(
+        CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
+    CGEventFlags modifierMask = 0;
+    switch (key) {
+    case 54: // Right Command (Windows-key equivalent)
+    case 55: // Left Command (Windows-key equivalent)
+      modifierMask = kCGEventFlagMaskCommand;
+      break;
+    case 56: // Left Shift
+    case 60: // Right Shift
+      modifierMask = kCGEventFlagMaskShift;
+      break;
+    case 57: // Caps Lock
+      modifierMask = kCGEventFlagMaskAlphaShift;
+      break;
+    case 58: // Left Option/Alt
+    case 61: // Right Option/Alt
+      modifierMask = kCGEventFlagMaskAlternate;
+      break;
+    case 59: // Left Control
+    case 62: // Right Control
+      modifierMask = kCGEventFlagMaskControl;
+      break;
+    default:
+      return event;
+    }
+    CGEventFlags flags = CGEventGetFlags(event);
+    setKey(macKeycodeToScancode(key), (flags & modifierMask) != 0);
+    return event;
+  }
+
   // ---- Keyboard events ----
   if (type != kCGEventKeyDown && type != kCGEventKeyUp)
     return event;
@@ -644,6 +807,7 @@ CGEventRef macEventCallback(CGEventTapProxy, CGEventType type, CGEventRef event,
 void macThread() {
   CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) |
                      CGEventMaskBit(kCGEventKeyUp) |
+                     CGEventMaskBit(kCGEventFlagsChanged) |
                      CGEventMaskBit(kCGEventMouseMoved) |
                      CGEventMaskBit(kCGEventLeftMouseDown) |
                      CGEventMaskBit(kCGEventLeftMouseUp) |
@@ -789,6 +953,10 @@ SDL_Scancode linuxKeyToScancode(int key) {
     return SDL_SCANCODE_LALT;
   case KEY_RIGHTALT:
     return SDL_SCANCODE_RALT;
+  case KEY_LEFTMETA:
+    return SDL_SCANCODE_LGUI;
+  case KEY_RIGHTMETA:
+    return SDL_SCANCODE_RGUI;
   case KEY_F1:
     return SDL_SCANCODE_F1;
   case KEY_F2:
@@ -813,6 +981,30 @@ SDL_Scancode linuxKeyToScancode(int key) {
     return SDL_SCANCODE_F11;
   case KEY_F12:
     return SDL_SCANCODE_F12;
+  case KEY_F13:
+    return SDL_SCANCODE_F13;
+  case KEY_F14:
+    return SDL_SCANCODE_F14;
+  case KEY_F15:
+    return SDL_SCANCODE_F15;
+  case KEY_F16:
+    return SDL_SCANCODE_F16;
+  case KEY_F17:
+    return SDL_SCANCODE_F17;
+  case KEY_F18:
+    return SDL_SCANCODE_F18;
+  case KEY_F19:
+    return SDL_SCANCODE_F19;
+  case KEY_F20:
+    return SDL_SCANCODE_F20;
+  case KEY_F21:
+    return SDL_SCANCODE_F21;
+  case KEY_F22:
+    return SDL_SCANCODE_F22;
+  case KEY_F23:
+    return SDL_SCANCODE_F23;
+  case KEY_F24:
+    return SDL_SCANCODE_F24;
   case KEY_BACKSPACE:
     return SDL_SCANCODE_BACKSPACE;
   case KEY_DELETE:
@@ -829,6 +1021,16 @@ SDL_Scancode linuxKeyToScancode(int key) {
     return SDL_SCANCODE_INSERT;
   case KEY_CAPSLOCK:
     return SDL_SCANCODE_CAPSLOCK;
+  case KEY_NUMLOCK:
+    return SDL_SCANCODE_NUMLOCKCLEAR;
+  case KEY_SCROLLLOCK:
+    return SDL_SCANCODE_SCROLLLOCK;
+  case KEY_PAUSE:
+    return SDL_SCANCODE_PAUSE;
+  case KEY_SYSRQ:
+    return SDL_SCANCODE_PRINTSCREEN;
+  case KEY_COMPOSE: // "Menu"/"Application" key on standard PC keyboards
+    return SDL_SCANCODE_APPLICATION;
   case KEY_MINUS:
     return SDL_SCANCODE_MINUS;
   case KEY_EQUAL:
@@ -851,6 +1053,39 @@ SDL_Scancode linuxKeyToScancode(int key) {
     return SDL_SCANCODE_PERIOD;
   case KEY_SLASH:
     return SDL_SCANCODE_SLASH;
+  // ---- Numpad ----
+  case KEY_KP0:
+    return SDL_SCANCODE_KP_0;
+  case KEY_KP1:
+    return SDL_SCANCODE_KP_1;
+  case KEY_KP2:
+    return SDL_SCANCODE_KP_2;
+  case KEY_KP3:
+    return SDL_SCANCODE_KP_3;
+  case KEY_KP4:
+    return SDL_SCANCODE_KP_4;
+  case KEY_KP5:
+    return SDL_SCANCODE_KP_5;
+  case KEY_KP6:
+    return SDL_SCANCODE_KP_6;
+  case KEY_KP7:
+    return SDL_SCANCODE_KP_7;
+  case KEY_KP8:
+    return SDL_SCANCODE_KP_8;
+  case KEY_KP9:
+    return SDL_SCANCODE_KP_9;
+  case KEY_KPDOT:
+    return SDL_SCANCODE_KP_PERIOD;
+  case KEY_KPPLUS:
+    return SDL_SCANCODE_KP_PLUS;
+  case KEY_KPMINUS:
+    return SDL_SCANCODE_KP_MINUS;
+  case KEY_KPASTERISK:
+    return SDL_SCANCODE_KP_MULTIPLY;
+  case KEY_KPSLASH:
+    return SDL_SCANCODE_KP_DIVIDE;
+  case KEY_KPEQUAL:
+    return SDL_SCANCODE_KP_EQUALS;
   case KEY_KPENTER:
     return SDL_SCANCODE_KP_ENTER;
   default:
@@ -897,14 +1132,6 @@ void scanDevices(std::vector<LinuxDevice> &devices,
       continue;
     const std::string path = entry.path().string();
     if (path.find("/event") == std::string::npos)
-      continue;
-    // Skip paths we've already opened+probed and determined aren't a
-    // keyboard/mouse (power button, lid switch, HID subinterfaces, etc.).
-    // Without this, every periodic rescan re-open()s and re-ioctl()s every
-    // such node, every time, forever — which runs synchronously on the same
-    // thread that drains mouse/keyboard events, so a scan busy re-probing a
-    // dozen+ irrelevant nodes can noticeably delay event draining.
-    if (ignored_paths.count(path))
       continue;
     bool already = false;
     for (const auto &d : devices)

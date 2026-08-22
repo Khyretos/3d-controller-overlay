@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Suppress PkgConfig CMP0219 warning (backslash handling in custom commands)
+if(POLICY CMP0219)
+    cmake_policy(SET CMP0219 NEW)
+endif()
+
 option(BUILD_STATIC "Build with static linking (when possible)" OFF)
 
 find_package(PkgConfig REQUIRED)
@@ -27,7 +32,7 @@ find_package(OpenGL REQUIRED)
 find_package(ZLIB REQUIRED)
 
 if(NOT APPLE)
-find_package(Threads REQUIRED)
+    find_package(Threads REQUIRED)
     set(THREAD_LIBRARY Threads::Threads)
 else()
     if(NOT TARGET Threads::Threads)
@@ -50,20 +55,13 @@ set(GEN_SCRIPT "${CMAKE_SOURCE_DIR}/tools/generate_models_zip.py")
 set(GEN_HEADER "${CMAKE_SOURCE_DIR}/src/models_zip_data.h")
 set(MODELS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets/models")
 
-# assets/models is gitignored (the vendored .obj model library isn't
-# committed), so it may simply not exist on a fresh clone. Only add it as a
-# DEPENDS target when it's actually there — `make` errors out with
-# "No rule to make target ... assets/models" if we depend on a path with no
-# rule to produce it. Without it present, generate_models_zip.py still runs
-# (see that script) and just produces an empty embedded library so the
-# build succeeds; the app falls back to an empty default model set at
-# runtime until you add assets/models yourself.
+# Always depend on the script itself, plus the models folder if it exists.
+set(MODELS_DEPENDS "${GEN_SCRIPT}")
 if(EXISTS "${MODELS_SOURCE_DIR}")
-    set(MODELS_DEPENDS "${MODELS_SOURCE_DIR}")
+    list(APPEND MODELS_DEPENDS "${MODELS_SOURCE_DIR}")
 else()
-    set(MODELS_DEPENDS "")
     message(WARNING "assets/models not found — building without an embedded "
-                     "default model library. See README's 'Building' section.")
+                    "default model library. See README's 'Building' section.")
 endif()
 
 add_custom_command(
@@ -78,13 +76,31 @@ add_custom_command(
 set_source_files_properties(${GEN_HEADER} PROPERTIES GENERATED TRUE)
 
 # ------------------------------------------------------------------
-# Executable – uses the collected sources
+# Generate gamecontrollerdb_data.h from assets/gamecontrollerdb.txt
 # ------------------------------------------------------------------
-add_executable(3dco+ ${SRC_FILES} ${GEN_HEADER})
+set(DB_SCRIPT "${CMAKE_SOURCE_DIR}/tools/generate_db_header.py")
+set(DB_HEADER "${CMAKE_SOURCE_DIR}/src/gamecontrollerdb_data.h")
+set(DB_SOURCE "${CMAKE_SOURCE_DIR}/assets/gamecontrollerdb.txt")
 
-# Include the source directory (and optionally build dir if needed)
+add_custom_command(
+    OUTPUT ${DB_HEADER}
+    COMMAND python3 ${DB_SCRIPT}
+    DEPENDS ${DB_SOURCE} ${DB_SCRIPT}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Generating gamecontrollerdb_data.h from assets/gamecontrollerdb.txt"
+)
+
+# Mark header as generated
+set_source_files_properties(${DB_HEADER} PROPERTIES GENERATED TRUE)
+
+# ------------------------------------------------------------------
+# Executable – uses the collected sources + generated headers
+# ------------------------------------------------------------------
+add_executable(3dco+ ${SRC_FILES} ${GEN_HEADER} ${DB_HEADER})
+
+# Include the source directory
 target_include_directories(3dco+ PRIVATE
-    "${CMAKE_SOURCE_DIR}/src"               # for models_zip_data.h
+    "${CMAKE_SOURCE_DIR}/src"
 )
 
 # ------------------------------------------------------------------
@@ -92,10 +108,7 @@ target_include_directories(3dco+ PRIVATE
 # defines in their "CFLAGS_OTHER" output (e.g. spdlog.pc emits
 # -DSPDLOG_FMT_EXTERNAL when spdlog was built against an external
 # fmt instead of its bundled copy). These must be forwarded to the
-# actual compile command, or headers like <spdlog/spdlog.h> will
-# silently try to include the bundled fmt copy that was never
-# installed, causing:
-#   fatal error: 'spdlog/fmt/bundled/core.h' file not found
+# actual compile command.
 # ------------------------------------------------------------------
 target_compile_options(3dco+ PRIVATE
     ${ASSIMP_CFLAGS_OTHER}
@@ -157,13 +170,9 @@ if(APPLE)
 
     target_link_libraries(3dco+ PRIVATE
         ${BASE_LIBS}
-
-        # OpenGL / GLFW / macOS
         "-framework OpenGL"
         "-framework Cocoa"
         "-framework IOKit"
-
-        # Core macOS frameworks
         "-framework CoreFoundation"
         "-framework CoreGraphics"
         "-framework CoreAudio"
@@ -177,10 +186,8 @@ if(APPLE)
         "-framework Carbon"
         "-framework CoreHaptics"
         "-framework Foundation"
-
         "-lobjc"
         "-lresolv"
-
         ZLIB::ZLIB
     )
 else()
@@ -204,7 +211,11 @@ if(WIN32)
     endif()
 endif()
 
-# No need to copy assets/models – they are embedded in the zip and extracted at runtime.
+# ------------------------------------------------------------------
+# No need to copy gamecontrollerdb.txt at build time – it's embedded.
+# ------------------------------------------------------------------
 
 install(TARGETS 3dco+ RUNTIME DESTINATION bin)
+# Install gamecontrollerdb.txt to share/3dco+/ for system-wide use (optional)
+install(FILES ${DB_SOURCE} DESTINATION share/3dco+)
 install(FILES assets/icon.png DESTINATION share/icons/hicolor/256x256/apps)

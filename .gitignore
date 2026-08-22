@@ -18,6 +18,8 @@ bin/
 lib/
 dist/
 src/models_zip_data.h
+src/gamecontrollerdb_data.h
+
 
 # CMake generated files
 CMakeCache.txt

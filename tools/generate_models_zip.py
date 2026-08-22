@@ -18,6 +18,7 @@ if not os.path.isdir(models_dir):
 # Create zip in memory
 zip_buffer = BytesIO()
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    # Add all files under assets/models
     for root, _, files in os.walk(models_dir):
         for file in files:
             full_path = os.path.join(root, file)

@@ -68,4 +68,4 @@ RUN mkdir build && cd build && \
     -DBUILD_STATIC=ON && \
     make -j$(nproc)
 
-CMD ["sh", "-c", "mkdir -p /dist/windows && cp /app/build/3dco+.exe /dist/windows/ "]
+CMD ["sh", "-c", "mkdir -p /dist/windows && cp /app/build/3dco+.exe /dist/windows/"]

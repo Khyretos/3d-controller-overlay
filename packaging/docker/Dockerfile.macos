@@ -403,6 +403,7 @@ mkdir -p /out/3dco+.app/Contents/Resources
 mkdir -p /src/assets/models
 cp -r /src/assets/models /out/3dco+.app/Contents/Resources/
 cp /src/assets/icon.png /out/3dco+.app/Contents/Resources/
+cp /src/assets/gamecontrollerdb.txt /out/3dco+.app/Contents/Resources/
 
 # ----- Info.plist -----
 cat > /out/3dco+.app/Contents/Info.plist <<PLIST
