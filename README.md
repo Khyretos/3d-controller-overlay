@@ -127,15 +127,15 @@ Live demo clips for every controller in the built-in model library. (The `+` bad
 
 > The clips below are placeholders — I'll be swapping each one for real capture footage as I record it.
 
-|                                                                                                                      |                                                                                              |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **Steam Controller 2026** <br> ![Steam Controller 2026 demo placeholder](images/steamcontroller2026_placeholder.gif) | **DualSense** <br> ![DualSense demo placeholder](images/dualsense_placeholder.gif)           |
-| **DualShock 4** <br> ![DualShock 4 demo placeholder](images/dualshock4_placeholder.gif)                              | **GameCube** <br> ![GameCube demo placeholder](images/gamecube_placeholder.gif)              |
-| **Joy-Con Grip** <br> ![Joy-Con Grip demo placeholder](images/joycongrip_placeholder.gif)                            | **Keyboard** <br> ![Keyboard demo placeholder](images/keyboard_placeholder.gif)              |
-| **Left Joy-Con** <br> ![Left Joy-Con demo placeholder](images/leftjoycon_placeholder.gif)                            | **Right Joy-Con** <br> ![Right Joy-Con demo placeholder](images/rightjoycon_placeholder.gif) |
-| **Xbox One** <br> ![Xbox One demo placeholder](images/xboxone_placeholder.gif)                                       | **Xbox 360** <br> ![Xbox 360 demo placeholder](images/xbox360_placeholder.gif)               |
-| **Mouse** <br> ![Mouse demo placeholder](images/mouse_placeholder.gif)                                               | **Switch Pro** <br> ![Switch Pro demo placeholder](images/switchpro_placeholder.gif)         |
-| **Wavebird** <br> ![Wavebird demo placeholder](images/wavebird_placeholder.gif)                                      | **Flightstick** <br> ![Flightstick demo placeholder](images/flightstick_placeholder.gif)     |
+|                                                                                                                 |                                                                                         |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Steam Controller 2026** ![Steam Controller 2026 demo placeholder](images/steamcontroller2026_placeholder.gif) | **DualSense** ![DualSense demo placeholder](images/dualsense_placeholder.gif)           |
+| **DualShock 4** ![DualShock 4 demo placeholder](images/dualshock4_placeholder.gif)                              | **GameCube** ![GameCube demo placeholder](images/gamecube_placeholder.gif)              |
+| **Joy-Con Grip** ![Joy-Con Grip demo placeholder](images/joycongrip_placeholder.gif)                            | **Keyboard** ![Keyboard demo placeholder](images/keyboard_placeholder.gif)              |
+| **Left Joy-Con** ![Left Joy-Con demo placeholder](images/leftjoycon_placeholder.gif)                            | **Right Joy-Con** ![Right Joy-Con demo placeholder](images/rightjoycon_placeholder.gif) |
+| **Xbox One** ![Xbox One demo placeholder](images/xboxone_placeholder.gif)                                       | **Xbox 360** ![Xbox 360 demo placeholder](images/xbox360_placeholder.gif)               |
+| **Mouse** ![Mouse demo placeholder](images/mouse_placeholder.gif)                                               | **Switch Pro** ![Switch Pro demo placeholder](images/switchpro_placeholder.gif)         |
+| **Wavebird** ![Wavebird demo placeholder](images/wavebird_placeholder.gif)                                      | **Flightstick** ![Flightstick demo placeholder](images/flightstick_placeholder.gif)     |
 
 ## Work in progress / known bugs
 
