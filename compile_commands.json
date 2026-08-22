@@ -67,6 +67,12 @@
 },
 {
   "directory": "/media/development/Software/3d-controller-overlay/build",
+  "command": "/usr/bin/c++  -I/media/development/Software/3d-controller-overlay/src -I/media/development/Software/3d-controller-overlay/src/imgui -I/media/development/Software/3d-controller-overlay/third_party/include -I/usr/include/SDL2 -std=gnu++17 -DSPDLOG_SHARED_LIB -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -D_GNU_SOURCE=1 -D_REENTRANT -include /media/development/Software/3d-controller-overlay/src/preinclude.h -o CMakeFiles/3dco+.dir/src/log_window.cpp.o -c /media/development/Software/3d-controller-overlay/src/log_window.cpp",
+  "file": "/media/development/Software/3d-controller-overlay/src/log_window.cpp",
+  "output": "CMakeFiles/3dco+.dir/src/log_window.cpp.o"
+},
+{
+  "directory": "/media/development/Software/3d-controller-overlay/build",
   "command": "/usr/bin/c++  -I/media/development/Software/3d-controller-overlay/src -I/media/development/Software/3d-controller-overlay/src/imgui -I/media/development/Software/3d-controller-overlay/third_party/include -I/usr/include/SDL2 -std=gnu++17 -DSPDLOG_SHARED_LIB -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -D_GNU_SOURCE=1 -D_REENTRANT -include /media/development/Software/3d-controller-overlay/src/preinclude.h -o CMakeFiles/3dco+.dir/src/main.cpp.o -c /media/development/Software/3d-controller-overlay/src/main.cpp",
   "file": "/media/development/Software/3d-controller-overlay/src/main.cpp",
   "output": "CMakeFiles/3dco+.dir/src/main.cpp.o"
@@ -106,12 +112,6 @@
   "command": "/usr/bin/c++  -I/media/development/Software/3d-controller-overlay/src -I/media/development/Software/3d-controller-overlay/src/imgui -I/media/development/Software/3d-controller-overlay/third_party/include -I/usr/include/SDL2 -std=gnu++17 -DSPDLOG_SHARED_LIB -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -D_GNU_SOURCE=1 -D_REENTRANT -include /media/development/Software/3d-controller-overlay/src/preinclude.h -o CMakeFiles/3dco+.dir/src/shader.cpp.o -c /media/development/Software/3d-controller-overlay/src/shader.cpp",
   "file": "/media/development/Software/3d-controller-overlay/src/shader.cpp",
   "output": "CMakeFiles/3dco+.dir/src/shader.cpp.o"
-},
-{
-  "directory": "/media/development/Software/3d-controller-overlay/build",
-  "command": "/usr/bin/c++  -I/media/development/Software/3d-controller-overlay/src -I/media/development/Software/3d-controller-overlay/src/imgui -I/media/development/Software/3d-controller-overlay/third_party/include -I/usr/include/SDL2 -std=gnu++17 -DSPDLOG_SHARED_LIB -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -D_GNU_SOURCE=1 -D_REENTRANT -include /media/development/Software/3d-controller-overlay/src/preinclude.h -o CMakeFiles/3dco+.dir/src/shader_source.cpp.o -c /media/development/Software/3d-controller-overlay/src/shader_source.cpp",
-  "file": "/media/development/Software/3d-controller-overlay/src/shader_source.cpp",
-  "output": "CMakeFiles/3dco+.dir/src/shader_source.cpp.o"
 },
 {
   "directory": "/media/development/Software/3d-controller-overlay/build",
